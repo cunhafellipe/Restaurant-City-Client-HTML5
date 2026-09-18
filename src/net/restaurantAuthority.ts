@@ -35,6 +35,12 @@ export interface PlacementCommand {
   readonly rotation: number;
 }
 
+export interface TransformCommand {
+  readonly tileX: number;
+  readonly tileY: number;
+  readonly rotation: number;
+}
+
 export interface PlacementCommit {
   readonly outcome: 'applied' | 'duplicate';
   readonly item: AuthoritativePlacedItem;
@@ -44,6 +50,15 @@ export interface RestaurantAuthority {
   loadRestaurant(): Promise<RestaurantLayout>;
   placeItem(
     command: PlacementCommand,
+    mutationId: string,
+  ): Promise<PlacementCommit>;
+  transformItem(
+    instanceId: number,
+    command: TransformCommand,
+    mutationId: string,
+  ): Promise<PlacementCommit>;
+  removeItem(
+    instanceId: number,
     mutationId: string,
   ): Promise<PlacementCommit>;
 }
@@ -155,12 +170,93 @@ export class HttpRestaurantAuthority implements RestaurantAuthority {
 
     return parsePlacementCommit(await response.json());
   }
+
+  async transformItem(
+    instanceId: number,
+    command: TransformCommand,
+    mutationId: string,
+  ): Promise<PlacementCommit> {
+    validateInstanceId(instanceId);
+    validateMutationId(mutationId);
+    validateTransformCommand(command);
+
+    const response = await this.fetcher(
+      `${this.basePath}/restaurant/placements/${instanceId}`,
+      {
+        method: 'PATCH',
+        credentials: 'same-origin',
+        cache: 'no-store',
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+          'Idempotency-Key': mutationId,
+        },
+        body: JSON.stringify({
+          tile_x: command.tileX,
+          tile_y: command.tileY,
+          rotation: command.rotation,
+        }),
+      },
+    );
+
+    if (!response.ok) {
+      throw await authorityError(response);
+    }
+
+    return parsePlacementCommit(await response.json());
+  }
+
+  async removeItem(
+    instanceId: number,
+    mutationId: string,
+  ): Promise<PlacementCommit> {
+    validateInstanceId(instanceId);
+    validateMutationId(mutationId);
+
+    const response = await this.fetcher(
+      `${this.basePath}/restaurant/placements/${instanceId}`,
+      {
+        method: 'DELETE',
+        credentials: 'same-origin',
+        cache: 'no-store',
+        headers: {
+          Accept: 'application/json',
+          'Idempotency-Key': mutationId,
+        },
+      },
+    );
+
+    if (!response.ok) {
+      throw await authorityError(response);
+    }
+
+    return parsePlacementCommit(await response.json());
+  }
 }
 
 export function createPlacementMutationId(
   uuid: () => string = () => crypto.randomUUID(),
 ): string {
-  const value = `rc-placement-${uuid()}`;
+  return createMutationId('place', uuid);
+}
+
+export function createTransformMutationId(
+  uuid: () => string = () => crypto.randomUUID(),
+): string {
+  return createMutationId('transform', uuid);
+}
+
+export function createRemoveMutationId(
+  uuid: () => string = () => crypto.randomUUID(),
+): string {
+  return createMutationId('remove', uuid);
+}
+
+function createMutationId(
+  operation: 'place' | 'transform' | 'remove',
+  uuid: () => string,
+): string {
+  const value = `rc-${operation}-${uuid()}`;
   validateMutationId(value);
   return value;
 }
@@ -176,15 +272,27 @@ function validateMutationId(value: string): void {
 }
 
 function validatePlacementCommand(command: PlacementCommand): void {
+  if (!isUInt32(command.itemId)) {
+    throw new Error('Invalid Restaurant City placement command');
+  }
+  validateTransformCommand(command);
+}
+
+function validateTransformCommand(command: TransformCommand): void {
   if (
-    !isUInt32(command.itemId) ||
     !Number.isSafeInteger(command.tileX) ||
     !Number.isSafeInteger(command.tileY) ||
     !Number.isInteger(command.rotation) ||
     command.rotation < 0 ||
     command.rotation > MAX_HISTORICAL_ROTATION_INDEX
   ) {
-    throw new Error('Invalid Restaurant City placement command');
+    throw new Error('Invalid Restaurant City transform command');
+  }
+}
+
+function validateInstanceId(instanceId: number): void {
+  if (!Number.isSafeInteger(instanceId) || instanceId <= 0) {
+    throw new Error('Invalid Restaurant City instance id');
   }
 }
 
