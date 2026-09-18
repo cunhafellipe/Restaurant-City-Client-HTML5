@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "product": {
+    "id": "restaurant-city",
+    "name": "Restaurant City",
+    "domain": "Product",
+    "lifecycle": "incubation",
+    "executionProfile": "SOCIAL_WEB",
+    "implementationRepository": "cunhafellipe/Restaurant-City-Client-HTML5",
+    "implementationBranch": "anewon/revival-content"
+  },
+  "authority": {
+    "companyArchitecture": "anewonhq/anew-docs",
+    "platform": "anewonhq/anew-platform",
+    "runtime": "anewonhq/anew-runtime",
+    "productArchitecture": "ADR-0009"
+  },
+  "historicalBaseline": {
+    "version": "0.9.143a",
+    "archiveSha256": "4493be9bc4c2f87ef80ca7afa5321e12bb94a7ec6ed2f0a673b4d48b19170ef4",
+    "rightsClass": "LEGACY_RESEARCH",
+    "runtimeDistributionEligible": false
+  },
+  "goldenReferences": [
+    "n3r0-b1n4ry/RestaurantCity_SWF",
+    "cunhafellipe/Restaurant-City-client",
+    "cunhafellipe/Restaurant-City-Server"
+  ],
+  "security": {
+    "clientTrust": "hostile",
+    "serverAuthoritative": true,
+    "protectedReleaseRequiredBeforeDistribution": true,
+    "productionSourceMaps": false,
+    "publicLegacyAssetDistribution": false
+  }
+}
