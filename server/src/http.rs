@@ -278,6 +278,8 @@ fn map_service_error(error: ProductServiceError) -> PublicProductError {
             crate::restaurant::RestaurantAuthorityError::Collision { .. },
         ) => PublicProductError::Conflict,
         ProductServiceError::RestaurantAuthority(_) => PublicProductError::Unprocessable,
+        ProductServiceError::MutationIdConflict => PublicProductError::Conflict,
+        ProductServiceError::RestaurantMutationSequenceExhausted => PublicProductError::Internal,
     }
 }
 
@@ -510,5 +512,13 @@ mod tests {
         assert_eq!(PublicProductError::Unauthenticated.status_code(), 401);
         assert_eq!(PublicProductError::Conflict.status_code(), 409);
         assert_eq!(PublicProductError::Unprocessable.code(), "UNPROCESSABLE");
+        assert_eq!(
+            map_service_error(ProductServiceError::MutationIdConflict),
+            PublicProductError::Conflict
+        );
+        assert_eq!(
+            map_service_error(ProductServiceError::RestaurantMutationSequenceExhausted),
+            PublicProductError::Internal
+        );
     }
 }
