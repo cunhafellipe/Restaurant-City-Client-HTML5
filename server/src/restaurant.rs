@@ -368,7 +368,7 @@ mod tests {
                 &catalog(),
                 PlacementIntent {
                     item_id: 10,
-                    tile: TilePoint { x: 7, y: 6 },
+                    tile: TilePoint { x: 7, y: 7 },
                     rotation: 1,
                 },
             )
