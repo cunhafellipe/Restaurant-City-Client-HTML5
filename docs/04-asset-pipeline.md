@@ -34,13 +34,21 @@ them.
   tier of ADR-0004; WebP tier is a later pipeline upgrade), one or more bounded atlas pages per source SWF per scale tier. Pages are
   deterministic, max 4096x4096 in the current PNG tier, and consumed as one
   Phaser multi-atlas.
-- **Audio:** ogg/webm + mp3 dual-format with a per-track manifest
-  (Web Audio via Phaser). Export from `sound_asset.swf`'s embedded MP3s.
-- **Data:** typed JSON generated from the `bin-xml` files by the readers in
-  `src/net/data/` (see doc 11). The client consumes the JSON at runtime.
-- **Strings:** lang JSON per locale from `lang_en[1].bin` / `lang_fr[1].bin`.
+- **Audio:** browser-native audio derivatives exported from `sound_asset.swf`
+  by FFDec and recorded with format/size/SHA-256 metadata. The current pipeline
+  preserves the exported browser-native format; it does **not** claim a
+  transcoded dual-format tier yet.
+- **Data:** normalized XML plus deterministic ItemDatabase JSON derivatives
+  generated offline from the zlib/XML historical inputs. Runtime readers live
+  in `src/content/runtime.ts` and typed Restaurant City item normalization in
+  `src/content/items.ts`.
+- **Strings:** normalized language-family XML/ItemDatabase derivatives for the
+  recovered `lang_*` inputs.
+- **Runtime rule:** SWF/BIN/archive bytes are conversion-time/Vault inputs only.
+  They are forbidden from `public/`, `dist/` and browser runtime by
+  `npm run runtime:verify`.
 
-## Implemented tooling (M0, verified against `ingredient_asset.swf`)
+## Implemented tooling (R16/M1, verified across the canonical corpus)
 
 | Script | What it does | FFDec invocation used |
 |---|---|---|
@@ -63,11 +71,14 @@ Verified facts about the extraction (recorded so M1 reuses them):
 - The linkage tables (`-export symbolClass` CSV) contain both the
   ExportAssets and SymbolClass entries; the pipeline dedupes by chid and
   excludes chid 0 (main-timeline root marker).
-- `ingredient_asset.swf`: 92 linked sprites, 161 frames total, 65 unnamed
-  inner wrapper sprites (composited into their parents, not linked —
-  excluded), 100% coverage achieved.
-- Pipeline output is reproducible: two consecutive runs produce
-  byte-identical artifacts (verified by SHA-256 comparison).
+- The canonical R16 semantic pipeline verifies **7/7 visual SWFs at 100%**,
+  currently covering 2,481 linked symbols, 17,169 frames, 21 linked BitmapData
+  exports and 118 bounded atlas pages.
+- `ingredient_asset.swf` remains the smallest useful proof fixture: 92 linked
+  symbols / 161 frames at full coverage.
+- Pipeline output is deterministic and hash-addressable; CI/research reports
+  retain source/decoded hashes and coverage rather than historical binary
+  payloads.
 
 ## Pipeline stages
 
@@ -84,25 +95,71 @@ Verified facts about the extraction (recorded so M1 reuses them):
 
 ## Manifest contract
 
+The browser consumes **manifest v3**. A representative shape is:
+
 ```jsonc
 {
-  "version": 1,
+  "version": 3,
+  "baseline": "0.9.143a",
   "atlases": [
-    { "id": "indoor", "file": "atlases/indoor.webp",
-      "json": "atlases/indoor.json", "source": "indoor_asset.swf" }
+    {
+      "id": "indoor_asset",
+      "json": "atlases/indoor_asset.json",
+      "files": [
+        "atlases/indoor_asset-000.png",
+        "atlases/indoor_asset-001.png"
+      ],
+      "source": "indoor_asset.swf"
+    }
   ],
-  "audio": [ { "id": "music_main", "ogg": "audio/music_main.ogg",
-               "mp3": "audio/music_main.mp3" } ],
-  "data": [ { "id": "ingredients", "file": "data/ingredients.json",
-              "source": "ingredient[1].bin" } ],
-  "langs": [ { "code": "en", "file": "data/lang_en.json" } ],
-  "coverage": { "ingredient_asset": { "symbols": 92, "exported": 92,
-                  "frames": 161, "pct": 100 } }
+  "audio": [
+    {
+      "id": "sound-000",
+      "file": "audio/sound-000.mp3",
+      "format": "mp3",
+      "bytes": 12345,
+      "sha256": "<sha256>",
+      "source": "sound_asset.swf",
+      "rightsClass": "LEGACY_RESEARCH",
+      "releaseEligible": false
+    }
+  ],
+  "data": [
+    {
+      "id": "restaurant",
+      "xml": "data/restaurant.xml",
+      "itemDatabase": "data/restaurant.items.json",
+      "source": "restaurant.bin",
+      "sourceSha256": "<sha256>",
+      "decodedSha256": "<sha256>",
+      "rightsClass": "LEGACY_RESEARCH",
+      "releaseEligible": false
+    }
+  ],
+  "langs": [
+    {
+      "code": "en",
+      "xml": "data/lang_en.xml",
+      "itemDatabase": "data/lang_en.items.json"
+    }
+  ],
+  "coverage": {
+    "ingredient_asset": {
+      "symbols": 92,
+      "exported": 92,
+      "frames": 161,
+      "pct": 100,
+      "pages": 1
+    }
+  }
 }
 ```
 
-The loader (`src/net`/game layer) validates manifest entries and fails with
-actionable errors naming the missing file.
+`src/content/runtime.ts` validates the top-level v3 contract and loads
+generated ItemDatabase derivatives. `npm run runtime:verify` independently
+checks that runtime data uses XML/JSON, atlas pages are PNG, audio is
+browser-native, and no SWF/BIN/archive/Flash/Ruffle dependency leaks into the
+browser build.
 
 **Phaser loading rules:** the JSON is a multi-atlas (`textures` array), so it
 MUST be loaded with `this.load.multiatlas(key, jsonUrl)` — `load.atlas`
@@ -111,8 +168,8 @@ empty/missing texture. Additionally, `textures[].image` is a
 **site-root-relative path** (relative to `public/`), not a path relative to
 the JSON file: Phaser's multiatlas loader resolves image URLs against
 `loader.path` (empty by default), NOT against the JSON's directory. Callers
-must not pass a `path` argument to `multiatlas` — the JSON is
-self-contained. `tests/lib/atlas-contract.test.mjs` guards both rules.
+must not pass a `path` argument to `multiatlas` — the JSON is self-contained.
+`tests/lib/atlas-contract.test.mjs` guards both rules.
 
 **Phaser animation rule:** `anims.create` frame entries are
 `{ key: <textureKey>, frame: <frameName> }`. A bare `{ key: 'x' }` treats
