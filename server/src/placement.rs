@@ -129,6 +129,58 @@ pub fn is_tile_in_outside_area(tile: TilePoint, room: RoomDimensions) -> bool {
         && u32::try_from(tile.x).is_ok_and(|x| x < room.outside_x)
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct HistoricalTileStackEntry {
+    pub instance_id: u64,
+    pub surface: bool,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum HistoricalTileStackValidation {
+    Valid,
+    BlockedTop { instance_id: u64 },
+    StackLimit,
+}
+
+/// Exact ordinary-tile stack rule recovered from WorldRestaurant.isValid().
+///
+/// itemMap ordering is bottom -> top. A new candidate may share an occupied
+/// tile only when it is stackable and the current top item is a surface.
+/// Existing occupancy is capped so insertion never exceeds five entries.
+///
+/// When the item being validated is already the top entry, the historical
+/// client looks through itself and raises the length threshold by one.
+pub fn validate_historical_tile_stack(
+    candidate_stackable: bool,
+    stack: &[HistoricalTileStackEntry],
+    self_instance_id: Option<u64>,
+) -> HistoricalTileStackValidation {
+    let mut top_index = stack.len().checked_sub(1);
+    let mut length_threshold = 5_usize;
+
+    if let (Some(index), Some(self_id)) = (top_index, self_instance_id)
+        && stack[index].instance_id == self_id
+    {
+        top_index = index.checked_sub(1);
+        length_threshold += 1;
+    }
+
+    if let Some(index) = top_index {
+        let top = stack[index];
+        if !candidate_stackable || !top.surface {
+            return HistoricalTileStackValidation::BlockedTop {
+                instance_id: top.instance_id,
+            };
+        }
+    }
+
+    if stack.len() > length_threshold - 1 {
+        return HistoricalTileStackValidation::StackLimit;
+    }
+
+    HistoricalTileStackValidation::Valid
+}
+
 pub fn validate_structural_placement(
     shape: PlacementShape,
     tile: TilePoint,
@@ -197,6 +249,107 @@ mod tests {
             }
         );
         assert_eq!(rotate_footprint(source, 2), source);
+    }
+
+    #[test]
+    fn recovered_stackable_on_surface_rule_is_exact() {
+        let surface = [HistoricalTileStackEntry {
+            instance_id: 1,
+            surface: true,
+        }];
+        assert_eq!(
+            validate_historical_tile_stack(true, &surface, None),
+            HistoricalTileStackValidation::Valid
+        );
+        assert_eq!(
+            validate_historical_tile_stack(false, &surface, None),
+            HistoricalTileStackValidation::BlockedTop { instance_id: 1 }
+        );
+
+        let not_surface = [HistoricalTileStackEntry {
+            instance_id: 1,
+            surface: false,
+        }];
+        assert_eq!(
+            validate_historical_tile_stack(true, &not_surface, None),
+            HistoricalTileStackValidation::BlockedTop { instance_id: 1 }
+        );
+    }
+
+    #[test]
+    fn recovered_item_map_limit_is_five_entries_per_tile() {
+        let four = [
+            HistoricalTileStackEntry {
+                instance_id: 1,
+                surface: true,
+            },
+            HistoricalTileStackEntry {
+                instance_id: 2,
+                surface: true,
+            },
+            HistoricalTileStackEntry {
+                instance_id: 3,
+                surface: true,
+            },
+            HistoricalTileStackEntry {
+                instance_id: 4,
+                surface: true,
+            },
+        ];
+        assert_eq!(
+            validate_historical_tile_stack(true, &four, None),
+            HistoricalTileStackValidation::Valid
+        );
+
+        let five = [
+            four[0],
+            four[1],
+            four[2],
+            four[3],
+            HistoricalTileStackEntry {
+                instance_id: 5,
+                surface: true,
+            },
+        ];
+        assert_eq!(
+            validate_historical_tile_stack(true, &five, None),
+            HistoricalTileStackValidation::StackLimit
+        );
+    }
+
+    #[test]
+    fn recovered_self_at_top_looks_through_itself() {
+        let stack = [
+            HistoricalTileStackEntry {
+                instance_id: 1,
+                surface: true,
+            },
+            HistoricalTileStackEntry {
+                instance_id: 2,
+                surface: true,
+            },
+            HistoricalTileStackEntry {
+                instance_id: 3,
+                surface: true,
+            },
+            HistoricalTileStackEntry {
+                instance_id: 4,
+                surface: true,
+            },
+            HistoricalTileStackEntry {
+                instance_id: 5,
+                surface: false,
+            },
+        ];
+
+        assert_eq!(
+            validate_historical_tile_stack(true, &stack, Some(5)),
+            HistoricalTileStackValidation::Valid
+        );
+        assert_eq!(
+            validate_historical_tile_stack(true, &stack, Some(4)),
+            HistoricalTileStackValidation::BlockedTop { instance_id: 5 }
+        );
     }
 
     #[test]
