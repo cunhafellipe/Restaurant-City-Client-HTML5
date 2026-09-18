@@ -12,7 +12,7 @@ function sortedFrames(frames) {
 
 export function packFramePages(
   frames,
-  { maxWidth = 2048, maxHeight = 4096, padding = 2 } = {},
+  { maxWidth = 4096, maxHeight = 4096, padding = 2 } = {},
 ) {
   if (maxWidth <= 0 || maxHeight <= 0 || padding < 0) {
     throw new Error('invalid atlas bounds');
@@ -82,7 +82,7 @@ export function packFramePages(
   return pages;
 }
 
-export function packFrames(frames, { maxWidth = 2048, padding = 2 } = {}) {
+export function packFrames(frames, { maxWidth = 4096, padding = 2 } = {}) {
   const pages = packFramePages(frames, {
     maxWidth,
     maxHeight: Number.MAX_SAFE_INTEGER,
