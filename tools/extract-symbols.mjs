@@ -20,7 +20,7 @@ import { frameKey } from './lib/keys.mjs';
 import { SWFS } from './lib/swf-config.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const WORKSPACE_ROOT = path.resolve(HERE, '..', '..');
+const WORKSPACE_ROOT = path.resolve(HERE, '..');
 const WORK = path.join(HERE, '.work');
 
 function readPngSize(file) {
