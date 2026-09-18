@@ -544,6 +544,49 @@ mod tests {
         .unwrap()
     }
 
+    fn stack_catalog() -> PlacementCatalog {
+        PlacementCatalog::new([
+            ItemPlacementDefinition {
+                item_id: 30,
+                footprint: Footprint {
+                    size_x: 1,
+                    size_y: 1,
+                },
+                rotation_count: 1,
+                flags: PlacementFlags {
+                    surface: true,
+                    ..PlacementFlags::default()
+                },
+            },
+            ItemPlacementDefinition {
+                item_id: 40,
+                footprint: Footprint {
+                    size_x: 1,
+                    size_y: 1,
+                },
+                rotation_count: 1,
+                flags: PlacementFlags {
+                    stackable: true,
+                    ..PlacementFlags::default()
+                },
+            },
+            ItemPlacementDefinition {
+                item_id: 50,
+                footprint: Footprint {
+                    size_x: 1,
+                    size_y: 1,
+                },
+                rotation_count: 1,
+                flags: PlacementFlags {
+                    surface: true,
+                    stackable: true,
+                    ..PlacementFlags::default()
+                },
+            },
+        ])
+        .unwrap()
+    }
+
     #[test]
     fn trusted_catalog_loader_accepts_generated_contract() {
         let input = concat!(
@@ -646,6 +689,175 @@ mod tests {
                 with_instance_id: 1,
             }
         );
+    }
+
+    #[test]
+    fn recovered_stackable_item_can_share_tile_only_with_surface_top() {
+        let catalog = stack_catalog();
+        let mut state = RestaurantState::new(room());
+        let surface = state
+            .place(
+                &catalog,
+                PlacementIntent {
+                    item_id: 30,
+                    tile: TilePoint { x: 2, y: 2 },
+                    rotation: 0,
+                },
+            )
+            .unwrap();
+
+        let stacked = state
+            .place(
+                &catalog,
+                PlacementIntent {
+                    item_id: 40,
+                    tile: TilePoint { x: 2, y: 2 },
+                    rotation: 0,
+                },
+            )
+            .unwrap();
+        assert_eq!(state.snapshot().items, vec![surface, stacked]);
+
+        assert_eq!(
+            state
+                .place(
+                    &catalog,
+                    PlacementIntent {
+                        item_id: 30,
+                        tile: TilePoint { x: 2, y: 2 },
+                        rotation: 0,
+                    },
+                )
+                .unwrap_err(),
+            RestaurantAuthorityError::Collision {
+                item_id: 30,
+                with_instance_id: stacked.instance_id,
+            }
+        );
+
+        let mut blocked = RestaurantState::new(room());
+        let non_surface = blocked
+            .place(
+                &catalog,
+                PlacementIntent {
+                    item_id: 40,
+                    tile: TilePoint { x: 3, y: 3 },
+                    rotation: 0,
+                },
+            )
+            .unwrap();
+        assert_eq!(
+            blocked
+                .place(
+                    &catalog,
+                    PlacementIntent {
+                        item_id: 40,
+                        tile: TilePoint { x: 3, y: 3 },
+                        rotation: 0,
+                    },
+                )
+                .unwrap_err(),
+            RestaurantAuthorityError::Collision {
+                item_id: 40,
+                with_instance_id: non_surface.instance_id,
+            }
+        );
+    }
+
+    #[test]
+    fn recovered_stack_depth_caps_result_at_five_entries() {
+        let catalog = stack_catalog();
+        let mut state = RestaurantState::new(room());
+        state
+            .place(
+                &catalog,
+                PlacementIntent {
+                    item_id: 30,
+                    tile: TilePoint { x: 2, y: 2 },
+                    rotation: 0,
+                },
+            )
+            .unwrap();
+
+        for _ in 0..4 {
+            state
+                .place(
+                    &catalog,
+                    PlacementIntent {
+                        item_id: 50,
+                        tile: TilePoint { x: 2, y: 2 },
+                        rotation: 0,
+                    },
+                )
+                .unwrap();
+        }
+
+        assert_eq!(state.snapshot().items.len(), 5);
+        assert_eq!(
+            state
+                .place(
+                    &catalog,
+                    PlacementIntent {
+                        item_id: 50,
+                        tile: TilePoint { x: 2, y: 2 },
+                        rotation: 0,
+                    },
+                )
+                .unwrap_err(),
+            RestaurantAuthorityError::StackLimit { item_id: 50 }
+        );
+    }
+
+    #[test]
+    fn transform_uses_historical_self_at_top_rule_and_preserves_stack_order() {
+        let catalog = stack_catalog();
+        let mut state = RestaurantState::new(room());
+        let surface = state
+            .place(
+                &catalog,
+                PlacementIntent {
+                    item_id: 30,
+                    tile: TilePoint { x: 2, y: 2 },
+                    rotation: 0,
+                },
+            )
+            .unwrap();
+        let first = state
+            .place(
+                &catalog,
+                PlacementIntent {
+                    item_id: 50,
+                    tile: TilePoint { x: 2, y: 2 },
+                    rotation: 0,
+                },
+            )
+            .unwrap();
+        let top = state
+            .place(
+                &catalog,
+                PlacementIntent {
+                    item_id: 50,
+                    tile: TilePoint { x: 2, y: 2 },
+                    rotation: 0,
+                },
+            )
+            .unwrap();
+
+        assert_eq!(
+            state
+                .transform(&catalog, first.instance_id, TilePoint { x: 2, y: 2 }, 0)
+                .unwrap_err(),
+            RestaurantAuthorityError::Collision {
+                item_id: 50,
+                with_instance_id: top.instance_id,
+            }
+        );
+
+        let transformed = state
+            .transform(&catalog, top.instance_id, TilePoint { x: 2, y: 2 }, 0)
+            .unwrap();
+        assert_eq!(transformed, top);
+        assert_eq!(state.snapshot().items, vec![surface, first, top]);
     }
 
     #[test]
