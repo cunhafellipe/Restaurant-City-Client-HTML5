@@ -17,8 +17,7 @@ pub struct PlacementCatalog {
 }
 
 pub const PLACEMENT_CATALOG_MAGIC: &str = "ANEWON_RC_PLACEMENT_CATALOG_V1";
-const PLACEMENT_CATALOG_COLUMNS: &str =
-    "item_id\tsize_x\tsize_y\twall_item\twall_decoration_item\twallpaper_item\toutdoor\tfloor_tile_item";
+const PLACEMENT_CATALOG_COLUMNS: &str = "item_id\tsize_x\tsize_y\twall_item\twall_decoration_item\twallpaper_item\toutdoor\tfloor_tile_item";
 
 impl PlacementCatalog {
     pub fn new(
@@ -69,9 +68,7 @@ impl PlacementCatalog {
 
             if !saw_columns {
                 if line != PLACEMENT_CATALOG_COLUMNS {
-                    return Err(PlacementCatalogLoadError::InvalidColumns {
-                        line: line_number,
-                    });
+                    return Err(PlacementCatalogLoadError::InvalidColumns { line: line_number });
                 }
                 saw_columns = true;
                 continue;
@@ -79,24 +76,18 @@ impl PlacementCatalog {
 
             let fields: Vec<_> = line.split('\t').collect();
             if fields.len() != 8 {
-                return Err(PlacementCatalogLoadError::InvalidRow {
-                    line: line_number,
-                });
+                return Err(PlacementCatalogLoadError::InvalidRow { line: line_number });
             }
 
             let parse_u32 = |value: &str| {
                 value
                     .parse::<u32>()
-                    .map_err(|_| PlacementCatalogLoadError::InvalidRow {
-                        line: line_number,
-                    })
+                    .map_err(|_| PlacementCatalogLoadError::InvalidRow { line: line_number })
             };
             let parse_bool = |value: &str| match value {
                 "0" => Ok(false),
                 "1" => Ok(true),
-                _ => Err(PlacementCatalogLoadError::InvalidRow {
-                    line: line_number,
-                }),
+                _ => Err(PlacementCatalogLoadError::InvalidRow { line: line_number }),
             };
 
             definitions.push(ItemPlacementDefinition {
@@ -442,9 +433,9 @@ mod tests {
         );
         assert_eq!(
             PlacementCatalog::from_trusted_tsv(input).unwrap_err(),
-            PlacementCatalogLoadError::Definition(
-                RestaurantAuthorityError::DuplicateDefinition { item_id: 10 }
-            )
+            PlacementCatalogLoadError::Definition(RestaurantAuthorityError::DuplicateDefinition {
+                item_id: 10
+            })
         );
     }
 
