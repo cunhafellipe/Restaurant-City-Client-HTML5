@@ -1,0 +1,198 @@
+:root {
+  font-family:
+    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    sans-serif;
+  color: #f5f7f8;
+  background: #10181d;
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  min-width: 320px;
+}
+
+body {
+  overflow: hidden;
+}
+
+button,
+input,
+select {
+  font: inherit;
+}
+
+.anewon-app {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  width: 100%;
+  height: 100%;
+  background:
+    radial-gradient(circle at 30% 0%, rgb(55 83 96 / 24%), transparent 36rem),
+    #10181d;
+}
+
+.anewon-topbar {
+  min-height: 56px;
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  padding: 8px 16px;
+  border-bottom: 1px solid rgb(255 255 255 / 9%);
+  background: rgb(12 20 24 / 92%);
+  backdrop-filter: blur(14px);
+}
+
+.anewon-brand {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  white-space: nowrap;
+}
+
+.anewon-brand strong {
+  letter-spacing: 0.12em;
+  font-size: 13px;
+}
+
+.anewon-brand span {
+  color: #b7c8d0;
+  font-size: 14px;
+}
+
+.anewon-platform-nav {
+  margin-left: auto;
+  display: flex;
+  gap: 6px;
+}
+
+.anewon-platform-button,
+.rc-control-button {
+  border: 1px solid rgb(255 255 255 / 12%);
+  border-radius: 9px;
+  background: rgb(255 255 255 / 6%);
+  color: #eef4f6;
+  padding: 8px 11px;
+}
+
+.anewon-platform-button:disabled {
+  opacity: 0.46;
+  cursor: not-allowed;
+}
+
+.rc-control-button {
+  cursor: pointer;
+}
+
+.rc-control-button:hover,
+.rc-control-button:focus-visible {
+  background: rgb(255 255 255 / 12%);
+  outline: none;
+}
+
+.rc-layout {
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 292px;
+}
+
+.rc-game-panel {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+}
+
+.rc-game-host {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+
+.rc-game-host canvas {
+  display: block;
+}
+
+.rc-hud {
+  min-width: 0;
+  padding: 14px;
+  border-left: 1px solid rgb(255 255 255 / 9%);
+  background: rgb(15 25 30 / 88%);
+  overflow: auto;
+}
+
+.rc-hud-heading {
+  display: grid;
+  gap: 4px;
+  margin-bottom: 14px;
+}
+
+.rc-hud-heading strong {
+  font-size: 16px;
+}
+
+.rc-hud-heading span,
+.rc-corpus {
+  color: #8fa8b4;
+  font-size: 11px;
+}
+
+.rc-hud-card,
+.rc-status {
+  margin: 9px 0;
+  padding: 10px;
+  border: 1px solid rgb(255 255 255 / 9%);
+  border-radius: 10px;
+  background: rgb(255 255 255 / 4%);
+  font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.rc-placement-state[data-valid="true"] {
+  border-color: rgb(116 214 128 / 54%);
+}
+
+.rc-placement-state[data-valid="false"],
+.rc-status[data-phase="error"] {
+  border-color: rgb(255 107 107 / 54%);
+}
+
+.rc-controls {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 7px;
+  margin: 12px 0;
+}
+
+.rc-corpus {
+  margin-top: 10px;
+}
+
+@media (max-width: 820px) {
+  .anewon-platform-nav {
+    display: none;
+  }
+
+  .rc-layout {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(0, 1fr) auto;
+  }
+
+  .rc-hud {
+    border-left: 0;
+    border-top: 1px solid rgb(255 255 255 / 9%);
+    max-height: 190px;
+  }
+
+  .rc-controls {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
