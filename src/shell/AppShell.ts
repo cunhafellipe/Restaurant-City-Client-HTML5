@@ -35,7 +35,15 @@ function renderState(
   status.dataset.phase = state.phase;
 
   selection.textContent = state.selectedItem
-    ? `#${state.selectedItem.id} · ${state.selectedItem.name} · ${state.selectedItem.footprint} · rot ${state.selectedItem.rotation}`
+    ? [
+        `#${state.selectedItem.id}`,
+        state.selectedItem.name,
+        state.selectedItem.footprint,
+        `rot ${state.selectedItem.rotation}`,
+        state.selectedItem.inventory
+          ? `inventory ${state.selectedItem.inventory.available} available · ${state.selectedItem.inventory.placed}/${state.selectedItem.inventory.owned} placed`
+          : 'inventory unavailable',
+      ].join(' · ')
     : 'No item selected';
 
   placement.textContent = state.placement
