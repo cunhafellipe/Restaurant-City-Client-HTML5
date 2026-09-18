@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildRestaurantItemVisualIndex,
   frameForRestaurantItemRotation,
+  historicalRoomItemFrameOffset,
   isSystemOnlyRestaurantItem,
   resolveRestaurantItemVisual,
 } from '../../src/content/itemVisual';
@@ -126,6 +127,16 @@ describe('Restaurant City item visuals', () => {
         index,
       )?.frames,
     ).toEqual(['indoor_asset/chairitem/001']);
+  });
+
+  it('recovers the cropped PNG top-left from the original RoomItem bounds math', () => {
+    expect(
+      historicalRoomItemFrameOffset(
+        { sizeX: 2, sizeY: 1 },
+        120,
+        100,
+      ),
+    ).toEqual({ x: -40, y: -40 });
   });
 
   it('fails closed on malformed atlas frame keys', () => {
