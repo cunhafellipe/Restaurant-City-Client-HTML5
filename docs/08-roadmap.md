@@ -26,7 +26,7 @@ criteria are demonstrated with evidence (see `07-testing-and-qa.md`) and
 
 ## M1 — Asset pipeline complete
 
-- [ ] All 9 asset SWFs: 100% symbol coverage, atlases + multi-atlas JSON.
+- [ ] All 7 visual asset SWFs: 100% linked-symbol coverage, bounded atlas pages + multi-atlas JSON.
 - [ ] `sound_asset.swf`: audio exported (ogg/webm + mp3) and playable.
 - [ ] All `bin-xml` files -> typed JSON via `src/net/data/` readers; reader
   unit tests against file bytes.
@@ -82,14 +82,17 @@ criteria are demonstrated with evidence (see `07-testing-and-qa.md`) and
 - [ ] Performance: pooling/culling/batching; 60 fps budget met.
 - [ ] Audio completeness (all SFX + music, mute/persist).
 - [ ] Debug panel behind `?debug=1`.
-- [ ] Production build served from the backend (integration with
-  `../server` static serving, if backend change is approved by ADR) and
-  browser smoke suite green.
+- [ ] ANEWON production integration: product-authoritative backend, Platform session/identity port,
+  Runtime protected-content release path and browser smoke suite green. The
+  legacy Dippys server remains a compatibility/golden harness, not the
+  production trust root.
 - [ ] Changelog + release notes; `docs/status.md` marks project done.
 
 ## Ordering notes
 
 - M2 and M3 may partially interleave (editor needs customers to feel real),
   but a milestone's acceptance list is the gate regardless.
-- If a milestone needs a backend surface that doesn't exist yet, open an ADR
-  proposing the additive change; do not silently extend the server.
+- Product-specific authoritative backend work belongs in this product and must preserve ADR-0009.
+  Cross-product identity/runtime/security changes belong in Platform/Runtime
+  and require the appropriate company architecture review. Do not silently
+  extend the legacy compatibility server into ANEWON production architecture.
