@@ -13,6 +13,47 @@ function okJson(value: unknown): Response {
 }
 
 describe('HttpRestaurantAuthority', () => {
+  it('invokes the default browser fetch with globalThis as its receiver', async () => {
+    const originalFetch = globalThis.fetch;
+    const receiverFetch = vi.fn(function (this: unknown) {
+      expect(this).toBe(globalThis);
+      return Promise.resolve(
+        okJson({
+          room: {
+            inside_x: 8,
+            inside_y: 8,
+            outside_x: 0,
+            outside_y: 0,
+          },
+          next_instance_id: 1,
+          items: [],
+          inventory: [],
+        }),
+      );
+    });
+
+    Object.defineProperty(globalThis, 'fetch', {
+      value: receiverFetch,
+      configurable: true,
+      writable: true,
+    });
+
+    try {
+      const authority = new HttpRestaurantAuthority();
+      await expect(authority.loadRestaurant()).resolves.toMatchObject({
+        nextInstanceId: 1,
+        items: [],
+      });
+      expect(receiverFetch).toHaveBeenCalledTimes(1);
+    } finally {
+      Object.defineProperty(globalThis, 'fetch', {
+        value: originalFetch,
+        configurable: true,
+        writable: true,
+      });
+    }
+  });
+
   it('loads authoritative state with same-origin cookies and no bearer token', async () => {
     const fetcher = vi.fn(async () =>
       okJson({
