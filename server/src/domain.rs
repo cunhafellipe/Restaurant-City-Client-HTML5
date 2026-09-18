@@ -33,6 +33,12 @@ impl Inventory {
     pub fn quantity(&self, item_id: u32) -> u32 {
         self.quantities.get(&item_id).copied().unwrap_or(0)
     }
+
+    pub fn entries(&self) -> impl Iterator<Item = (u32, u32)> + '_ {
+        self.quantities
+            .iter()
+            .map(|(item_id, quantity)| (*item_id, *quantity))
+    }
 }
 
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
