@@ -75,6 +75,14 @@ struct PlacementRequestDto {
     rotation: u8,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct TransformRequestDto {
+    tile_x: i32,
+    tile_y: i32,
+    rotation: u8,
+}
+
 #[derive(Clone, Copy, Debug, Serialize, Eq, PartialEq)]
 pub struct RoomResponse {
     pub inside_x: u32,
@@ -168,6 +176,72 @@ where
         )
         .map_err(map_service_error)?;
 
+    mutation_response(outcome)
+}
+
+pub fn handle_transform_item<V, S>(
+    service: &RestaurantProductService<V, S>,
+    context: ProductHttpContext<'_>,
+    instance_id: u64,
+    body: &[u8],
+) -> Result<Vec<u8>, PublicProductError>
+where
+    V: PlatformSessionVerifier,
+    S: ProductStateStore,
+{
+    let session_token = session_token(context.session_token)?;
+    let mutation_id = mutation_id(context.mutation_id)?;
+    if instance_id == 0 || body.is_empty() || body.len() > MAX_BODY_BYTES {
+        return Err(PublicProductError::InvalidRequest);
+    }
+
+    let dto: TransformRequestDto =
+        serde_json::from_slice(body).map_err(|_| PublicProductError::InvalidRequest)?;
+    if dto.rotation > MAX_HISTORICAL_ROTATION_INDEX {
+        return Err(PublicProductError::Unprocessable);
+    }
+
+    let outcome = service
+        .transform_item(
+            session_token,
+            mutation_id,
+            instance_id,
+            TilePoint {
+                x: dto.tile_x,
+                y: dto.tile_y,
+            },
+            dto.rotation,
+        )
+        .map_err(map_service_error)?;
+
+    mutation_response(outcome)
+}
+
+pub fn handle_remove_item<V, S>(
+    service: &RestaurantProductService<V, S>,
+    context: ProductHttpContext<'_>,
+    instance_id: u64,
+) -> Result<Vec<u8>, PublicProductError>
+where
+    V: PlatformSessionVerifier,
+    S: ProductStateStore,
+{
+    let session_token = session_token(context.session_token)?;
+    let mutation_id = mutation_id(context.mutation_id)?;
+    if instance_id == 0 {
+        return Err(PublicProductError::InvalidRequest);
+    }
+
+    let outcome = service
+        .remove_item(session_token, mutation_id, instance_id)
+        .map_err(map_service_error)?;
+
+    mutation_response(outcome)
+}
+
+fn mutation_response(
+    outcome: PlacementMutationOutcome,
+) -> Result<Vec<u8>, PublicProductError> {
     let response = match outcome {
         PlacementMutationOutcome::Applied(item) => PlacementResponse {
             outcome: "applied",
@@ -178,7 +252,6 @@ where
             item: placed_item_response(item),
         },
     };
-
     json_bytes(&response)
 }
 
@@ -505,6 +578,110 @@ mod tests {
         let json: serde_json::Value = serde_json::from_slice(&duplicate).unwrap();
         assert_eq!(json["outcome"], "duplicate");
         assert_eq!(json["item"]["instance_id"], 1);
+    }
+
+    #[test]
+    fn transform_and_remove_transport_are_idempotent() {
+        let service = service();
+        service
+            .apply_player_command(
+                "session",
+                MutationId::new("grant-edit".to_owned()).unwrap(),
+                Command::GrantInventory {
+                    item_id: 10,
+                    quantity: 1,
+                },
+            )
+            .unwrap();
+
+        handle_place_item(
+            &service,
+            context(Some("session"), Some("place-edit")),
+            br#"{"item_id":10,"tile_x":2,"tile_y":2,"rotation":0}"#,
+        )
+        .unwrap();
+
+        let transformed = handle_transform_item(
+            &service,
+            context(Some("session"), Some("transform-edit")),
+            1,
+            br#"{"tile_x":4,"tile_y":3,"rotation":1}"#,
+        )
+        .unwrap();
+        let transformed_duplicate = handle_transform_item(
+            &service,
+            context(Some("session"), Some("transform-edit")),
+            1,
+            br#"{"tile_x":4,"tile_y":3,"rotation":1}"#,
+        )
+        .unwrap();
+
+        let transformed_json: serde_json::Value =
+            serde_json::from_slice(&transformed).unwrap();
+        let duplicate_json: serde_json::Value =
+            serde_json::from_slice(&transformed_duplicate).unwrap();
+        assert_eq!(transformed_json["outcome"], "applied");
+        assert_eq!(transformed_json["item"]["tile_x"], 4);
+        assert_eq!(transformed_json["item"]["tile_y"], 3);
+        assert_eq!(transformed_json["item"]["rotation"], 1);
+        assert_eq!(duplicate_json["outcome"], "duplicate");
+
+        let removed = handle_remove_item(
+            &service,
+            context(Some("session"), Some("remove-edit")),
+            1,
+        )
+        .unwrap();
+        let removed_duplicate = handle_remove_item(
+            &service,
+            context(Some("session"), Some("remove-edit")),
+            1,
+        )
+        .unwrap();
+
+        let removed_json: serde_json::Value = serde_json::from_slice(&removed).unwrap();
+        let removed_duplicate_json: serde_json::Value =
+            serde_json::from_slice(&removed_duplicate).unwrap();
+        assert_eq!(removed_json["outcome"], "applied");
+        assert_eq!(removed_json["item"]["instance_id"], 1);
+        assert_eq!(removed_duplicate_json["outcome"], "duplicate");
+
+        let layout = handle_load_restaurant(&service, context(Some("session"), None)).unwrap();
+        let layout_json: serde_json::Value = serde_json::from_slice(&layout).unwrap();
+        assert_eq!(layout_json["items"].as_array().unwrap().len(), 0);
+        assert_eq!(layout_json["inventory"][0]["available"], 1);
+    }
+
+    #[test]
+    fn transform_and_remove_reject_invalid_instance_or_payload() {
+        let service = service();
+
+        assert_eq!(
+            handle_transform_item(
+                &service,
+                context(Some("session"), Some("transform-invalid")),
+                0,
+                br#"{"tile_x":2,"tile_y":2,"rotation":0}"#,
+            ),
+            Err(PublicProductError::InvalidRequest)
+        );
+        assert_eq!(
+            handle_transform_item(
+                &service,
+                context(Some("session"), Some("transform-invalid-2")),
+                1,
+                br#"{"tile_x":2,"tile_y":2,"rotation":0,"extra":true}"#,
+            ),
+            Err(PublicProductError::InvalidRequest)
+        );
+        assert_eq!(
+            handle_remove_item(
+                &service,
+                context(Some("session"), Some("remove-invalid")),
+                0,
+            ),
+            Err(PublicProductError::InvalidRequest)
+        );
     }
 
     #[test]
