@@ -360,9 +360,7 @@ impl ProductAggregate {
         for entry in persisted.restaurant_mutations {
             let mutation_id =
                 MutationId::new(entry.mutation_id).map_err(|_| ProductStateStoreError::Corrupt)?;
-            if entry.sequence == 0
-                || seen_sequences.insert(entry.sequence, ()).is_some()
-            {
+            if entry.sequence == 0 || seen_sequences.insert(entry.sequence, ()).is_some() {
                 return Err(ProductStateStoreError::Corrupt);
             }
 
@@ -516,11 +514,7 @@ impl ProductAggregate {
             .place(catalog, intent)
             .map_err(ProductServiceError::RestaurantAuthority)?;
 
-        self.record_restaurant_mutation(
-            mutation_id,
-            RestaurantMutationOperation::Place,
-            placed,
-        )?;
+        self.record_restaurant_mutation(mutation_id, RestaurantMutationOperation::Place, placed)?;
         Ok(PlacementMutationOutcome::Applied(placed))
     }
 
@@ -581,11 +575,7 @@ impl ProductAggregate {
             .remove(instance_id)
             .map_err(ProductServiceError::RestaurantAuthority)?;
 
-        self.record_restaurant_mutation(
-            mutation_id,
-            RestaurantMutationOperation::Remove,
-            removed,
-        )?;
+        self.record_restaurant_mutation(mutation_id, RestaurantMutationOperation::Remove, removed)?;
         Ok(PlacementMutationOutcome::Applied(removed))
     }
 
@@ -923,8 +913,7 @@ where
 
         for _ in 0..MAX_STORE_RETRIES {
             let (expected_revision, mut state) = self.load_or_initialize(session.subject)?;
-            let outcome =
-                state.remove_owned_item(session, mutation_id.clone(), instance_id)?;
+            let outcome = state.remove_owned_item(session, mutation_id.clone(), instance_id)?;
 
             if matches!(outcome, PlacementMutationOutcome::Duplicate(_)) {
                 return Ok(outcome);
