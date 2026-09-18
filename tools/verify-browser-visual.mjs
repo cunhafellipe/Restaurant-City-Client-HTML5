@@ -14,6 +14,15 @@ const WORK = path.join(REPO, 'tools', '.work', 'browser-visual');
 const SCREENSHOT = path.join(WORK, 'restaurant-editor.png');
 const WORLD_SCREENSHOT = path.join(WORK, 'restaurant-world.png');
 const META = path.join(WORK, 'restaurant-editor.json');
+const STACK_SCREENSHOT = path.join(WORK, 'restaurant-stack.png');
+const STACK_META = path.join(WORK, 'restaurant-stack.json');
+const STACK_GOLDEN = path.join(
+  REPO,
+  'tests',
+  'golden',
+  'm2',
+  'restaurant-stack.json',
+);
 const GOLDEN = path.join(
   REPO,
   'tests',
@@ -42,6 +51,32 @@ const fixtureSeed = {
       placed: 1,
       available: 1,
     },
+  ],
+};
+const stackFixtureSeed = {
+  room: { inside_x: 8, inside_y: 8, outside_x: 0, outside_y: 0 },
+  next_instance_id: 3,
+  items: [
+    {
+      instance_id: 1,
+      item_id: 3030000,
+      tile_x: 3,
+      tile_y: 3,
+      rotation: 0,
+      room_index: 0,
+    },
+    {
+      instance_id: 2,
+      item_id: 3020179,
+      tile_x: 3,
+      tile_y: 3,
+      rotation: 0,
+      room_index: 0,
+    },
+  ],
+  inventory: [
+    { item_id: 3030000, owned: 1, placed: 1, available: 0 },
+    { item_id: 3020179, owned: 1, placed: 1, available: 0 },
   ],
 };
 let fixtureState = structuredClone(fixtureSeed);
@@ -828,6 +863,91 @@ try {
     );
   }
 
+  fixtureState = structuredClone(stackFixtureSeed);
+  await cdp.send('Page.reload', { ignoreCache: true });
+  const stackState = await waitForRuntime(
+    cdp,
+    `(() => {
+      const status = document.querySelector('.rc-status');
+      const canvas = document.querySelector('#game-canvas-host canvas');
+      return {
+        phase: status?.dataset.phase ?? null,
+        status: status?.textContent ?? '',
+        canvas: canvas ? (() => {
+          const rect = canvas.getBoundingClientRect();
+          return {
+            width: canvas.width,
+            height: canvas.height,
+            x: rect.x,
+            y: rect.y,
+            cssWidth: rect.width,
+            cssHeight: rect.height,
+          };
+        })() : null,
+      };
+    })()`,
+    (value) =>
+      value?.phase === 'editing' &&
+      value?.status?.includes(
+        'Loaded baseline 0.9.143a and 2 persisted restaurant item(s).',
+      ) &&
+      value?.canvas?.width === 760 &&
+      value?.canvas?.height === 600,
+    8000,
+    'Table + Violin authoritative stack',
+  );
+  await delay(300);
+
+  const stackShot = await cdp.send('Page.captureScreenshot', {
+    format: 'png',
+    fromSurface: true,
+    captureBeyondViewport: false,
+    clip: {
+      x: stackState.canvas.x,
+      y: stackState.canvas.y,
+      width: stackState.canvas.cssWidth,
+      height: stackState.canvas.cssHeight,
+      scale: 1,
+    },
+  });
+  if (typeof stackShot.data !== 'string' || stackShot.data.length === 0) {
+    throw new Error('CDP did not return Table + Violin stack screenshot bytes');
+  }
+  fs.writeFileSync(STACK_SCREENSHOT, Buffer.from(stackShot.data, 'base64'));
+  const stackPng = PNG.sync.read(fs.readFileSync(STACK_SCREENSHOT));
+  const stackPixelSha256 = bufferSha256(stackPng.data);
+  const stackQuantizedBlockSha256 = quantizedBlockSignature(stackPng, 8);
+  const stackGolden = fs.existsSync(STACK_GOLDEN)
+    ? JSON.parse(fs.readFileSync(STACK_GOLDEN, 'utf8'))
+    : null;
+  if (stackGolden) {
+    if (
+      stackGolden.schemaVersion !== 1 ||
+      stackGolden.fixture !== 'table-3030000-plus-violin-3020179-at-3-3' ||
+      stackGolden.canvas?.width !== stackPng.width ||
+      stackGolden.canvas?.height !== stackPng.height ||
+      stackGolden.blockSize !== 8 ||
+      stackGolden.expectedQuantizedBlockSha256 !== stackQuantizedBlockSha256
+    ) {
+      throw new Error(
+        `Restaurant City stack visual golden mismatch expected=${stackGolden.expectedQuantizedBlockSha256} actual=${stackQuantizedBlockSha256} pixel=${stackPixelSha256}`,
+      );
+    }
+  }
+  const stackMetadata = {
+    schemaVersion: 1,
+    fixture: 'table-3030000-plus-violin-3020179-at-3-3',
+    state: stackState,
+    expectedHistoricalCurHeightPx: 25,
+    screenshot: path.relative(REPO, STACK_SCREENSHOT).replaceAll('\\\\', '/'),
+    pngSha256: sha256(STACK_SCREENSHOT),
+    pixelSha256: stackPixelSha256,
+    blockSize: 8,
+    quantizedBlockSha256: stackQuantizedBlockSha256,
+    goldenFrozen: Boolean(stackGolden),
+  };
+  fs.writeFileSync(STACK_META, `${JSON.stringify(stackMetadata, null, 2)}\n`);
+
   const metadata = {
     schemaVersion: 2,
     browser,
@@ -836,6 +956,7 @@ try {
     viewport: { width: 1052, height: 656, deviceScaleFactor: 1 },
     state,
     diagnostics: diagnostics.slice(-20),
+    stackVisual: stackMetadata,
     interaction: {
       selected: selectedState.selection,
       rotated: rotatedState,
@@ -870,7 +991,7 @@ try {
   fs.writeFileSync(META, `${JSON.stringify(metadata, null, 2)}\n`);
 
   console.log(
-    `BROWSER VISUAL GOLDEN + EDIT INTERACTION PASS | browser=${browser} | bytes=${stat.size} | sha256=${metadata.sha256} | worldPixel=${worldPixelSha256} | exactPixelMatch=${exactPixelMatch} | worldBlock=${worldQuantizedBlockSha256} | edit=select-transform-remove`,
+    `BROWSER VISUAL GOLDEN + EDIT INTERACTION PASS | browser=${browser} | bytes=${stat.size} | sha256=${metadata.sha256} | worldPixel=${worldPixelSha256} | exactPixelMatch=${exactPixelMatch} | worldBlock=${worldQuantizedBlockSha256} | edit=select-transform-remove | stack=Table+Violin curHeight=25 block=${stackQuantizedBlockSha256} frozen=${Boolean(stackGolden)}`,
   );
 } finally {
   try {
