@@ -144,31 +144,31 @@ impl PlayerState {
 
     fn validate(&self, command: &Command) -> Result<ValidatedCommand, AuthorityError> {
         match *command {
-            Command::CreditCoins { amount } => Ok(ValidatedCommand::SetCoins(
+            Command::CreditCoins { amount } => Ok(ValidatedCommand::Coins(
                 self.wallet
                     .coins
                     .checked_add(amount)
                     .ok_or(AuthorityError::ArithmeticOverflow)?,
             )),
-            Command::DebitCoins { amount } => Ok(ValidatedCommand::SetCoins(
+            Command::DebitCoins { amount } => Ok(ValidatedCommand::Coins(
                 self.wallet
                     .coins
                     .checked_sub(amount)
                     .ok_or(AuthorityError::InsufficientCoins)?,
             )),
-            Command::CreditCash { amount } => Ok(ValidatedCommand::SetCash(
+            Command::CreditCash { amount } => Ok(ValidatedCommand::Cash(
                 self.wallet
                     .cash
                     .checked_add(amount)
                     .ok_or(AuthorityError::ArithmeticOverflow)?,
             )),
-            Command::DebitCash { amount } => Ok(ValidatedCommand::SetCash(
+            Command::DebitCash { amount } => Ok(ValidatedCommand::Cash(
                 self.wallet
                     .cash
                     .checked_sub(amount)
                     .ok_or(AuthorityError::InsufficientCash)?,
             )),
-            Command::AwardGourmetPoints { amount } => Ok(ValidatedCommand::SetGourmetPoints(
+            Command::AwardGourmetPoints { amount } => Ok(ValidatedCommand::GourmetPoints(
                 self.wallet
                     .gourmet_points
                     .checked_add(amount)
@@ -181,7 +181,7 @@ impl PlayerState {
                     .quantity(item_id)
                     .checked_add(quantity)
                     .ok_or(AuthorityError::ArithmeticOverflow)?;
-                Ok(ValidatedCommand::SetInventory { item_id, value })
+                Ok(ValidatedCommand::Inventory { item_id, value })
             }
             Command::ConsumeInventory { item_id, quantity } => {
                 require_quantity(quantity)?;
@@ -194,17 +194,17 @@ impl PlayerState {
                             available: current,
                             requested: quantity,
                         })?;
-                Ok(ValidatedCommand::SetInventory { item_id, value })
+                Ok(ValidatedCommand::Inventory { item_id, value })
             }
         }
     }
 
     fn commit(&mut self, command: ValidatedCommand) {
         match command {
-            ValidatedCommand::SetCoins(value) => self.wallet.coins = value,
-            ValidatedCommand::SetCash(value) => self.wallet.cash = value,
-            ValidatedCommand::SetGourmetPoints(value) => self.wallet.gourmet_points = value,
-            ValidatedCommand::SetInventory { item_id, value } => {
+            ValidatedCommand::Coins(value) => self.wallet.coins = value,
+            ValidatedCommand::Cash(value) => self.wallet.cash = value,
+            ValidatedCommand::GourmetPoints(value) => self.wallet.gourmet_points = value,
+            ValidatedCommand::Inventory { item_id, value } => {
                 if value == 0 {
                     self.inventory.quantities.remove(&item_id);
                 } else {
@@ -217,10 +217,10 @@ impl PlayerState {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum ValidatedCommand {
-    SetCoins(u64),
-    SetCash(u64),
-    SetGourmetPoints(u64),
-    SetInventory { item_id: u32, value: u32 },
+    Coins(u64),
+    Cash(u64),
+    GourmetPoints(u64),
+    Inventory { item_id: u32, value: u32 },
 }
 
 fn require_quantity(quantity: u32) -> Result<(), AuthorityError> {
