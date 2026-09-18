@@ -101,6 +101,31 @@ describe('HttpRestaurantAuthority', () => {
     });
   });
 
+  it('keeps transport compatible with recovered 16-frame RoomItems', async () => {
+    const fetcher = vi.fn(async () =>
+      okJson({
+        outcome: 'applied',
+        item: {
+          instance_id: 7,
+          item_id: 10,
+          tile_x: 2,
+          tile_y: 3,
+          rotation: 15,
+          room_index: 0,
+        },
+      }),
+    );
+
+    const authority = new HttpRestaurantAuthority('/api/v1', fetcher);
+    const commit = await authority.placeItem(
+      { itemId: 10, tileX: 2, tileY: 3, rotation: 15 },
+      'rc-placement-rotation-15',
+    );
+
+    expect(commit.item.rotation).toBe(15);
+    expect(JSON.parse(String(fetcher.mock.calls[0]?.[1]?.body)).rotation).toBe(15);
+  });
+
   it('fails closed on malformed success payloads and bounded public errors', async () => {
     const malformed = new HttpRestaurantAuthority(
       '/api/v1',
@@ -275,7 +300,7 @@ describe('HttpRestaurantAuthority', () => {
     );
     await expect(
       authority.placeItem(
-        { itemId: 10, tileX: 2, tileY: 3, rotation: 4 },
+        { itemId: 10, tileX: 2, tileY: 3, rotation: 16 },
         'mutation-1',
       ),
     ).rejects.toThrow('Invalid Restaurant City placement command');
