@@ -10,6 +10,7 @@ import {
   type RoomDimensions,
   type TilePoint,
 } from '../../core/restaurantGrid';
+import { computeHistoricalCurHeights } from '../../core/restaurantStacking';
 import {
   buildRestaurantItemCatalog,
   type RestaurantItemDefinition,
@@ -223,7 +224,7 @@ export class RestaurantEditorScene extends Phaser.Scene {
         status: 'Loading authoritative ANEWON restaurant state…',
         corpus: {
           restaurantRecords: catalog.length,
-          explicitFootprints: this.candidates.length,
+          placementFootprints: this.candidates.length,
         },
       });
 
@@ -244,7 +245,7 @@ export class RestaurantEditorScene extends Phaser.Scene {
         selectedItem: this.selectedItemUi(),
         corpus: {
           restaurantRecords: catalog.length,
-          explicitFootprints: this.candidates.length,
+          placementFootprints: this.candidates.length,
         },
       });
       this.drawPreview(false);
@@ -302,7 +303,7 @@ export class RestaurantEditorScene extends Phaser.Scene {
   }
 
   private isOrdinaryPlaceable(item: RestaurantItemDefinition): boolean {
-    const footprint = item.explicitFootprint;
+    const footprint = item.placementFootprint;
     return (
       footprint !== null &&
       footprint.sizeX > 0 &&
@@ -348,7 +349,7 @@ export class RestaurantEditorScene extends Phaser.Scene {
 
   private selectedItemUi(): GameUiState['selectedItem'] {
     const item = this.candidates[this.selectedIndex];
-    if (!item?.explicitFootprint) return undefined;
+    if (!item?.placementFootprint) return undefined;
 
     const inventory = this.authorityLoaded
       ? this.inventoryByItemId.get(item.id) ?? {
@@ -363,7 +364,7 @@ export class RestaurantEditorScene extends Phaser.Scene {
       id: item.id,
       name: item.name,
       group: item.group,
-      footprint: `${item.explicitFootprint.sizeX}×${item.explicitFootprint.sizeY}`,
+      footprint: `${item.placementFootprint.sizeX}×${item.placementFootprint.sizeY}`,
       rotation: this.rotation,
       inventory: inventory
         ? {
@@ -463,8 +464,8 @@ export class RestaurantEditorScene extends Phaser.Scene {
 
   private currentShape(): PlacementShape | null {
     const item = this.currentDefinition();
-    if (!item?.explicitFootprint) return null;
-    const footprint = rotateFootprint(item.explicitFootprint, this.rotation);
+    if (!item?.placementFootprint) return null;
+    const footprint = rotateFootprint(item.placementFootprint, this.rotation);
     return { ...footprint, ...item.placement };
   }
 
@@ -521,14 +522,14 @@ export class RestaurantEditorScene extends Phaser.Scene {
           if (placed.roomIndex !== roomIndex) return [];
 
           const definition = this.catalogById.get(placed.itemId);
-          if (!definition?.explicitFootprint) {
+          if (!definition?.placementFootprint) {
             // Fail closed if authority somehow references geometry the client
             // cannot reproduce.
             return [{ instanceId: placed.instanceId, surface: false }];
           }
 
           const footprint = rotateFootprint(
-            definition.explicitFootprint,
+            definition.placementFootprint,
             placed.rotation,
           );
           const contains =
@@ -845,9 +846,11 @@ export class RestaurantEditorScene extends Phaser.Scene {
     for (const sprite of this.committedSprites) sprite.destroy();
     this.committedSprites = [];
 
+    const curHeights = this.computeCurHeights(this.authoritativeItems);
+
     for (const placed of this.authoritativeItems) {
       const definition = this.catalogById.get(placed.itemId);
-      if (!definition?.explicitFootprint) continue;
+      if (!definition?.placementFootprint) continue;
 
       const visual = this.itemVisual(definition);
       if (!visual) {
@@ -861,7 +864,7 @@ export class RestaurantEditorScene extends Phaser.Scene {
       this.drawTileFootprint(
         this.committedGraphics,
         { x: placed.tileX, y: placed.tileY },
-        rotateFootprint(definition.explicitFootprint, placed.rotation),
+        rotateFootprint(definition.placementFootprint, placed.rotation),
         true,
       );
       const selected =
@@ -872,7 +875,7 @@ export class RestaurantEditorScene extends Phaser.Scene {
         this.drawTileFootprint(
           this.committedGraphics,
           { x: placed.tileX, y: placed.tileY },
-          rotateFootprint(definition.explicitFootprint, placed.rotation),
+          rotateFootprint(definition.placementFootprint, placed.rotation),
           true,
         );
       }
@@ -883,6 +886,7 @@ export class RestaurantEditorScene extends Phaser.Scene {
         placed.rotation,
         { x: placed.tileX, y: placed.tileY },
         selected ? 0.35 : 1,
+        curHeights.get(placed.instanceId) ?? 0,
       );
       sprite.setInteractive({ useHandCursor: true });
       sprite.on(
@@ -926,15 +930,19 @@ export class RestaurantEditorScene extends Phaser.Scene {
 
     const item = this.currentDefinition();
     const visual = item ? this.itemVisual(item) : null;
-    if (item?.explicitFootprint && visual) {
+    if (item?.placementFootprint && visual) {
+      const curHeight = validation.ok
+        ? this.previewCurHeight(item, tile, validation.roomIndex)
+        : 0;
       this.previewSprite = this.createItemSprite(
         item,
         visual,
         this.rotation,
         tile,
         validation.ok ? 0.72 : 0.36,
+        curHeight,
       );
-      this.previewSprite.setDepth(this.itemDrawPriority(tile) + 1);
+      this.previewSprite.setDepth(this.itemDrawPriority(tile, curHeight) + 1);
     }
 
     if (publishStatus) {
@@ -1002,9 +1010,54 @@ export class RestaurantEditorScene extends Phaser.Scene {
     return item ? this.itemVisual(item) : null;
   }
 
-  private itemDrawPriority(tile: TilePoint): number {
-    // WorldRestaurant.getTileDrawPriority(x,y) = (y * 20 + x) << 8.
-    return (tile.y * 20 + tile.x) * 256;
+  private itemDrawPriority(tile: TilePoint, curHeight = 0): number {
+    // WorldRestaurant: getTileDrawPriority(x,y) + RoomItem.curHeight.
+    return (tile.y * 20 + tile.x) * 256 + curHeight;
+  }
+
+  private stackGeometryFor(itemId: number) {
+    const definition = this.catalogById.get(itemId);
+    if (!definition?.placementFootprint) return null;
+    return {
+      footprint: definition.placementFootprint,
+      itemHeightTwips: definition.itemHeightTwips,
+    };
+  }
+
+  private computeCurHeights(
+    items: readonly AuthoritativePlacedItem[],
+  ): ReadonlyMap<number, number> {
+    return computeHistoricalCurHeights(
+      items.map((item) => ({
+        instanceId: item.instanceId,
+        itemId: item.itemId,
+        tileX: item.tileX,
+        tileY: item.tileY,
+        rotation: item.rotation,
+        roomIndex: item.roomIndex,
+      })),
+      (itemId) => this.stackGeometryFor(itemId),
+    );
+  }
+
+  private previewCurHeight(
+    item: RestaurantItemDefinition,
+    tile: TilePoint,
+    roomIndex: number,
+  ): number {
+    const instanceId =
+      this.selectedPlacedInstanceId ?? Number.MAX_SAFE_INTEGER;
+    const ordered = this.authoritativeItems
+      .filter((placed) => placed.instanceId !== this.selectedPlacedInstanceId)
+      .concat({
+        instanceId,
+        itemId: item.id,
+        tileX: tile.x,
+        tileY: tile.y,
+        rotation: this.rotation,
+        roomIndex,
+      });
+    return this.computeCurHeights(ordered).get(instanceId) ?? 0;
   }
 
   private createItemSprite(
@@ -1013,8 +1066,9 @@ export class RestaurantEditorScene extends Phaser.Scene {
     rotation: number,
     tile: TilePoint,
     alpha: number,
+    curHeight = 0,
   ): Phaser.GameObjects.Sprite {
-    if (!definition.explicitFootprint) {
+    if (!definition.placementFootprint) {
       throw new Error(`Item #${definition.id} has no explicit footprint`);
     }
 
@@ -1026,7 +1080,7 @@ export class RestaurantEditorScene extends Phaser.Scene {
       );
     }
 
-    const footprint = rotateFootprint(definition.explicitFootprint, rotation);
+    const footprint = rotateFootprint(definition.placementFootprint, rotation);
     const offset = historicalRoomItemFrameOffset(
       footprint,
       atlasFrame.width,
@@ -1037,13 +1091,13 @@ export class RestaurantEditorScene extends Phaser.Scene {
     return this.add
       .sprite(
         ORIGIN.x + projected.x + offset.x,
-        ORIGIN.y + projected.y + offset.y,
+        ORIGIN.y + projected.y + offset.y - curHeight,
         visual.atlasId,
         frameName,
       )
       .setOrigin(0, 0)
       .setAlpha(alpha)
-      .setDepth(this.itemDrawPriority(tile));
+      .setDepth(this.itemDrawPriority(tile, curHeight));
   }
 
   private publishInitializationError(error: unknown): void {
