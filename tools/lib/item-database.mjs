@@ -1,18 +1,21 @@
 /**
  * Parser for the historical Restaurant City ItemDatabase XML shape.
  *
- * Mirrors ItemDatabase.as semantics:
- * - root contains <group> elements;
- * - group name/type plus arbitrary attributes;
- * - group type becomes an array split on commas;
- * - each <item> starts with cash=0/cost=0;
- * - item type becomes an array;
+ * Mirrors ItemDatabase.as / E4X semantics:
+ * - root direct children named <group> are database groups;
+ * - group direct children named <item> are database items;
+ * - nested <item> elements inside an item's child XML are NOT database items;
+ * - comments, CDATA and processing instructions are not elements;
+ * - group name/type plus arbitrary attributes are preserved;
+ * - group/item type becomes an array split on commas;
+ * - each item starts with cash=0/cost=0;
  * - "true"/"false" become booleans;
  * - "null" becomes null;
  * - all other attribute values remain strings;
- * - child XML is retained as an opaque string for later family-specific readers.
+ * - item child XML is retained verbatim (trimmed) for family-specific readers.
  *
- * This is deliberately a narrow parser for recovered RC data, not a general XML parser.
+ * This is deliberately a narrow structural scanner for recovered RC data,
+ * not a general-purpose XML library.
  */
 
 function decodeXmlEntity(value) {
@@ -65,26 +68,142 @@ function normalizeAttributes(attrs, defaults = {}) {
   return normalized;
 }
 
-export function parseItemDatabaseXml(xml) {
-  const groups = [];
-  const groupRe = /<group\b([^>]*)>([\s\S]*?)<\/group\s*>/gi;
+function findTagEnd(xml, start) {
+  let quote = null;
+  for (let i = start; i < xml.length; i += 1) {
+    const ch = xml[i];
+    if (quote) {
+      if (ch === quote) quote = null;
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      quote = ch;
+      continue;
+    }
+    if (ch === '>') return i;
+  }
+  throw new Error(`unterminated XML tag at offset ${start}`);
+}
 
-  for (const groupMatch of xml.matchAll(groupRe)) {
-    const rawGroupAttrs = parseXmlAttributes(groupMatch[1]);
+function skipSpecial(xml, start) {
+  if (xml.startsWith('<!--', start)) {
+    const end = xml.indexOf('-->', start + 4);
+    if (end < 0) throw new Error('unterminated XML comment');
+    return end + 3;
+  }
+  if (xml.startsWith('<![CDATA[', start)) {
+    const end = xml.indexOf(']]>', start + 9);
+    if (end < 0) throw new Error('unterminated CDATA section');
+    return end + 3;
+  }
+  if (xml.startsWith('<?', start)) {
+    const end = xml.indexOf('?>', start + 2);
+    if (end < 0) throw new Error('unterminated processing instruction');
+    return end + 2;
+  }
+  if (xml.startsWith('<!', start)) {
+    // Historical RC data has no complex DTD; still honor quotes while finding
+    // the declaration close so '>' inside a quoted literal is harmless.
+    return findTagEnd(xml, start + 2) + 1;
+  }
+  return null;
+}
+
+function scanXmlElements(xml) {
+  const roots = [];
+  const stack = [];
+  let cursor = 0;
+
+  while (cursor < xml.length) {
+    const start = xml.indexOf('<', cursor);
+    if (start < 0) break;
+
+    const specialEnd = skipSpecial(xml, start);
+    if (specialEnd !== null) {
+      cursor = specialEnd;
+      continue;
+    }
+
+    const tagEnd = findTagEnd(xml, start + 1);
+    const inner = xml.slice(start + 1, tagEnd).trim();
+
+    if (inner.startsWith('/')) {
+      const closeName = inner.slice(1).trim().split(/\s+/, 1)[0];
+      const node = stack.pop();
+      if (!node || node.name !== closeName) {
+        throw new Error(
+          `malformed XML close tag </${closeName}> at offset ${start}`,
+        );
+      }
+      node.endTagStart = start;
+      node.endTagEnd = tagEnd + 1;
+      cursor = tagEnd + 1;
+      continue;
+    }
+
+    const selfClosing = /\/\s*$/.test(inner);
+    const body = selfClosing ? inner.replace(/\/\s*$/, '').trim() : inner;
+    const nameMatch = body.match(/^([A-Za-z_][\w:.-]*)\b/);
+    if (!nameMatch) {
+      throw new Error(`invalid XML element at offset ${start}`);
+    }
+
+    const name = nameMatch[1];
+    const attrsText = body.slice(name.length).trim();
+    const node = {
+      name,
+      attrsText,
+      startTagStart: start,
+      startTagEnd: tagEnd + 1,
+      endTagStart: selfClosing ? tagEnd + 1 : null,
+      endTagEnd: selfClosing ? tagEnd + 1 : null,
+      children: [],
+    };
+
+    const parent = stack[stack.length - 1];
+    if (parent) parent.children.push(node);
+    else roots.push(node);
+
+    if (!selfClosing) stack.push(node);
+    cursor = tagEnd + 1;
+  }
+
+  if (stack.length > 0) {
+    throw new Error(`unterminated XML element <${stack.at(-1).name}>`);
+  }
+  return roots;
+}
+
+export function parseItemDatabaseXml(xml) {
+  const roots = scanXmlElements(xml);
+  const root = roots.find((node) => node.name !== '');
+  if (!root) {
+    throw new Error('ItemDatabase XML has no document element');
+  }
+
+  const groups = [];
+  for (const groupNode of root.children.filter(
+    (node) => node.name.toLowerCase() === 'group',
+  )) {
+    const rawGroupAttrs = parseXmlAttributes(groupNode.attrsText);
     const groupName = rawGroupAttrs.name ?? '';
     const groupAttrs = normalizeAttributes(rawGroupAttrs);
-    const body = groupMatch[2];
     const items = [];
 
-    const itemRe =
-      /<item\b([^>]*?)(?:\/\s*>|>([\s\S]*?)<\/item\s*>)/gi;
-    for (const itemMatch of body.matchAll(itemRe)) {
-      const rawItemAttrs = parseXmlAttributes(itemMatch[1]);
+    for (const itemNode of groupNode.children.filter(
+      (node) => node.name.toLowerCase() === 'item',
+    )) {
+      const rawItemAttrs = parseXmlAttributes(itemNode.attrsText);
       const attrs = normalizeAttributes(rawItemAttrs, { cash: 0, cost: 0 });
+      const childrenXml =
+        itemNode.endTagStart === null
+          ? ''
+          : xml.slice(itemNode.startTagEnd, itemNode.endTagStart).trim();
+
       items.push({
         group: groupName,
         attributes: attrs,
-        childrenXml: (itemMatch[2] ?? '').trim(),
+        childrenXml,
       });
     }
 
