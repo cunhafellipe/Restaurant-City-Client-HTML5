@@ -41,7 +41,8 @@ Product-owned:
 - Product social behaviors after Platform identity/privacy authorization.
 - Legacy Playfish compatibility adapters.
 - Product persistence and authoritative action validation.
-- Phaser UI/rendering and product-specific content mapping.
+- DOM/CSS product UI/HUD and product-specific content mapping.
+- Phaser world rendering, simulation presentation and world-space interaction.
 
 Not product-owned:
 
@@ -161,7 +162,8 @@ Protected production is different:
 
 ## Technology choices
 
-- Browser client: TypeScript + Phaser, deterministic framework-free core.
+- Browser client: TypeScript + HTML/CSS DOM shell + Phaser world renderer, with a deterministic framework-free core.
+- Historical SWF/BIN are trusted-pipeline research/build inputs only; production browser runtime never executes or parses them.
 - Tooling: Node.js for deterministic extraction/conversion where it is already
   effective; FFDec is a build/research dependency, not a runtime dependency.
 - Product authority: Rust modular backend/domain foundation, unsafe forbidden,
