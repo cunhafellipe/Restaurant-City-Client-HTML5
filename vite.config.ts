@@ -24,7 +24,8 @@ export default defineConfig({
   },
   build: {
     target: 'es2022',
-    sourcemap: true,
+    // Protected ANEWON production builds must not publish client source maps.
+    sourcemap: false,
     outDir: 'dist',
   },
 });
