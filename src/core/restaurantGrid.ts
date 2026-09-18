@@ -151,6 +151,69 @@ export function rotateFootprint(
  * This is intentionally limited to ordinary floor-space occupancy. Historical
  * stacking/surface/sub-item semantics remain a separate recovered-rule layer.
  */
+export interface HistoricalTileStackEntry {
+  readonly instanceId: number;
+  readonly surface: boolean;
+}
+
+export type HistoricalTileStackResult =
+  | { readonly ok: true }
+  | {
+      readonly ok: false;
+      readonly reason: 'blocked-top' | 'stack-limit';
+      readonly blockingInstanceId?: number;
+    };
+
+/**
+ * Exact ordinary-tile stack rule recovered from WorldRestaurant.isValid().
+ *
+ * The historical itemMap is ordered bottom -> top. A new candidate may share
+ * an occupied tile only when the candidate itself is stackable and the current
+ * top item is a surface. At most five entries may occupy one tile.
+ *
+ * When validating an item that is already the top entry, the original client
+ * temporarily looks through itself and raises the length threshold by one.
+ * Keep this quirk explicit instead of normalizing it away.
+ */
+export function validateHistoricalTileStack(
+  candidate: { readonly stackable?: boolean },
+  stack: readonly HistoricalTileStackEntry[],
+  selfInstanceId?: number,
+): HistoricalTileStackResult {
+  if (selfInstanceId !== undefined) {
+    requireInteger(selfInstanceId, 'selfInstanceId');
+  }
+  for (const entry of stack) {
+    requireInteger(entry.instanceId, 'stack.instanceId');
+  }
+
+  let topIndex = stack.length - 1;
+  let lengthThreshold = 5;
+  if (
+    topIndex >= 0 &&
+    selfInstanceId !== undefined &&
+    stack[topIndex]?.instanceId === selfInstanceId
+  ) {
+    topIndex -= 1;
+    lengthThreshold += 1;
+  }
+
+  const top = topIndex >= 0 ? stack[topIndex] : undefined;
+  if (top && (!candidate.stackable || !top.surface)) {
+    return {
+      ok: false,
+      reason: 'blocked-top',
+      blockingInstanceId: top.instanceId,
+    };
+  }
+
+  if (stack.length > lengthThreshold - 1) {
+    return { ok: false, reason: 'stack-limit' };
+  }
+
+  return { ok: true };
+}
+
 export function footprintsOverlap(
   aTile: TilePoint,
   aFootprint: Footprint,
