@@ -1,19 +1,21 @@
 use crate::http::{
     ProductHttpContext, PublicProductError, handle_load_restaurant,
     handle_place_item as handle_place_item_contract,
+    handle_remove_item as handle_remove_item_contract,
+    handle_transform_item as handle_transform_item_contract,
 };
 use crate::platform::PlatformSessionVerifier;
 use crate::service::{ProductStateStore, RestaurantProductService};
 use axum::{
     Router,
     body::Bytes,
-    extract::{DefaultBodyLimit, State},
+    extract::{DefaultBodyLimit, Path, State},
     http::{
         HeaderMap, HeaderName, StatusCode,
         header::{CACHE_CONTROL, CONTENT_TYPE, COOKIE, ORIGIN},
     },
     response::{IntoResponse, Response},
-    routing::{get, post},
+    routing::{get, patch, post},
 };
 use serde::Serialize;
 use std::sync::Arc;
@@ -56,6 +58,10 @@ where
     Router::new()
         .route("/api/v1/restaurant", get(load_restaurant::<V, S>))
         .route("/api/v1/restaurant/placements", post(place_item::<V, S>))
+        .route(
+            "/api/v1/restaurant/placements/{instance_id}",
+            patch(transform_item::<V, S>).delete(remove_item::<V, S>),
+        )
         .layer(DefaultBodyLimit::max(MAX_REQUEST_BODY_BYTES))
         .with_state(state)
 }
@@ -112,6 +118,72 @@ where
             mutation_id,
         },
         &body,
+    ) {
+        Ok(response) => success_response(StatusCode::OK, response),
+        Err(error) => error_response(error),
+    }
+}
+
+async fn transform_item<V, S>(
+    State(state): State<AppState<V, S>>,
+    Path(instance_id): Path<u64>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Response
+where
+    V: PlatformSessionVerifier + Send + Sync + 'static,
+    S: ProductStateStore + 'static,
+{
+    if let Err(error) = validate_request_security(&headers, &state.expected_origin, true) {
+        return error_response(error);
+    }
+
+    let session_token = match product_session_token(&headers) {
+        Ok(token) => token,
+        Err(error) => return error_response(error),
+    };
+    let mutation_id = header_value(&headers, &IDEMPOTENCY_KEY);
+
+    match handle_transform_item_contract(
+        state.service.as_ref(),
+        ProductHttpContext {
+            session_token: Some(session_token),
+            mutation_id,
+        },
+        instance_id,
+        &body,
+    ) {
+        Ok(response) => success_response(StatusCode::OK, response),
+        Err(error) => error_response(error),
+    }
+}
+
+async fn remove_item<V, S>(
+    State(state): State<AppState<V, S>>,
+    Path(instance_id): Path<u64>,
+    headers: HeaderMap,
+) -> Response
+where
+    V: PlatformSessionVerifier + Send + Sync + 'static,
+    S: ProductStateStore + 'static,
+{
+    if let Err(error) = validate_request_security(&headers, &state.expected_origin, true) {
+        return error_response(error);
+    }
+
+    let session_token = match product_session_token(&headers) {
+        Ok(token) => token,
+        Err(error) => return error_response(error),
+    };
+    let mutation_id = header_value(&headers, &IDEMPOTENCY_KEY);
+
+    match handle_remove_item_contract(
+        state.service.as_ref(),
+        ProductHttpContext {
+            session_token: Some(session_token),
+            mutation_id,
+        },
+        instance_id,
     ) {
         Ok(response) => success_response(StatusCode::OK, response),
         Err(error) => error_response(error),
@@ -321,6 +393,24 @@ mod tests {
             .header(ORIGIN, EXPECTED_ORIGIN)
             .header(&SEC_FETCH_SITE, "same-origin")
             .header(&IDEMPOTENCY_KEY, "placement-1")
+            .header(CONTENT_TYPE, "application/json")
+            .body(Body::from(body))
+            .unwrap()
+    }
+
+    fn mutation_request(
+        method: &str,
+        uri: &str,
+        mutation_id: &str,
+        body: &'static str,
+    ) -> Request<Body> {
+        Request::builder()
+            .method(method)
+            .uri(uri)
+            .header(COOKIE, SESSION_COOKIE)
+            .header(ORIGIN, EXPECTED_ORIGIN)
+            .header(&SEC_FETCH_SITE, "same-origin")
+            .header(&IDEMPOTENCY_KEY, mutation_id)
             .header(CONTENT_TYPE, "application/json")
             .body(Body::from(body))
             .unwrap()
@@ -562,6 +652,97 @@ mod tests {
             first_json["item"]["instance_id"],
             second_json["item"]["instance_id"]
         );
+    }
+
+    #[tokio::test]
+    async fn transform_and_remove_round_trip_through_router_and_persistence() {
+        let path = temp_database();
+        let catalog = catalog();
+
+        {
+            let store = RedbProductStateStore::open(&path, catalog.clone()).unwrap();
+            let service = RestaurantProductService::new(verifier(), store, catalog.clone(), room());
+            service
+                .apply_player_command(
+                    "session",
+                    MutationId::new("grant-edit-router".to_owned()).unwrap(),
+                    Command::GrantInventory {
+                        item_id: 10,
+                        quantity: 1,
+                    },
+                )
+                .unwrap();
+
+            let app = restaurant_router(service, EXPECTED_ORIGIN);
+            let placed = app
+                .clone()
+                .oneshot(mutation_request(
+                    "POST",
+                    "/api/v1/restaurant/placements",
+                    "place-edit-router",
+                    r#"{"item_id":10,"tile_x":2,"tile_y":2,"rotation":0}"#,
+                ))
+                .await
+                .unwrap();
+            assert_eq!(placed.status(), StatusCode::OK);
+
+            let transformed = app
+                .clone()
+                .oneshot(mutation_request(
+                    "PATCH",
+                    "/api/v1/restaurant/placements/1",
+                    "transform-edit-router",
+                    r#"{"tile_x":4,"tile_y":3,"rotation":1}"#,
+                ))
+                .await
+                .unwrap();
+            assert_eq!(transformed.status(), StatusCode::OK);
+
+            let transformed_body = to_bytes(
+                transformed.into_body(),
+                MAX_REQUEST_BODY_BYTES,
+            )
+            .await
+            .unwrap();
+            let transformed_json: serde_json::Value =
+                serde_json::from_slice(&transformed_body).unwrap();
+            assert_eq!(transformed_json["item"]["instance_id"], 1);
+            assert_eq!(transformed_json["item"]["tile_x"], 4);
+            assert_eq!(transformed_json["item"]["tile_y"], 3);
+            assert_eq!(transformed_json["item"]["rotation"], 1);
+
+            let removed = app
+                .oneshot(mutation_request(
+                    "DELETE",
+                    "/api/v1/restaurant/placements/1",
+                    "remove-edit-router",
+                    "",
+                ))
+                .await
+                .unwrap();
+            assert_eq!(removed.status(), StatusCode::OK);
+        }
+
+        {
+            let store = RedbProductStateStore::open(&path, catalog.clone()).unwrap();
+            let service = RestaurantProductService::new(verifier(), store, catalog, room());
+            let response = restaurant_router(service, EXPECTED_ORIGIN)
+                .oneshot(authenticated_get())
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::OK);
+
+            let body = to_bytes(response.into_body(), MAX_REQUEST_BODY_BYTES)
+                .await
+                .unwrap();
+            let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+            assert_eq!(json["items"].as_array().unwrap().len(), 0);
+            assert_eq!(json["inventory"][0]["owned"], 1);
+            assert_eq!(json["inventory"][0]["placed"], 0);
+            assert_eq!(json["inventory"][0]["available"], 1);
+        }
+
+        let _ = fs::remove_file(path);
     }
 
     #[tokio::test]
