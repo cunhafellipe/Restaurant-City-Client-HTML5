@@ -152,6 +152,118 @@ describe('HttpRestaurantAuthority', () => {
     );
   });
 
+  it('rejects duplicate ids and inventory counts that disagree with persisted items', async () => {
+    const duplicateInstance = new HttpRestaurantAuthority(
+      '/api/v1',
+      async () =>
+        okJson({
+          room: { inside_x: 8, inside_y: 8, outside_x: 0, outside_y: 0 },
+          next_instance_id: 3,
+          items: [
+            {
+              instance_id: 1,
+              item_id: 10,
+              tile_x: 2,
+              tile_y: 2,
+              rotation: 0,
+              room_index: 0,
+            },
+            {
+              instance_id: 1,
+              item_id: 10,
+              tile_x: 4,
+              tile_y: 2,
+              rotation: 0,
+              room_index: 0,
+            },
+          ],
+          inventory: [
+            { item_id: 10, owned: 2, placed: 2, available: 0 },
+          ],
+        }),
+    );
+    await expect(duplicateInstance.loadRestaurant()).rejects.toThrow(
+      'duplicate instance id',
+    );
+
+    const wrongPlacedCount = new HttpRestaurantAuthority(
+      '/api/v1',
+      async () =>
+        okJson({
+          room: { inside_x: 8, inside_y: 8, outside_x: 0, outside_y: 0 },
+          next_instance_id: 2,
+          items: [
+            {
+              instance_id: 1,
+              item_id: 10,
+              tile_x: 2,
+              tile_y: 2,
+              rotation: 0,
+              room_index: 0,
+            },
+          ],
+          inventory: [
+            { item_id: 10, owned: 2, placed: 0, available: 2 },
+          ],
+        }),
+    );
+    await expect(wrongPlacedCount.loadRestaurant()).rejects.toThrow(
+      'placed inventory count',
+    );
+  });
+
+  it('rejects regressive instance sequences and unsupported room indexes', async () => {
+    const sequence = new HttpRestaurantAuthority(
+      '/api/v1',
+      async () =>
+        okJson({
+          room: { inside_x: 8, inside_y: 8, outside_x: 0, outside_y: 0 },
+          next_instance_id: 1,
+          items: [
+            {
+              instance_id: 1,
+              item_id: 10,
+              tile_x: 2,
+              tile_y: 2,
+              rotation: 0,
+              room_index: 0,
+            },
+          ],
+          inventory: [
+            { item_id: 10, owned: 1, placed: 1, available: 0 },
+          ],
+        }),
+    );
+    await expect(sequence.loadRestaurant()).rejects.toThrow(
+      'next instance id',
+    );
+
+    const roomIndex = new HttpRestaurantAuthority(
+      '/api/v1',
+      async () =>
+        okJson({
+          room: { inside_x: 8, inside_y: 8, outside_x: 0, outside_y: 0 },
+          next_instance_id: 2,
+          items: [
+            {
+              instance_id: 1,
+              item_id: 10,
+              tile_x: 2,
+              tile_y: 2,
+              rotation: 0,
+              room_index: 9,
+            },
+          ],
+          inventory: [
+            { item_id: 10, owned: 1, placed: 1, available: 0 },
+          ],
+        }),
+    );
+    await expect(roomIndex.loadRestaurant()).rejects.toThrow(
+      'room index',
+    );
+  });
+
   it('rejects cross-origin API roots and invalid placement commands locally', async () => {
     expect(
       () => new HttpRestaurantAuthority('https://evil.example/api'),
