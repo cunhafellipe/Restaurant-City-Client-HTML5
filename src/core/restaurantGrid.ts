@@ -140,6 +140,58 @@ export function rotateFootprint(
     : { sizeX: footprint.sizeY, sizeY: footprint.sizeX };
 }
 
+
+/**
+ * Axis-aligned footprint overlap in Restaurant City tile space.
+ *
+ * This is intentionally limited to ordinary floor-space occupancy. Historical
+ * stacking/surface/sub-item semantics remain a separate recovered-rule layer.
+ */
+export function footprintsOverlap(
+  aTile: TilePoint,
+  aFootprint: Footprint,
+  bTile: TilePoint,
+  bFootprint: Footprint,
+): boolean {
+  for (const [label, value] of Object.entries({
+    aTileX: aTile.x,
+    aTileY: aTile.y,
+    aSizeX: aFootprint.sizeX,
+    aSizeY: aFootprint.sizeY,
+    bTileX: bTile.x,
+    bTileY: bTile.y,
+    bSizeX: bFootprint.sizeX,
+    bSizeY: bFootprint.sizeY,
+  })) {
+    requireInteger(value, label);
+  }
+  requirePositiveDimension(aFootprint.sizeX, 'aFootprint.sizeX');
+  requirePositiveDimension(aFootprint.sizeY, 'aFootprint.sizeY');
+  requirePositiveDimension(bFootprint.sizeX, 'bFootprint.sizeX');
+  requirePositiveDimension(bFootprint.sizeY, 'bFootprint.sizeY');
+
+  if (
+    aFootprint.sizeX === 0 ||
+    aFootprint.sizeY === 0 ||
+    bFootprint.sizeX === 0 ||
+    bFootprint.sizeY === 0
+  ) {
+    return false;
+  }
+
+  const aMaxX = aTile.x + aFootprint.sizeX - 1;
+  const aMaxY = aTile.y + aFootprint.sizeY - 1;
+  const bMaxX = bTile.x + bFootprint.sizeX - 1;
+  const bMaxY = bTile.y + bFootprint.sizeY - 1;
+
+  return (
+    aTile.x <= bMaxX &&
+    aMaxX >= bTile.x &&
+    aTile.y <= bMaxY &&
+    aMaxY >= bTile.y
+  );
+}
+
 export function isTileInOutsideArea(
   tile: TilePoint,
   room: RoomDimensions,
