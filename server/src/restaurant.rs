@@ -1,6 +1,6 @@
 use crate::placement::{
-    rotate_footprint, validate_structural_placement, Footprint, PlacementFlags, PlacementShape,
-    RoomDimensions, StructuralPlacement, TilePoint,
+    Footprint, PlacementFlags, PlacementShape, RoomDimensions, StructuralPlacement, TilePoint,
+    rotate_footprint, validate_structural_placement,
 };
 use std::collections::BTreeMap;
 
@@ -97,11 +97,12 @@ impl RestaurantState {
         catalog: &PlacementCatalog,
         intent: PlacementIntent,
     ) -> Result<PlacedItem, RestaurantAuthorityError> {
-        let definition = *catalog
-            .get(intent.item_id)
-            .ok_or(RestaurantAuthorityError::UnknownItem {
-                item_id: intent.item_id,
-            })?;
+        let definition =
+            *catalog
+                .get(intent.item_id)
+                .ok_or(RestaurantAuthorityError::UnknownItem {
+                    item_id: intent.item_id,
+                })?;
 
         let placed = self.validate_new_item(catalog, definition, intent, self.next_instance_id)?;
 
@@ -139,11 +140,12 @@ impl RestaurantState {
                 });
             }
 
-            let definition = *catalog
-                .get(stored.item_id)
-                .ok_or(RestaurantAuthorityError::UnknownItem {
-                    item_id: stored.item_id,
-                })?;
+            let definition =
+                *catalog
+                    .get(stored.item_id)
+                    .ok_or(RestaurantAuthorityError::UnknownItem {
+                        item_id: stored.item_id,
+                    })?;
             let intent = PlacementIntent {
                 item_id: stored.item_id,
                 tile: stored.tile,
@@ -219,22 +221,16 @@ impl RestaurantState {
                 continue;
             }
 
-            let existing_definition = *catalog.get(existing.item_id).ok_or(
-                RestaurantAuthorityError::UnknownItem {
-                    item_id: existing.item_id,
-                },
-            )?;
-            let existing_footprint = rotate_footprint(
-                existing_definition.footprint,
-                i32::from(existing.rotation),
-            );
+            let existing_definition =
+                *catalog
+                    .get(existing.item_id)
+                    .ok_or(RestaurantAuthorityError::UnknownItem {
+                        item_id: existing.item_id,
+                    })?;
+            let existing_footprint =
+                rotate_footprint(existing_definition.footprint, i32::from(existing.rotation));
 
-            if rectangles_overlap(
-                intent.tile,
-                footprint,
-                existing.tile,
-                existing_footprint,
-            ) {
+            if rectangles_overlap(intent.tile, footprint, existing.tile, existing_footprint) {
                 return Err(RestaurantAuthorityError::Collision {
                     item_id: definition.item_id,
                     with_instance_id: existing.instance_id,
@@ -252,12 +248,7 @@ impl RestaurantState {
     }
 }
 
-fn rectangles_overlap(
-    a_tile: TilePoint,
-    a: Footprint,
-    b_tile: TilePoint,
-    b: Footprint,
-) -> bool {
+fn rectangles_overlap(a_tile: TilePoint, a: Footprint, b_tile: TilePoint, b: Footprint) -> bool {
     let a_max_x = i64::from(a_tile.x) + i64::from(a.size_x) - 1;
     let a_max_y = i64::from(a_tile.y) + i64::from(a.size_y) - 1;
     let b_max_x = i64::from(b_tile.x) + i64::from(b.size_x) - 1;
