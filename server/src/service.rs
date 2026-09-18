@@ -351,8 +351,21 @@ impl ProductAggregate {
             return Err(ProductStateStoreError::Corrupt);
         }
 
-        let (player, restaurant) =
-            Self::decode_player_and_restaurant(catalog, persisted.player, persisted.restaurant)?;
+        // V2 already persists the complete mutation journal. Replay that
+        // journal to recover historical bottom->top itemMap ordering instead of
+        // trusting the serialized Vec order used by older V2 writers.
+        let player = PlayerState::from_persistence_snapshot(persisted.player)
+            .map_err(|_| ProductStateStoreError::Corrupt)?;
+        let expected_restaurant = RestaurantSnapshot {
+            room: persisted.restaurant.room.into(),
+            next_instance_id: persisted.restaurant.next_instance_id,
+            items: persisted
+                .restaurant
+                .items
+                .into_iter()
+                .map(PlacedItem::from)
+                .collect(),
+        };
         let mut restaurant_mutations = BTreeMap::new();
         let mut ordered = Vec::new();
         let mut seen_sequences = BTreeMap::<u64, ()>::new();
@@ -397,7 +410,7 @@ impl ProductAggregate {
             return Err(ProductStateStoreError::Corrupt);
         }
 
-        let mut replay = RestaurantState::new(restaurant.room());
+        let mut replay = RestaurantState::new(expected_restaurant.room);
         for (_, record) in &ordered {
             let replayed = match record.operation {
                 RestaurantMutationOperation::Place => replay
@@ -428,13 +441,15 @@ impl ProductAggregate {
             }
         }
 
-        if replay.snapshot() != restaurant.snapshot() {
+        let replay_snapshot = replay.snapshot();
+        if !restaurant_snapshots_match_content(&replay_snapshot, &expected_restaurant) {
             return Err(ProductStateStoreError::Corrupt);
         }
+        Self::validate_inventory_against_restaurant(&player, &replay)?;
 
         Ok(Self {
             player,
-            restaurant,
+            restaurant: replay,
             restaurant_mutations,
             next_restaurant_mutation_sequence: persisted.next_restaurant_mutation_sequence,
         })
@@ -657,6 +672,30 @@ impl ProductAggregate {
         }
         Ok(())
     }
+}
+
+fn restaurant_snapshots_match_content(
+    left: &RestaurantSnapshot,
+    right: &RestaurantSnapshot,
+) -> bool {
+    if left.room != right.room || left.next_instance_id != right.next_instance_id {
+        return false;
+    }
+
+    let left_items: BTreeMap<_, _> = left
+        .items
+        .iter()
+        .map(|item| (item.instance_id, *item))
+        .collect();
+    let right_items: BTreeMap<_, _> = right
+        .items
+        .iter()
+        .map(|item| (item.instance_id, *item))
+        .collect();
+
+    left_items.len() == left.items.len()
+        && right_items.len() == right.items.len()
+        && left_items == right_items
 }
 
 impl From<RoomDimensions> for PersistedRoom {
