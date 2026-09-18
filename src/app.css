@@ -92,10 +92,15 @@ select {
   cursor: pointer;
 }
 
-.rc-control-button:hover,
-.rc-control-button:focus-visible {
+.rc-control-button:hover:not(:disabled),
+.rc-control-button:focus-visible:not(:disabled) {
   background: rgb(255 255 255 / 12%);
   outline: none;
+}
+
+.rc-control-button:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
 }
 
 .rc-layout {
