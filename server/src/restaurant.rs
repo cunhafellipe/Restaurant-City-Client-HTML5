@@ -8,6 +8,9 @@ use std::collections::BTreeMap;
 pub struct ItemPlacementDefinition {
     pub item_id: u32,
     pub footprint: Footprint,
+    /// Historical RoomItem.content.totalFrames. The original client cycles
+    /// rotation by advancing the content MovieClip one frame at a time.
+    pub rotation_count: u8,
     pub flags: PlacementFlags,
 }
 
@@ -16,8 +19,8 @@ pub struct PlacementCatalog {
     definitions: BTreeMap<u32, ItemPlacementDefinition>,
 }
 
-pub const PLACEMENT_CATALOG_MAGIC: &str = "ANEWON_RC_PLACEMENT_CATALOG_V1";
-const PLACEMENT_CATALOG_COLUMNS: &str = "item_id\tsize_x\tsize_y\twall_item\twall_decoration_item\twallpaper_item\toutdoor\tfloor_tile_item";
+pub const PLACEMENT_CATALOG_MAGIC: &str = "ANEWON_RC_PLACEMENT_CATALOG_V2";
+const PLACEMENT_CATALOG_COLUMNS: &str = "item_id\tsize_x\tsize_y\trotation_count\twall_item\twall_decoration_item\twallpaper_item\toutdoor\tfloor_tile_item";
 
 impl PlacementCatalog {
     pub fn new(
@@ -25,7 +28,11 @@ impl PlacementCatalog {
     ) -> Result<Self, RestaurantAuthorityError> {
         let mut catalog = Self::default();
         for definition in definitions {
-            if definition.footprint.size_x == 0 || definition.footprint.size_y == 0 {
+            if definition.footprint.size_x == 0
+                || definition.footprint.size_y == 0
+                || definition.rotation_count == 0
+                || definition.rotation_count > 16
+            {
                 return Err(RestaurantAuthorityError::InvalidDefinition {
                     item_id: definition.item_id,
                 });
@@ -75,13 +82,18 @@ impl PlacementCatalog {
             }
 
             let fields: Vec<_> = line.split('\t').collect();
-            if fields.len() != 8 {
+            if fields.len() != 9 {
                 return Err(PlacementCatalogLoadError::InvalidRow { line: line_number });
             }
 
             let parse_u32 = |value: &str| {
                 value
                     .parse::<u32>()
+                    .map_err(|_| PlacementCatalogLoadError::InvalidRow { line: line_number })
+            };
+            let parse_u8 = |value: &str| {
+                value
+                    .parse::<u8>()
                     .map_err(|_| PlacementCatalogLoadError::InvalidRow { line: line_number })
             };
             let parse_bool = |value: &str| match value {
@@ -96,12 +108,13 @@ impl PlacementCatalog {
                     size_x: parse_u32(fields[1])?,
                     size_y: parse_u32(fields[2])?,
                 },
+                rotation_count: parse_u8(fields[3])?,
                 flags: PlacementFlags {
-                    wall_item: parse_bool(fields[3])?,
-                    wall_decoration_item: parse_bool(fields[4])?,
-                    wallpaper_item: parse_bool(fields[5])?,
-                    outdoor: parse_bool(fields[6])?,
-                    floor_tile_item: parse_bool(fields[7])?,
+                    wall_item: parse_bool(fields[4])?,
+                    wall_decoration_item: parse_bool(fields[5])?,
+                    wallpaper_item: parse_bool(fields[6])?,
+                    outdoor: parse_bool(fields[7])?,
+                    floor_tile_item: parse_bool(fields[8])?,
                 },
             });
         }
@@ -250,7 +263,7 @@ impl RestaurantState {
         intent: PlacementIntent,
         instance_id: u64,
     ) -> Result<PlacedItem, RestaurantAuthorityError> {
-        if intent.rotation > 3 {
+        if intent.rotation >= definition.rotation_count {
             return Err(RestaurantAuthorityError::InvalidRotation {
                 rotation: intent.rotation,
             });
@@ -395,6 +408,7 @@ mod tests {
                     size_x: 2,
                     size_y: 1,
                 },
+                rotation_count: 4,
                 flags: PlacementFlags::default(),
             },
             ItemPlacementDefinition {
@@ -403,6 +417,7 @@ mod tests {
                     size_x: 1,
                     size_y: 1,
                 },
+                rotation_count: 1,
                 flags: PlacementFlags::default(),
             },
         ])
@@ -412,11 +427,11 @@ mod tests {
     #[test]
     fn trusted_catalog_loader_accepts_generated_contract() {
         let input = concat!(
-            "ANEWON_RC_PLACEMENT_CATALOG_V1\n",
+            "ANEWON_RC_PLACEMENT_CATALOG_V2\n",
             "# baseline=0.9.143a\n",
-            "item_id\tsize_x\tsize_y\twall_item\twall_decoration_item\twallpaper_item\toutdoor\tfloor_tile_item\n",
-            "10\t2\t1\t0\t0\t0\t0\t0\n",
-            "20\t1\t1\t0\t0\t0\t0\t0\n",
+            "item_id\tsize_x\tsize_y\trotation_count\twall_item\twall_decoration_item\twallpaper_item\toutdoor\tfloor_tile_item\n",
+            "10\t2\t1\t4\t0\t0\t0\t0\t0\n",
+            "20\t1\t1\t1\t0\t0\t0\t0\t0\n",
         );
         let catalog = PlacementCatalog::from_trusted_tsv(input).unwrap();
         assert_eq!(catalog.get(10).unwrap().footprint.size_x, 2);
@@ -426,10 +441,10 @@ mod tests {
     #[test]
     fn trusted_catalog_loader_rejects_duplicate_ids() {
         let input = concat!(
-            "ANEWON_RC_PLACEMENT_CATALOG_V1\n",
-            "item_id\tsize_x\tsize_y\twall_item\twall_decoration_item\twallpaper_item\toutdoor\tfloor_tile_item\n",
-            "10\t2\t1\t0\t0\t0\t0\t0\n",
-            "10\t1\t1\t0\t0\t0\t0\t0\n",
+            "ANEWON_RC_PLACEMENT_CATALOG_V2\n",
+            "item_id\tsize_x\tsize_y\trotation_count\twall_item\twall_decoration_item\twallpaper_item\toutdoor\tfloor_tile_item\n",
+            "10\t2\t1\t4\t0\t0\t0\t0\t0\n",
+            "10\t1\t1\t4\t0\t0\t0\t0\t0\n",
         );
         assert_eq!(
             PlacementCatalog::from_trusted_tsv(input).unwrap_err(),
