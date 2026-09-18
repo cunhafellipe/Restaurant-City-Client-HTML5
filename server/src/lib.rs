@@ -7,6 +7,7 @@
 pub mod domain;
 pub mod placement;
 pub mod platform;
+pub mod restaurant;
 
 pub use domain::{
     AuthorityError, Command, Inventory, MutationId, MutationOutcome, PlayerState, Wallet,
@@ -19,4 +20,9 @@ pub use platform::{
 pub use placement::{
     Footprint, PlacementFlags, PlacementShape, ROOM_INDEX_MAIN, ROOM_INDEX_OUTSIDE_AREA,
     RoomDimensions, ScreenPoint, StructuralPlacement, TilePoint,
+};
+
+pub use restaurant::{
+    ItemPlacementDefinition, PlacementCatalog, PlacementIntent, PlacedItem,
+    RestaurantAuthorityError, RestaurantSnapshot, RestaurantState,
 };
