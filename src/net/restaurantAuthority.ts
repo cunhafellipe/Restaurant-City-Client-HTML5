@@ -203,19 +203,61 @@ function parseRestaurantLayout(value: unknown): RestaurantLayout {
     throw new Error('Malformed authoritative restaurant layout');
   }
 
+  const room = {
+    insideX: requireUInt(value.room.inside_x, 'room.inside_x'),
+    insideY: requireUInt(value.room.inside_y, 'room.inside_y'),
+    outsideX: requireUInt(value.room.outside_x, 'room.outside_x'),
+    outsideY: requireUInt(value.room.outside_y, 'room.outside_y'),
+  };
+  const nextInstanceId = requireSafeUInt(
+    value.next_instance_id,
+    'next_instance_id',
+  );
+  const items = value.items.map(parsePlacedItem);
+  const inventory = value.inventory.map(parseInventoryAvailability);
+
+  if (room.insideX === 0 || room.insideY === 0 || nextInstanceId === 0) {
+    throw new Error('Malformed authoritative restaurant dimensions or sequence');
+  }
+
+  const instanceIds = new Set<number>();
+  const placedByItem = new Map<number, number>();
+  let maxInstanceId = 0;
+  for (const item of items) {
+    if (instanceIds.has(item.instanceId)) {
+      throw new Error('Malformed authoritative duplicate instance id');
+    }
+    instanceIds.add(item.instanceId);
+    maxInstanceId = Math.max(maxInstanceId, item.instanceId);
+    placedByItem.set(item.itemId, (placedByItem.get(item.itemId) ?? 0) + 1);
+  }
+
+  if (maxInstanceId >= nextInstanceId) {
+    throw new Error('Malformed authoritative next instance id');
+  }
+
+  const inventoryIds = new Set<number>();
+  for (const entry of inventory) {
+    if (inventoryIds.has(entry.itemId)) {
+      throw new Error('Malformed authoritative duplicate inventory item');
+    }
+    inventoryIds.add(entry.itemId);
+    if ((placedByItem.get(entry.itemId) ?? 0) !== entry.placed) {
+      throw new Error('Malformed authoritative placed inventory count');
+    }
+  }
+
+  for (const itemId of placedByItem.keys()) {
+    if (!inventoryIds.has(itemId)) {
+      throw new Error('Malformed authoritative missing inventory entry');
+    }
+  }
+
   return {
-    room: {
-      insideX: requireUInt(value.room.inside_x, 'room.inside_x'),
-      insideY: requireUInt(value.room.inside_y, 'room.inside_y'),
-      outsideX: requireUInt(value.room.outside_x, 'room.outside_x'),
-      outsideY: requireUInt(value.room.outside_y, 'room.outside_y'),
-    },
-    nextInstanceId: requireSafeUInt(
-      value.next_instance_id,
-      'next_instance_id',
-    ),
-    items: value.items.map(parsePlacedItem),
-    inventory: value.inventory.map(parseInventoryAvailability),
+    room,
+    nextInstanceId,
+    items,
+    inventory,
   };
 }
 
@@ -271,7 +313,7 @@ function parsePlacedItem(value: unknown): AuthoritativePlacedItem {
     tileX: requireSafeInt(value.tile_x, 'item.tile_x'),
     tileY: requireSafeInt(value.tile_y, 'item.tile_y'),
     rotation,
-    roomIndex: requireUInt(value.room_index, 'item.room_index'),
+    roomIndex: requireRoomIndex(value.room_index),
   };
 }
 
@@ -310,4 +352,13 @@ function requireSafeInt(value: unknown, field: string): number {
     throw new Error(`Malformed authoritative field: ${field}`);
   }
   return value;
+}
+
+
+function requireRoomIndex(value: unknown): number {
+  const roomIndex = requireUInt(value, 'item.room_index');
+  if (roomIndex !== 0 && roomIndex !== 1) {
+    throw new Error('Malformed authoritative room index');
+  }
+  return roomIndex;
 }
