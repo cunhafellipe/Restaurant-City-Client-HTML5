@@ -46,9 +46,18 @@ function decode(name, bytes) {
   return { encoding: 'plain+xml', bytes };
 }
 
+function structuralXml(text) {
+  // XML comments and CDATA can contain strings such as "<item>" that are not
+  // elements. E4X/DOM parsers do not expose those as child elements, so raw
+  // regex counting would overstate the historical database.
+  return text
+    .replace(/<!--[\s\S]*?-->/g, '')
+    .replace(/<!\[CDATA\[[\s\S]*?\]\]>/g, '');
+}
+
 function countMatches(text, re) {
   let n = 0;
-  for (const _ of text.matchAll(re)) n += 1;
+  for (const _ of structuralXml(text).matchAll(re)) n += 1;
   return n;
 }
 
@@ -66,10 +75,11 @@ function rootTag(text) {
 
 function structuralSchema(text) {
   const tags = new Map();
+  const source = structuralXml(text);
   const tagRe = /<([A-Za-z_][\w:.-]*)\b([^<>]*?)(?:\/?>)/g;
   const attrRe = /([A-Za-z_][\w:.-]*)\s*=\s*(["'])/g;
 
-  for (const match of text.matchAll(tagRe)) {
+  for (const match of source.matchAll(tagRe)) {
     const tag = match[1];
     const attrs = match[2] ?? '';
     let entry = tags.get(tag);
