@@ -11,6 +11,7 @@ use crate::restaurant::{
 };
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
+use std::sync::{Arc, Mutex};
 
 const PRODUCT_PERSISTENCE_SCHEMA_VERSION: u8 = 1;
 const MAX_STORE_RETRIES: usize = 3;
@@ -297,14 +298,14 @@ pub struct LoadedProductState {
     pub state: ProductAggregate,
 }
 
-pub trait ProductStateStore {
+pub trait ProductStateStore: Send + Sync {
     fn load(
         &self,
         subject: AnewSubject,
     ) -> Result<Option<LoadedProductState>, ProductStateStoreError>;
 
     fn compare_and_swap(
-        &mut self,
+        &self,
         subject: AnewSubject,
         expected_revision: Option<u64>,
         state: ProductAggregate,
@@ -313,7 +314,7 @@ pub trait ProductStateStore {
 
 #[derive(Clone, Debug, Default)]
 pub struct InMemoryProductStateStore {
-    states: BTreeMap<AnewSubject, (u64, ProductAggregate)>,
+    states: Arc<Mutex<BTreeMap<AnewSubject, (u64, ProductAggregate)>>>,
 }
 
 impl ProductStateStore for InMemoryProductStateStore {
@@ -321,8 +322,11 @@ impl ProductStateStore for InMemoryProductStateStore {
         &self,
         subject: AnewSubject,
     ) -> Result<Option<LoadedProductState>, ProductStateStoreError> {
-        Ok(self
+        let states = self
             .states
+            .lock()
+            .map_err(|_| ProductStateStoreError::Unavailable)?;
+        Ok(states
             .get(&subject)
             .map(|(store_revision, state)| LoadedProductState {
                 store_revision: *store_revision,
@@ -331,7 +335,7 @@ impl ProductStateStore for InMemoryProductStateStore {
     }
 
     fn compare_and_swap(
-        &mut self,
+        &self,
         subject: AnewSubject,
         expected_revision: Option<u64>,
         state: ProductAggregate,
@@ -340,7 +344,11 @@ impl ProductStateStore for InMemoryProductStateStore {
             return Err(ProductStateStoreError::Corrupt);
         }
 
-        let current_revision = self.states.get(&subject).map(|(revision, _)| *revision);
+        let mut states = self
+            .states
+            .lock()
+            .map_err(|_| ProductStateStoreError::Unavailable)?;
+        let current_revision = states.get(&subject).map(|(revision, _)| *revision);
         if current_revision != expected_revision {
             return Err(ProductStateStoreError::Conflict);
         }
@@ -349,7 +357,7 @@ impl ProductStateStore for InMemoryProductStateStore {
             .unwrap_or(0)
             .checked_add(1)
             .ok_or(ProductStateStoreError::Corrupt)?;
-        self.states.insert(subject, (next_revision, state));
+        states.insert(subject, (next_revision, state));
         Ok(next_revision)
     }
 }
@@ -381,7 +389,7 @@ where
     }
 
     pub fn apply_player_command(
-        &mut self,
+        &self,
         bearer_token: &str,
         mutation_id: MutationId,
         command: Command,
@@ -411,7 +419,7 @@ where
     }
 
     pub fn place_item(
-        &mut self,
+        &self,
         bearer_token: &str,
         mutation_id: MutationId,
         intent: PlacementIntent,
@@ -614,7 +622,7 @@ mod tests {
 
     #[test]
     fn compare_and_swap_rejects_stale_revision() {
-        let mut store = InMemoryProductStateStore::default();
+        let store = InMemoryProductStateStore::default();
         let subject = subject(7);
         let first = ProductAggregate::new(subject, room());
 
@@ -631,8 +639,28 @@ mod tests {
     }
 
     #[test]
+    fn cloned_in_memory_store_shares_atomic_revision_state() {
+        let store = InMemoryProductStateStore::default();
+        let cloned = store.clone();
+        let subject = subject(7);
+        let aggregate = ProductAggregate::new(subject, room());
+
+        assert_eq!(
+            store
+                .compare_and_swap(subject, None, aggregate.clone())
+                .unwrap(),
+            1
+        );
+        assert_eq!(
+            cloned.compare_and_swap(subject, None, aggregate),
+            Err(ProductStateStoreError::Conflict)
+        );
+        assert_eq!(cloned.load(subject).unwrap().unwrap().store_revision, 1);
+    }
+
+    #[test]
     fn invalid_platform_session_cannot_read_or_mutate_product_state() {
-        let mut service = service();
+        let service = service();
 
         assert_eq!(
             service.load_restaurant("bad"),
@@ -653,7 +681,7 @@ mod tests {
 
     #[test]
     fn placement_requires_owned_inventory() {
-        let mut service = service();
+        let service = service();
 
         assert_eq!(
             service
@@ -677,7 +705,7 @@ mod tests {
 
     #[test]
     fn authenticated_owned_item_placement_is_idempotent() {
-        let mut service = service();
+        let service = service();
         service
             .apply_player_command(
                 "valid-product-session",
@@ -712,7 +740,7 @@ mod tests {
 
     #[test]
     fn owned_quantity_limits_simultaneous_placements() {
-        let mut service = service();
+        let service = service();
         service
             .apply_player_command(
                 "valid-product-session",
