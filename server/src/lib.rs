@@ -8,6 +8,7 @@ pub mod domain;
 pub mod placement;
 pub mod platform;
 pub mod restaurant;
+pub mod service;
 
 pub use domain::{
     AuthorityError, Command, Inventory, MutationId, MutationOutcome, PlayerState, Wallet,
@@ -26,4 +27,9 @@ pub use restaurant::{
     ItemPlacementDefinition, PLACEMENT_CATALOG_MAGIC, PlacedItem, PlacementCatalog,
     PlacementCatalogLoadError, PlacementIntent, RestaurantAuthorityError, RestaurantSnapshot,
     RestaurantState,
+};
+
+pub use service::{
+    InMemoryProductStateStore, PlacementMutationOutcome, ProductAggregate,
+    ProductServiceError, ProductStateStore, ProductStateStoreError, RestaurantProductService,
 };
