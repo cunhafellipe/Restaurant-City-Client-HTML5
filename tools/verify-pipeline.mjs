@@ -92,5 +92,5 @@ export function verifyPipeline(swfNames) {
 
 if (process.argv[1] && import.meta.url === new URL(`file:///${process.argv[1].replace(/\\/g, '/')}`).href) {
   const names = process.argv.slice(2);
-  verifyPipeline(names.length > 0 ? names : ['ingredient_asset']);
+  verifyPipeline(names.length > 0 ? names : ATLAS_SWFS);
 }
