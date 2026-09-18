@@ -170,6 +170,15 @@ for (const group of database.groups ?? []) {
     ids.set(id, `${group.name}/${item.attributes?.name ?? '<unnamed>'}`);
     definitions.push({
       itemId: id,
+      group: group.name,
+      name:
+        typeof item.attributes?.name === 'string'
+          ? item.attributes.name
+          : null,
+      className:
+        typeof item.attributes?.className === 'string'
+          ? item.attributes.className
+          : null,
       sizeX,
       sizeY,
       rotationCount: resolveRotationCount(symbolIndex, item, group.name),
@@ -231,6 +240,16 @@ const meta = {
   surfaceAndStackableDefinitions: definitions.filter(
     (entry) => entry.surface && entry.stackable,
   ).length,
+  definitionSources: definitions.map((entry) => ({
+    itemId: entry.itemId,
+    group: entry.group,
+    name: entry.name,
+    className: entry.className,
+    sizeX: entry.sizeX,
+    sizeY: entry.sizeY,
+    surface: entry.surface,
+    stackable: entry.stackable,
+  })),
   unresolvedSurfaceDefinitions,
   unresolvedStackableDefinitions,
   generatedAtBuildTime: true,
