@@ -243,6 +243,8 @@ fn map_service_error(error: ProductServiceError) -> PublicProductError {
         ProductServiceError::Store(crate::service::ProductStateStoreError::Corrupt) => {
             PublicProductError::Internal
         }
+        ProductServiceError::Store(crate::service::ProductStateStoreError::Conflict)
+        | ProductServiceError::StoreConflict => PublicProductError::Conflict,
         ProductServiceError::SubjectMismatch => PublicProductError::Forbidden,
         ProductServiceError::ItemUnavailable { .. } => PublicProductError::Conflict,
         ProductServiceError::PlayerAuthority(_) => PublicProductError::Conflict,
