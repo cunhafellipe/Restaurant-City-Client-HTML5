@@ -8,9 +8,10 @@
 use crate::domain::MutationId;
 use crate::placement::TilePoint;
 use crate::platform::{PlatformSessionError, PlatformSessionVerifier};
-use crate::restaurant::{PlacedItem, PlacementIntent, RestaurantSnapshot};
+use crate::restaurant::{PlacedItem, PlacementIntent};
 use crate::service::{
-    PlacementMutationOutcome, ProductServiceError, ProductStateStore, RestaurantProductService,
+    InventoryAvailability, PlacementMutationOutcome, ProductServiceError, ProductStateStore,
+    RestaurantProductService, RestaurantProductSnapshot,
 };
 use serde::{Deserialize, Serialize};
 
@@ -88,11 +89,20 @@ pub struct PlacedItemResponse {
     pub room_index: u8,
 }
 
+#[derive(Clone, Copy, Debug, Serialize, Eq, PartialEq)]
+pub struct InventoryAvailabilityResponse {
+    pub item_id: u32,
+    pub owned: u32,
+    pub placed: u32,
+    pub available: u32,
+}
+
 #[derive(Clone, Debug, Serialize, Eq, PartialEq)]
 pub struct RestaurantLayoutResponse {
     pub room: RoomResponse,
     pub next_instance_id: u64,
     pub items: Vec<PlacedItemResponse>,
+    pub inventory: Vec<InventoryAvailabilityResponse>,
 }
 
 #[derive(Clone, Debug, Serialize, Eq, PartialEq)]
@@ -189,20 +199,37 @@ fn mutation_id(value: Option<&str>) -> Result<MutationId, PublicProductError> {
     MutationId::new(value.to_owned()).map_err(|_| PublicProductError::InvalidRequest)
 }
 
-fn layout_response(snapshot: RestaurantSnapshot) -> RestaurantLayoutResponse {
+fn layout_response(snapshot: RestaurantProductSnapshot) -> RestaurantLayoutResponse {
     RestaurantLayoutResponse {
         room: RoomResponse {
-            inside_x: snapshot.room.inside_x,
-            inside_y: snapshot.room.inside_y,
-            outside_x: snapshot.room.outside_x,
-            outside_y: snapshot.room.outside_y,
+            inside_x: snapshot.restaurant.room.inside_x,
+            inside_y: snapshot.restaurant.room.inside_y,
+            outside_x: snapshot.restaurant.room.outside_x,
+            outside_y: snapshot.restaurant.room.outside_y,
         },
-        next_instance_id: snapshot.next_instance_id,
+        next_instance_id: snapshot.restaurant.next_instance_id,
         items: snapshot
+            .restaurant
             .items
             .into_iter()
             .map(placed_item_response)
             .collect(),
+        inventory: snapshot
+            .inventory
+            .into_iter()
+            .map(inventory_availability_response)
+            .collect(),
+    }
+}
+
+fn inventory_availability_response(
+    item: InventoryAvailability,
+) -> InventoryAvailabilityResponse {
+    InventoryAvailabilityResponse {
+        item_id: item.item_id,
+        owned: item.owned,
+        placed: item.placed,
+        available: item.available,
     }
 }
 
@@ -333,6 +360,30 @@ mod tests {
             Err(PublicProductError::Unauthenticated)
         );
         assert!(handle_load_restaurant(&service, context(Some("session"), None)).is_ok());
+    }
+
+    #[test]
+    fn load_projects_authoritative_inventory_availability() {
+        let service = service();
+        service
+            .apply_player_command(
+                "session",
+                MutationId::new("grant-1".to_owned()).unwrap(),
+                Command::GrantInventory {
+                    item_id: 10,
+                    quantity: 2,
+                },
+            )
+            .unwrap();
+
+        let body = handle_load_restaurant(&service, context(Some("session"), None)).unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+        assert_eq!(json["inventory"].as_array().unwrap().len(), 1);
+        assert_eq!(json["inventory"][0]["item_id"], 10);
+        assert_eq!(json["inventory"][0]["owned"], 2);
+        assert_eq!(json["inventory"][0]["placed"], 0);
+        assert_eq!(json["inventory"][0]["available"], 2);
     }
 
     #[test]
