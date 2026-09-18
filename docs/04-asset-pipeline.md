@@ -32,7 +32,7 @@ them.
 
 - **Sprites:** PNG atlases + Phaser multi-atlas JSON for M0 (lossless PNG
   tier of ADR-0004; WebP tier is a later pipeline upgrade), one or more bounded atlas pages per source SWF per scale tier. Pages are
-  deterministic, max 2048x4096 in the current PNG tier, and consumed as one
+  deterministic, max 4096x4096 in the current PNG tier, and consumed as one
   Phaser multi-atlas.
 - **Audio:** ogg/webm + mp3 dual-format with a per-track manifest
   (Web Audio via Phaser). Export from `sound_asset.swf`'s embedded MP3s.
