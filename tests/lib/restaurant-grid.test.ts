@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   decodeOwnedItemData,
   encodeOwnedItemData,
+  footprintsOverlap,
   isItemOutOfBounds,
   projectTile,
   rotateFootprint,
@@ -47,6 +48,33 @@ describe('Restaurant City grid contract', () => {
       sizeX: 3,
       sizeY: 1,
     });
+  });
+
+  it('matches ordinary rectangle overlap used by authoritative placement', () => {
+    expect(
+      footprintsOverlap(
+        { x: 2, y: 2 },
+        { sizeX: 2, sizeY: 1 },
+        { x: 3, y: 2 },
+        { sizeX: 1, sizeY: 1 },
+      ),
+    ).toBe(true);
+    expect(
+      footprintsOverlap(
+        { x: 2, y: 2 },
+        { sizeX: 2, sizeY: 1 },
+        { x: 4, y: 2 },
+        { sizeX: 1, sizeY: 1 },
+      ),
+    ).toBe(false);
+    expect(
+      footprintsOverlap(
+        { x: 2, y: 2 },
+        { sizeX: 0, sizeY: 1 },
+        { x: 2, y: 2 },
+        { sizeX: 1, sizeY: 1 },
+      ),
+    ).toBe(false);
   });
 
   it('reserves row and column zero for ordinary room items', () => {
