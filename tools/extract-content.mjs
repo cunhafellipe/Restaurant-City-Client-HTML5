@@ -64,6 +64,38 @@ function rootTag(text) {
   return withoutDecl.match(/<([A-Za-z_][\w:.-]*)\b/)?.[1] ?? null;
 }
 
+function structuralSchema(text) {
+  const tags = new Map();
+  const tagRe = /<([A-Za-z_][\w:.-]*)\b([^<>]*?)(?:\/?>)/g;
+  const attrRe = /([A-Za-z_][\w:.-]*)\s*=\s*(["'])/g;
+
+  for (const match of text.matchAll(tagRe)) {
+    const tag = match[1];
+    const attrs = match[2] ?? '';
+    let entry = tags.get(tag);
+    if (!entry) {
+      entry = { count: 0, attributes: new Set() };
+      tags.set(tag, entry);
+    }
+    entry.count += 1;
+    for (const attr of attrs.matchAll(attrRe)) {
+      entry.attributes.add(attr[1]);
+    }
+  }
+
+  return Object.fromEntries(
+    [...tags.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([tag, entry]) => [
+        tag,
+        {
+          count: entry.count,
+          attributes: [...entry.attributes].sort(),
+        },
+      ]),
+  );
+}
+
 export function extractContent(sourceRoot = REPO) {
   fs.mkdirSync(DECODED, { recursive: true });
   const files = [];
@@ -97,6 +129,7 @@ export function extractContent(sourceRoot = REPO) {
       compressedSha256: sha256(raw),
       decodedSha256: sha256(decoded.bytes),
       root: rootTag(text),
+      schema: structuralSchema(text),
       structure: {
         groups: countMatches(text, /<group\b/g),
         items: countMatches(text, /<item\b/g),
