@@ -1,3 +1,4 @@
+import { TILE_HEIGHT_HALF, TILE_WIDTH_HALF, type Footprint } from '../core/restaurantGrid';
 import type { RestaurantItemDefinition } from './items';
 
 const SYSTEM_ONLY_GROUPS = new Set(['Visit', 'OutsideAreaSize']);
@@ -155,4 +156,37 @@ export function frameForRestaurantItemRotation(
     );
   }
   return visual.frames[rotation]!;
+}
+
+export interface HistoricalFrameOffset {
+  readonly x: number;
+  readonly y: number;
+}
+
+/**
+ * FFDec exports the rendered sprite bounds as a cropped PNG. The historical
+ * RoomItem constructor derives its footprint from bounds.right/40 and
+ * bounds.bottom/20. Inverting that recovered relationship restores the Flash
+ * local origin from a frame's raster dimensions without inventing per-item
+ * anchors.
+ */
+export function historicalRoomItemFrameOffset(
+  footprint: Footprint,
+  frameWidth: number,
+  frameHeight: number,
+): HistoricalFrameOffset {
+  if (
+    !Number.isFinite(frameWidth) ||
+    !Number.isFinite(frameHeight) ||
+    frameWidth <= 0 ||
+    frameHeight <= 0
+  ) {
+    throw new Error('Restaurant City frame dimensions must be positive');
+  }
+  return {
+    x: footprint.sizeX * TILE_WIDTH_HALF - frameWidth,
+    y:
+      (footprint.sizeX + footprint.sizeY) * TILE_HEIGHT_HALF -
+      frameHeight,
+  };
 }
