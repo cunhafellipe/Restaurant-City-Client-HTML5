@@ -6,6 +6,7 @@
 
 pub mod domain;
 pub mod http;
+pub mod persistence;
 pub mod placement;
 pub mod platform;
 pub mod restaurant;
@@ -31,9 +32,11 @@ pub use restaurant::{
 };
 
 pub use service::{
-    InMemoryProductStateStore, PlacementMutationOutcome, ProductAggregate, ProductServiceError,
-    ProductStateStore, ProductStateStoreError, RestaurantProductService,
+    InMemoryProductStateStore, LoadedProductState, PlacementMutationOutcome, ProductAggregate,
+    ProductServiceError, ProductStateStore, ProductStateStoreError, RestaurantProductService,
 };
+
+pub use persistence::RedbProductStateStore;
 
 pub use http::{
     PlacedItemResponse, PlacementResponse, ProductHttpContext, PublicProductError,
