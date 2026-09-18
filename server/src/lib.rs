@@ -5,6 +5,7 @@
 //! ANEWON Platform, ANEWON Runtime, and compatibility adapters respectively.
 
 pub mod domain;
+pub mod http;
 pub mod placement;
 pub mod platform;
 pub mod restaurant;
@@ -32,4 +33,9 @@ pub use restaurant::{
 pub use service::{
     InMemoryProductStateStore, PlacementMutationOutcome, ProductAggregate, ProductServiceError,
     ProductStateStore, ProductStateStoreError, RestaurantProductService,
+};
+
+pub use http::{
+    PlacementResponse, PlacedItemResponse, ProductHttpContext, PublicProductError,
+    RestaurantLayoutResponse, RoomResponse, handle_load_restaurant, handle_place_item,
 };
