@@ -802,7 +802,7 @@ mod tests {
     }
 
     #[test]
-    fn transform_uses_historical_self_at_top_rule_and_preserves_stack_order() {
+    fn transform_readds_item_at_top_in_historical_item_map_order() {
         let catalog = stack_catalog();
         let mut state = RestaurantState::new(room());
         let surface = state
@@ -825,7 +825,7 @@ mod tests {
                 },
             )
             .unwrap();
-        let top = state
+        let previous_top = state
             .place(
                 &catalog,
                 PlacementIntent {
@@ -836,21 +836,26 @@ mod tests {
             )
             .unwrap();
 
+        // The candidate is stackable and the current top is itself a surface,
+        // so historical isValid() permits the edit even while the candidate
+        // starts below that top entry. Re-adding it makes it the new top.
+        let transformed = state
+            .transform(&catalog, first.instance_id, TilePoint { x: 2, y: 2 }, 0)
+            .unwrap();
+        assert_eq!(transformed, first);
+        assert_eq!(
+            state.snapshot().items,
+            vec![surface, previous_top, first]
+        );
+
+        // Once it is top, the recovered self-at-top quirk looks through it to
+        // the previous surface and remains valid.
         assert_eq!(
             state
                 .transform(&catalog, first.instance_id, TilePoint { x: 2, y: 2 }, 0)
-                .unwrap_err(),
-            RestaurantAuthorityError::Collision {
-                item_id: 50,
-                with_instance_id: top.instance_id,
-            }
+                .unwrap(),
+            first
         );
-
-        let transformed = state
-            .transform(&catalog, top.instance_id, TilePoint { x: 2, y: 2 }, 0)
-            .unwrap();
-        assert_eq!(transformed, top);
-        assert_eq!(state.snapshot().items, vec![surface, first, top]);
     }
 
     #[test]
