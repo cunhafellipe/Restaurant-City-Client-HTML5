@@ -23,6 +23,6 @@ pub use placement::{
 };
 
 pub use restaurant::{
-    ItemPlacementDefinition, PlacementCatalog, PlacementIntent, PlacedItem,
+    ItemPlacementDefinition, PlacedItem, PlacementCatalog, PlacementIntent,
     RestaurantAuthorityError, RestaurantSnapshot, RestaurantState,
 };
