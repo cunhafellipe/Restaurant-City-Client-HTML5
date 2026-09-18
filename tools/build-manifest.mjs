@@ -5,7 +5,7 @@
  * per-SWF coverage report. Reads work/<swf>/extract.json plus the atlas
  * JSON produced by build-atlases.
  *
- *   node tools/build-manifest.mjs [swfName ...]   (default: ingredient_asset)
+ *   node tools/build-manifest.mjs [swfName ...]   (default: all visual asset SWFs)
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -85,5 +85,5 @@ export function buildManifest(swfNames) {
 
 if (process.argv[1] && import.meta.url === new URL(`file:///${process.argv[1].replace(/\\/g, '/')}`).href) {
   const names = process.argv.slice(2);
-  buildManifest(names.length > 0 ? names : ['ingredient_asset']);
+  buildManifest(names.length > 0 ? names : ATLAS_SWFS);
 }
