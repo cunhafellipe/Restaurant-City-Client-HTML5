@@ -123,6 +123,59 @@ function leafClassName(value) {
   return parts.at(-1) || null;
 }
 
+function editDistance(a, b) {
+  const left = normalize(a);
+  const right = normalize(b);
+  const previous = Array.from({ length: right.length + 1 }, (_, index) => index);
+
+  for (let i = 1; i <= left.length; i += 1) {
+    let diagonal = previous[0];
+    previous[0] = i;
+    for (let j = 1; j <= right.length; j += 1) {
+      const up = previous[j];
+      const cost = left[i - 1] === right[j - 1] ? 0 : 1;
+      previous[j] = Math.min(previous[j] + 1, previous[j - 1] + 1, diagonal + cost);
+      diagonal = up;
+    }
+  }
+  return previous[right.length];
+}
+
+function suggestSymbols(index, values, limit = 12) {
+  const targets = [...new Set(values.map(normalize).filter(Boolean))];
+  if (targets.length === 0) return [];
+
+  return [...index.entries()]
+    .map(([symbol, atlasMap]) => {
+      const distances = targets.map((target) => ({
+        target,
+        distance: editDistance(target, symbol),
+        contains: target.includes(symbol) || symbol.includes(target),
+      }));
+      distances.sort(
+        (a, b) =>
+          Number(b.contains) - Number(a.contains) ||
+          a.distance - b.distance ||
+          a.target.localeCompare(b.target),
+      );
+      const best = distances[0];
+      return {
+        symbol,
+        target: best.target,
+        distance: best.distance,
+        contains: best.contains,
+        atlases: [...atlasMap.keys()].sort(),
+      };
+    })
+    .sort(
+      (a, b) =>
+        Number(b.contains) - Number(a.contains) ||
+        a.distance - b.distance ||
+        a.symbol.localeCompare(b.symbol),
+    )
+    .slice(0, limit);
+}
+
 requireFile(MANIFEST_FILE, 'runtime manifest');
 requireFile(SERVER_CATALOG, 'trusted placement catalog');
 
@@ -192,6 +245,10 @@ for (const group of database.groups) {
           : candidates.length === 0
             ? 'missing'
             : 'ambiguous',
+      suggestions:
+        candidates.length === 0 && group.name !== 'OutsideAreaSize'
+          ? suggestSymbols(bySymbol, [className, leafClassName(className), hash, itemName])
+          : [],
     });
   }
 }
