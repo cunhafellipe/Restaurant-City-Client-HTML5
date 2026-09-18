@@ -272,22 +272,25 @@ function validateMutationId(value: string): void {
 }
 
 function validatePlacementCommand(command: PlacementCommand): void {
-  if (!isUInt32(command.itemId)) {
+  if (!isUInt32(command.itemId) || !isValidTransformCommand(command)) {
     throw new Error('Invalid Restaurant City placement command');
   }
-  validateTransformCommand(command);
 }
 
 function validateTransformCommand(command: TransformCommand): void {
-  if (
-    !Number.isSafeInteger(command.tileX) ||
-    !Number.isSafeInteger(command.tileY) ||
-    !Number.isInteger(command.rotation) ||
-    command.rotation < 0 ||
-    command.rotation > MAX_HISTORICAL_ROTATION_INDEX
-  ) {
+  if (!isValidTransformCommand(command)) {
     throw new Error('Invalid Restaurant City transform command');
   }
+}
+
+function isValidTransformCommand(command: TransformCommand): boolean {
+  return (
+    Number.isSafeInteger(command.tileX) &&
+    Number.isSafeInteger(command.tileY) &&
+    Number.isInteger(command.rotation) &&
+    command.rotation >= 0 &&
+    command.rotation <= MAX_HISTORICAL_ROTATION_INDEX
+  );
 }
 
 function validateInstanceId(instanceId: number): void {
