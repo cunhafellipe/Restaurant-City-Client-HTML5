@@ -13,13 +13,28 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 
-const PRODUCT_PERSISTENCE_SCHEMA_VERSION: u8 = 1;
+const PRODUCT_PERSISTENCE_SCHEMA_VERSION: u8 = 2;
+const LEGACY_PRODUCT_PERSISTENCE_SCHEMA_VERSION: u8 = 1;
 const MAX_STORE_RETRIES: usize = 3;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum PlacementMutationOutcome {
     Applied(PlacedItem),
     Duplicate(PlacedItem),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum RestaurantMutationOperation {
+    Place,
+    Transform,
+    Remove,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct RestaurantMutationRecord {
+    sequence: u64,
+    operation: RestaurantMutationOperation,
+    item: PlacedItem,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -40,12 +55,28 @@ pub struct RestaurantProductSnapshot {
 pub struct ProductAggregate {
     player: PlayerState,
     restaurant: RestaurantState,
-    placement_mutations: BTreeMap<MutationId, PlacedItem>,
+    restaurant_mutations: BTreeMap<MutationId, RestaurantMutationRecord>,
+    next_restaurant_mutation_sequence: u64,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct PersistedSchemaHeader {
+    schema_version: u8,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct PersistedAggregate {
+    schema_version: u8,
+    player: PlayerPersistenceSnapshot,
+    restaurant: PersistedRestaurant,
+    next_restaurant_mutation_sequence: u64,
+    restaurant_mutations: Vec<PersistedRestaurantMutation>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct LegacyPersistedAggregate {
     schema_version: u8,
     player: PlayerPersistenceSnapshot,
     restaurant: PersistedRestaurant,
@@ -80,6 +111,23 @@ struct PersistedPlacedItem {
     room_index: u8,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum PersistedRestaurantMutationOperation {
+    Place,
+    Transform,
+    Remove,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PersistedRestaurantMutation {
+    mutation_id: String,
+    sequence: u64,
+    operation: PersistedRestaurantMutationOperation,
+    item: PersistedPlacedItem,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct PersistedPlacementMutation {
@@ -87,12 +135,33 @@ struct PersistedPlacementMutation {
     item: PersistedPlacedItem,
 }
 
+impl From<RestaurantMutationOperation> for PersistedRestaurantMutationOperation {
+    fn from(value: RestaurantMutationOperation) -> Self {
+        match value {
+            RestaurantMutationOperation::Place => Self::Place,
+            RestaurantMutationOperation::Transform => Self::Transform,
+            RestaurantMutationOperation::Remove => Self::Remove,
+        }
+    }
+}
+
+impl From<PersistedRestaurantMutationOperation> for RestaurantMutationOperation {
+    fn from(value: PersistedRestaurantMutationOperation) -> Self {
+        match value {
+            PersistedRestaurantMutationOperation::Place => Self::Place,
+            PersistedRestaurantMutationOperation::Transform => Self::Transform,
+            PersistedRestaurantMutationOperation::Remove => Self::Remove,
+        }
+    }
+}
+
 impl ProductAggregate {
     pub fn new(subject: AnewSubject, room: RoomDimensions) -> Self {
         Self {
             player: PlayerState::new(subject),
             restaurant: RestaurantState::new(room),
-            placement_mutations: BTreeMap::new(),
+            restaurant_mutations: BTreeMap::new(),
+            next_restaurant_mutation_sequence: 1,
         }
     }
 
@@ -122,12 +191,15 @@ impl ProductAggregate {
                     .map(PersistedPlacedItem::from)
                     .collect(),
             },
-            placement_mutations: self
-                .placement_mutations
+            next_restaurant_mutation_sequence: self.next_restaurant_mutation_sequence,
+            restaurant_mutations: self
+                .restaurant_mutations
                 .iter()
-                .map(|(mutation_id, item)| PersistedPlacementMutation {
+                .map(|(mutation_id, record)| PersistedRestaurantMutation {
                     mutation_id: mutation_id.as_str().to_owned(),
-                    item: PersistedPlacedItem::from(*item),
+                    sequence: record.sequence,
+                    operation: record.operation.into(),
+                    item: PersistedPlacedItem::from(record.item),
                 })
                 .collect(),
         };
@@ -139,21 +211,36 @@ impl ProductAggregate {
         catalog: &PlacementCatalog,
         bytes: &[u8],
     ) -> Result<Self, ProductStateStoreError> {
-        let persisted: PersistedAggregate =
+        let header: PersistedSchemaHeader =
             serde_json::from_slice(bytes).map_err(|_| ProductStateStoreError::Corrupt)?;
 
-        if persisted.schema_version != PRODUCT_PERSISTENCE_SCHEMA_VERSION {
-            return Err(ProductStateStoreError::Corrupt);
+        match header.schema_version {
+            LEGACY_PRODUCT_PERSISTENCE_SCHEMA_VERSION => {
+                let persisted: LegacyPersistedAggregate =
+                    serde_json::from_slice(bytes).map_err(|_| ProductStateStoreError::Corrupt)?;
+                Self::decode_legacy_persisted(catalog, persisted)
+            }
+            PRODUCT_PERSISTENCE_SCHEMA_VERSION => {
+                let persisted: PersistedAggregate =
+                    serde_json::from_slice(bytes).map_err(|_| ProductStateStoreError::Corrupt)?;
+                Self::decode_current_persisted(catalog, persisted)
+            }
+            _ => Err(ProductStateStoreError::Corrupt),
         }
+    }
 
-        let player = PlayerState::from_persistence_snapshot(persisted.player)
+    fn decode_player_and_restaurant(
+        catalog: &PlacementCatalog,
+        player_snapshot: PlayerPersistenceSnapshot,
+        persisted_restaurant: PersistedRestaurant,
+    ) -> Result<(PlayerState, RestaurantState), ProductStateStoreError> {
+        let player = PlayerState::from_persistence_snapshot(player_snapshot)
             .map_err(|_| ProductStateStoreError::Corrupt)?;
 
         let snapshot = RestaurantSnapshot {
-            room: persisted.restaurant.room.into(),
-            next_instance_id: persisted.restaurant.next_instance_id,
-            items: persisted
-                .restaurant
+            room: persisted_restaurant.room.into(),
+            next_instance_id: persisted_restaurant.next_instance_id,
+            items: persisted_restaurant
                 .items
                 .into_iter()
                 .map(PlacedItem::from)
@@ -162,26 +249,49 @@ impl ProductAggregate {
         let restaurant = RestaurantState::from_snapshot(catalog, snapshot)
             .map_err(|_| ProductStateStoreError::Corrupt)?;
 
-        let authoritative_items: BTreeMap<_, _> = restaurant
-            .items()
-            .map(|item| (item.instance_id, *item))
-            .collect();
+        Self::validate_inventory_against_restaurant(&player, &restaurant)?;
+        Ok((player, restaurant))
+    }
 
+    fn validate_inventory_against_restaurant(
+        player: &PlayerState,
+        restaurant: &RestaurantState,
+    ) -> Result<(), ProductStateStoreError> {
         let mut placed_counts = BTreeMap::<u32, u32>::new();
-        for item in authoritative_items.values() {
+        for item in restaurant.items() {
             let count = placed_counts.entry(item.item_id).or_default();
             *count = count
                 .checked_add(1)
                 .ok_or(ProductStateStoreError::Corrupt)?;
         }
+
         if placed_counts
             .iter()
             .any(|(item_id, placed)| player.inventory().quantity(*item_id) < *placed)
         {
             return Err(ProductStateStoreError::Corrupt);
         }
+        Ok(())
+    }
 
-        let mut placement_mutations = BTreeMap::new();
+    fn decode_legacy_persisted(
+        catalog: &PlacementCatalog,
+        persisted: LegacyPersistedAggregate,
+    ) -> Result<Self, ProductStateStoreError> {
+        if persisted.schema_version != LEGACY_PRODUCT_PERSISTENCE_SCHEMA_VERSION {
+            return Err(ProductStateStoreError::Corrupt);
+        }
+
+        let (player, restaurant) =
+            Self::decode_player_and_restaurant(catalog, persisted.player, persisted.restaurant)?;
+        let authoritative_items: BTreeMap<_, _> = restaurant
+            .items()
+            .map(|item| (item.instance_id, *item))
+            .collect();
+
+        let mut seen_mutation_ids = BTreeMap::<MutationId, ()>::new();
+        let mut seen_instances = BTreeMap::<u64, ()>::new();
+        let mut legacy_records = Vec::new();
 
         for entry in persisted.placement_mutations {
             let mutation_id =
@@ -189,20 +299,146 @@ impl ProductAggregate {
             let placed = PlacedItem::from(entry.item);
 
             if authoritative_items.get(&placed.instance_id) != Some(&placed)
-                || placement_mutations.insert(mutation_id, placed).is_some()
+                || seen_mutation_ids.insert(mutation_id.clone(), ()).is_some()
+                || seen_instances.insert(placed.instance_id, ()).is_some()
             {
+                return Err(ProductStateStoreError::Corrupt);
+            }
+            legacy_records.push((mutation_id, placed));
+        }
+
+        if legacy_records.len() != authoritative_items.len() {
+            return Err(ProductStateStoreError::Corrupt);
+        }
+
+        legacy_records.sort_by_key(|(_, item)| item.instance_id);
+        let mut restaurant_mutations = BTreeMap::new();
+        for (index, (mutation_id, item)) in legacy_records.into_iter().enumerate() {
+            let sequence = u64::try_from(index)
+                .map_err(|_| ProductStateStoreError::Corrupt)?
+                .checked_add(1)
+                .ok_or(ProductStateStoreError::Corrupt)?;
+            restaurant_mutations.insert(
+                mutation_id,
+                RestaurantMutationRecord {
+                    sequence,
+                    operation: RestaurantMutationOperation::Place,
+                    item,
+                },
+            );
+        }
+
+        let next_restaurant_mutation_sequence = u64::try_from(restaurant_mutations.len())
+            .map_err(|_| ProductStateStoreError::Corrupt)?
+            .checked_add(1)
+            .ok_or(ProductStateStoreError::Corrupt)?;
+
+        Ok(Self {
+            player,
+            restaurant,
+            restaurant_mutations,
+            next_restaurant_mutation_sequence,
+        })
+    }
+
+    fn decode_current_persisted(
+        catalog: &PlacementCatalog,
+        persisted: PersistedAggregate,
+    ) -> Result<Self, ProductStateStoreError> {
+        if persisted.schema_version != PRODUCT_PERSISTENCE_SCHEMA_VERSION
+            || persisted.next_restaurant_mutation_sequence == 0
+        {
+            return Err(ProductStateStoreError::Corrupt);
+        }
+
+        let (player, restaurant) =
+            Self::decode_player_and_restaurant(catalog, persisted.player, persisted.restaurant)?;
+        let mut restaurant_mutations = BTreeMap::new();
+        let mut ordered = Vec::new();
+        let mut seen_sequences = BTreeMap::<u64, ()>::new();
+
+        for entry in persisted.restaurant_mutations {
+            let mutation_id =
+                MutationId::new(entry.mutation_id).map_err(|_| ProductStateStoreError::Corrupt)?;
+            if entry.sequence == 0
+                || seen_sequences.insert(entry.sequence, ()).is_some()
+            {
+                return Err(ProductStateStoreError::Corrupt);
+            }
+
+            let record = RestaurantMutationRecord {
+                sequence: entry.sequence,
+                operation: entry.operation.into(),
+                item: PlacedItem::from(entry.item),
+            };
+            if restaurant_mutations
+                .insert(mutation_id.clone(), record)
+                .is_some()
+            {
+                return Err(ProductStateStoreError::Corrupt);
+            }
+            ordered.push((mutation_id, record));
+        }
+
+        ordered.sort_by_key(|(_, record)| record.sequence);
+        for (index, (_, record)) in ordered.iter().enumerate() {
+            let expected = u64::try_from(index)
+                .map_err(|_| ProductStateStoreError::Corrupt)?
+                .checked_add(1)
+                .ok_or(ProductStateStoreError::Corrupt)?;
+            if record.sequence != expected {
                 return Err(ProductStateStoreError::Corrupt);
             }
         }
 
-        if placement_mutations.len() != authoritative_items.len() {
+        let expected_next = u64::try_from(ordered.len())
+            .map_err(|_| ProductStateStoreError::Corrupt)?
+            .checked_add(1)
+            .ok_or(ProductStateStoreError::Corrupt)?;
+        if persisted.next_restaurant_mutation_sequence != expected_next {
+            return Err(ProductStateStoreError::Corrupt);
+        }
+
+        let mut replay = RestaurantState::new(restaurant.room());
+        for (_, record) in &ordered {
+            let replayed = match record.operation {
+                RestaurantMutationOperation::Place => replay
+                    .place(
+                        catalog,
+                        PlacementIntent {
+                            item_id: record.item.item_id,
+                            tile: record.item.tile,
+                            rotation: record.item.rotation,
+                        },
+                    )
+                    .map_err(|_| ProductStateStoreError::Corrupt)?,
+                RestaurantMutationOperation::Transform => replay
+                    .transform(
+                        catalog,
+                        record.item.instance_id,
+                        record.item.tile,
+                        record.item.rotation,
+                    )
+                    .map_err(|_| ProductStateStoreError::Corrupt)?,
+                RestaurantMutationOperation::Remove => replay
+                    .remove(record.item.instance_id)
+                    .map_err(|_| ProductStateStoreError::Corrupt)?,
+            };
+
+            if replayed != record.item {
+                return Err(ProductStateStoreError::Corrupt);
+            }
+        }
+
+        if replay.snapshot() != restaurant.snapshot() {
             return Err(ProductStateStoreError::Corrupt);
         }
 
         Ok(Self {
             player,
             restaurant,
-            placement_mutations,
+            restaurant_mutations,
+            next_restaurant_mutation_sequence: persisted.next_restaurant_mutation_sequence,
         })
     }
 
