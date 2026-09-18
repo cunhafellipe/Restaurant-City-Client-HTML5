@@ -5,18 +5,18 @@
 //! ANEWON Platform, ANEWON Runtime, and compatibility adapters respectively.
 
 pub mod domain;
-pub mod platform;
 pub mod placement;
+pub mod platform;
 
 pub use domain::{
     AuthorityError, Command, Inventory, MutationId, MutationOutcome, PlayerState, Wallet,
 };
 pub use platform::{
-    AnewSubject, PlatformSessionError, PlatformSessionVerifier, ProductSessionId, PRODUCT_ID,
+    AnewSubject, PRODUCT_ID, PlatformSessionError, PlatformSessionVerifier, ProductSessionId,
     VerifiedProductSession,
 };
 
 pub use placement::{
-    Footprint, PlacementFlags, PlacementShape, RoomDimensions, ScreenPoint, StructuralPlacement,
-    TilePoint, ROOM_INDEX_MAIN, ROOM_INDEX_OUTSIDE_AREA,
+    Footprint, PlacementFlags, PlacementShape, ROOM_INDEX_MAIN, ROOM_INDEX_OUTSIDE_AREA,
+    RoomDimensions, ScreenPoint, StructuralPlacement, TilePoint,
 };
