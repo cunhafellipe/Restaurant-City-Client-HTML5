@@ -1,0 +1,101 @@
+{
+  "schemaVersion": 1,
+  "baseline": "0.9.143a",
+  "source": {
+    "canonicalArchiveSha256": "4493be9bc4c2f87ef80ca7afa5321e12bb94a7ec6ed2f0a673b4d48b19170ef4",
+    "indoorAssetSha256": "12137686c87481c1ec76683555ed8c17065e25481476cb1d21b990c34f46acf5",
+    "canonicalActionScriptCommit": "d552cfa4767fe4fb5b7899493c30bfb375afc2c1"
+  },
+  "evidence": {
+    "r22": {
+      "runId": 35387449390,
+      "artifactId": 10564083192,
+      "artifactSha256": "fac1adfe4b64e441d7e9c76fe45ab414545bf25d144468bcc504d42cd9678244",
+      "conclusion": "WHITE_TABLE_SUBITEM_TIMELINE_OFFSETS_RECOVERED"
+    },
+    "r23": {
+      "runId": 35387619753,
+      "artifactId": 10564392963,
+      "artifactSha256": "8d97f990eab306c556377a8395b90cbbaffd0af31a731ba7193cd45236730736",
+      "conclusion": "SENTINEL_ROOMITEM_BOUNDS_RECOVERED"
+    }
+  },
+  "constructor": {
+    "tileWidthHalfPx": 40,
+    "tileHeightPx": 40,
+    "sizeX": "max(1, round(bounds.right / 40))",
+    "sizeY": "max(1, round(bounds.bottom / 20) - sizeX)",
+    "itemHeight": "-bounds.top + (40 * sizeY - bounds.bottom)"
+  },
+  "classes": {
+    "Table": {
+      "itemIds": [
+        3030000
+      ],
+      "spriteId": 1953,
+      "childCharacterId": 1952,
+      "boundsTwips": {
+        "xmin": -800,
+        "xmax": 800,
+        "ymin": -490,
+        "ymax": 780
+      },
+      "footprint": {
+        "sizeX": 1,
+        "sizeY": 1
+      },
+      "itemHeightTwips": 510
+    },
+    "WhiteTable1x1": {
+      "itemIds": [
+        3030002
+      ],
+      "spriteId": 534,
+      "childCharacterId": 533,
+      "boundsTwips": {
+        "xmin": -800,
+        "xmax": 800,
+        "ymin": -500,
+        "ymax": 776
+      },
+      "footprint": {
+        "sizeX": 1,
+        "sizeY": 1
+      },
+      "itemHeightTwips": 524
+    }
+  },
+  "composites": {
+    "WhiteTable1x2": {
+      "spriteId": 535,
+      "rootClass": "WhiteTable1x1",
+      "subitems": [
+        {
+          "name": "sub0",
+          "className": "WhiteTable1x1",
+          "translateTwips": {
+            "x": 0,
+            "y": 0
+          },
+          "tileOffset": {
+            "x": 0,
+            "y": 0
+          }
+        },
+        {
+          "name": "sub1",
+          "className": "WhiteTable1x1",
+          "translateTwips": {
+            "x": -800,
+            "y": 400
+          },
+          "tileOffset": {
+            "x": 0,
+            "y": 1
+          }
+        }
+      ]
+    }
+  },
+  "releasePolicy": "Evidence only until authoritative curHeight/itemHeight rendering is implemented; do not enable stacked placement from geometry alone."
+}
