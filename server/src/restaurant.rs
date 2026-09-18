@@ -196,6 +196,50 @@ impl RestaurantState {
         Ok(placed)
     }
 
+    pub fn transform(
+        &mut self,
+        catalog: &PlacementCatalog,
+        instance_id: u64,
+        tile: TilePoint,
+        rotation: u8,
+    ) -> Result<PlacedItem, RestaurantAuthorityError> {
+        let original = self
+            .items
+            .remove(&instance_id)
+            .ok_or(RestaurantAuthorityError::UnknownInstance { instance_id })?;
+
+        let definition = *catalog
+            .get(original.item_id)
+            .ok_or(RestaurantAuthorityError::UnknownItem {
+                item_id: original.item_id,
+            })?;
+        let intent = PlacementIntent {
+            item_id: original.item_id,
+            tile,
+            rotation,
+        };
+
+        match self.validate_new_item(catalog, definition, intent, instance_id) {
+            Ok(updated) => {
+                self.items.insert(instance_id, updated);
+                Ok(updated)
+            }
+            Err(error) => {
+                self.items.insert(instance_id, original);
+                Err(error)
+            }
+        }
+    }
+
+    pub fn remove(
+        &mut self,
+        instance_id: u64,
+    ) -> Result<PlacedItem, RestaurantAuthorityError> {
+        self.items
+            .remove(&instance_id)
+            .ok_or(RestaurantAuthorityError::UnknownInstance { instance_id })
+    }
+
     pub fn snapshot(&self) -> RestaurantSnapshot {
         RestaurantSnapshot {
             room: self.room,
@@ -354,6 +398,9 @@ pub enum PlacementCatalogLoadError {
 pub enum RestaurantAuthorityError {
     UnknownItem {
         item_id: u32,
+    },
+    UnknownInstance {
+        instance_id: u64,
     },
     DuplicateDefinition {
         item_id: u32,
@@ -544,6 +591,103 @@ mod tests {
                 )
                 .unwrap_err(),
             RestaurantAuthorityError::InvalidRotation { rotation: 1 }
+        );
+    }
+
+    #[test]
+    fn transform_preserves_instance_identity_and_sequence() {
+        let catalog = catalog();
+        let mut state = RestaurantState::new(room());
+        let placed = state
+            .place(
+                &catalog,
+                PlacementIntent {
+                    item_id: 10,
+                    tile: TilePoint { x: 1, y: 1 },
+                    rotation: 0,
+                },
+            )
+            .unwrap();
+
+        let updated = state
+            .transform(&catalog, placed.instance_id, TilePoint { x: 4, y: 3 }, 1)
+            .unwrap();
+
+        assert_eq!(updated.instance_id, placed.instance_id);
+        assert_eq!(updated.item_id, placed.item_id);
+        assert_eq!(updated.tile, TilePoint { x: 4, y: 3 });
+        assert_eq!(updated.rotation, 1);
+        assert_eq!(state.snapshot().next_instance_id, 2);
+        assert_eq!(state.snapshot().items, vec![updated]);
+    }
+
+    #[test]
+    fn rejected_transform_restores_original_item() {
+        let catalog = catalog();
+        let mut state = RestaurantState::new(room());
+        let first = state
+            .place(
+                &catalog,
+                PlacementIntent {
+                    item_id: 10,
+                    tile: TilePoint { x: 1, y: 1 },
+                    rotation: 0,
+                },
+            )
+            .unwrap();
+        let second = state
+            .place(
+                &catalog,
+                PlacementIntent {
+                    item_id: 20,
+                    tile: TilePoint { x: 5, y: 5 },
+                    rotation: 0,
+                },
+            )
+            .unwrap();
+
+        assert_eq!(
+            state
+                .transform(
+                    &catalog,
+                    second.instance_id,
+                    TilePoint { x: 2, y: 1 },
+                    0,
+                )
+                .unwrap_err(),
+            RestaurantAuthorityError::Collision {
+                item_id: 20,
+                with_instance_id: first.instance_id,
+            }
+        );
+
+        assert!(state.items().any(|item| *item == second));
+        assert_eq!(state.snapshot().next_instance_id, 3);
+    }
+
+    #[test]
+    fn remove_returns_item_and_releases_instance_from_layout() {
+        let catalog = catalog();
+        let mut state = RestaurantState::new(room());
+        let placed = state
+            .place(
+                &catalog,
+                PlacementIntent {
+                    item_id: 20,
+                    tile: TilePoint { x: 2, y: 2 },
+                    rotation: 0,
+                },
+            )
+            .unwrap();
+
+        assert_eq!(state.remove(placed.instance_id).unwrap(), placed);
+        assert!(state.items().next().is_none());
+        assert_eq!(state.snapshot().next_instance_id, 2);
+        assert_eq!(
+            state.remove(placed.instance_id),
+            Err(RestaurantAuthorityError::UnknownInstance {
+                instance_id: placed.instance_id,
+            })
         );
     }
 
