@@ -103,59 +103,108 @@ function findBrowser() {
   );
 }
 
-function runBrowser(browser, args) {
-  return new Promise((resolve, reject) => {
-    const child = spawn(browser, args, {
-      cwd: REPO,
-      windowsHide: true,
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
-    let stdout = '';
-    let stderr = '';
-    child.stdout.setEncoding('utf8');
-    child.stderr.setEncoding('utf8');
-    child.stdout.on('data', (chunk) => {
-      stdout += chunk;
-    });
-    child.stderr.on('data', (chunk) => {
-      stderr += chunk;
-    });
-    child.on('error', reject);
-    child.on('close', (code) => {
-      if (code !== 0) {
-        reject(
-          new Error(
-            `Headless browser failed with exit ${code}: ${stderr || stdout}`,
-          ),
-        );
-        return;
-      }
-      resolve({ stdout, stderr });
-    });
-  });
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function baseBrowserArgs(profile, url) {
-  return [
-    '--headless=new',
-    '--no-first-run',
-    '--no-default-browser-check',
-    '--disable-extensions',
-    '--disable-background-networking',
-    '--disable-component-update',
-    '--hide-scrollbars',
-    '--force-device-scale-factor=1',
-    '--window-size=1280,720',
-    // Force Phaser.AUTO onto its Canvas fallback on service/headless runners.
-    // WebGL remains the preferred interactive path; the visual regression gate
-    // needs a deterministic software renderer that does not depend on GPU
-    // session availability for the NetworkService account.
-    '--disable-gpu',
-    '--run-all-compositor-stages-before-draw',
-    '--virtual-time-budget=8000',
-    `--user-data-dir=${profile}`,
-    url,
-  ];
+async function waitForFile(file, timeoutMs, processState) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (fs.existsSync(file)) return;
+    if (processState.exited) {
+      throw new Error(
+        `Headless browser exited before DevTools became available. stderr: ${processState.stderr.slice(-4000)}`,
+      );
+    }
+    await delay(50);
+  }
+  throw new Error(
+    `Timed out waiting for Chromium DevTools endpoint. stderr: ${processState.stderr.slice(-4000)}`,
+  );
+}
+
+async function waitForPageTarget(port, url, timeoutMs) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    try {
+      const response = await fetch(`http://127.0.0.1:${port}/json/list`, {
+        cache: 'no-store',
+      });
+      if (response.ok) {
+        const targets = await response.json();
+        const page = targets.find(
+          (target) =>
+            target.type === 'page' &&
+            typeof target.url === 'string' &&
+            target.url.startsWith(url),
+        );
+        if (page?.webSocketDebuggerUrl) return page;
+      }
+    } catch {
+      // Chromium may not have bound the DevTools listener yet.
+    }
+    await delay(50);
+  }
+  throw new Error('Timed out waiting for Restaurant City DevTools page target');
+}
+
+function connectCdp(webSocketDebuggerUrl, diagnostics) {
+  if (typeof WebSocket !== 'function') {
+    throw new Error('Node runtime does not provide the WebSocket API required for CDP');
+  }
+
+  const socket = new WebSocket(webSocketDebuggerUrl);
+  let nextId = 1;
+  const pending = new Map();
+
+  const opened = new Promise((resolve, reject) => {
+    socket.addEventListener('open', resolve, { once: true });
+    socket.addEventListener('error', reject, { once: true });
+  });
+
+  socket.addEventListener('message', (event) => {
+    const message = JSON.parse(String(event.data));
+    if (typeof message.id === 'number') {
+      const waiter = pending.get(message.id);
+      if (!waiter) return;
+      pending.delete(message.id);
+      if (message.error) waiter.reject(new Error(JSON.stringify(message.error)));
+      else waiter.resolve(message.result ?? {});
+      return;
+    }
+
+    if (message.method === 'Runtime.exceptionThrown') {
+      diagnostics.push({
+        type: 'exception',
+        value:
+          message.params?.exceptionDetails?.exception?.description ??
+          message.params?.exceptionDetails?.text ??
+          'unknown runtime exception',
+      });
+    }
+    if (message.method === 'Log.entryAdded') {
+      diagnostics.push({
+        type: 'log',
+        value: message.params?.entry?.text ?? 'unknown browser log entry',
+      });
+    }
+  });
+
+  function send(method, params = {}) {
+    const id = nextId++;
+    return new Promise((resolve, reject) => {
+      pending.set(id, { resolve, reject });
+      socket.send(JSON.stringify({ id, method, params }));
+    });
+  }
+
+  return {
+    opened,
+    send,
+    close() {
+      socket.close();
+    },
+  };
 }
 
 function sha256(file) {
@@ -215,6 +264,9 @@ await new Promise((resolve, reject) => {
   server.listen(0, '127.0.0.1', resolve);
 });
 
+let browserProcess = null;
+let cdp = null;
+
 try {
   const address = server.address();
   if (!address || typeof address === 'string') {
@@ -223,53 +275,159 @@ try {
 
   const browser = findBrowser();
   const url = `http://127.0.0.1:${address.port}/`;
-  const dumpProfile = path.join(WORK, 'profile-dom');
-  const shotProfile = path.join(WORK, 'profile-shot');
+  const profile = path.join(WORK, 'profile-cdp');
+  const devToolsFile = path.join(profile, 'DevToolsActivePort');
+  const processState = { exited: false, stderr: '' };
 
-  const dom = await runBrowser(browser, [
-    ...baseBrowserArgs(dumpProfile, url),
-    '--dump-dom',
-  ]);
+  browserProcess = spawn(
+    browser,
+    [
+      '--headless=new',
+      '--no-first-run',
+      '--no-default-browser-check',
+      '--disable-extensions',
+      '--disable-background-networking',
+      '--disable-component-update',
+      '--disable-gpu',
+      '--hide-scrollbars',
+      '--force-device-scale-factor=1',
+      '--window-size=1280,720',
+      '--remote-debugging-port=0',
+      `--user-data-dir=${profile}`,
+      url,
+    ],
+    {
+      cwd: REPO,
+      windowsHide: true,
+      stdio: ['ignore', 'ignore', 'pipe'],
+    },
+  );
 
-  if (!/data-phase="editing"/.test(dom.stdout)) {
+  browserProcess.stderr.setEncoding('utf8');
+  browserProcess.stderr.on('data', (chunk) => {
+    processState.stderr += chunk;
+    if (processState.stderr.length > 32_000) {
+      processState.stderr = processState.stderr.slice(-32_000);
+    }
+  });
+  browserProcess.once('exit', () => {
+    processState.exited = true;
+  });
+  browserProcess.once('error', (error) => {
+    processState.stderr += `\nspawn error: ${error.message}`;
+    processState.exited = true;
+  });
+
+  await waitForFile(devToolsFile, 10_000, processState);
+  const [portText] = fs.readFileSync(devToolsFile, 'utf8').trim().split(/\r?\n/);
+  const port = Number.parseInt(portText, 10);
+  if (!Number.isInteger(port) || port <= 0) {
+    throw new Error(`Invalid Chromium DevTools port: ${portText}`);
+  }
+
+  const target = await waitForPageTarget(port, url, 10_000);
+  const diagnostics = [];
+  cdp = connectCdp(target.webSocketDebuggerUrl, diagnostics);
+  await cdp.opened;
+  await cdp.send('Page.enable');
+  await cdp.send('Runtime.enable');
+  await cdp.send('Log.enable');
+  await cdp.send('Emulation.setDeviceMetricsOverride', {
+    width: 1280,
+    height: 720,
+    deviceScaleFactor: 1,
+    mobile: false,
+  });
+
+  let state = null;
+  const deadline = Date.now() + 20_000;
+  while (Date.now() < deadline) {
+    const evaluated = await cdp.send('Runtime.evaluate', {
+      expression: `(() => {
+        const status = document.querySelector('.rc-status');
+        const selection = document.querySelector('.rc-hud-card');
+        const canvas = document.querySelector('#game-canvas-host canvas');
+        return {
+          phase: status?.dataset.phase ?? null,
+          status: status?.textContent ?? '',
+          selection: selection?.textContent ?? '',
+          canvas: canvas ? {
+            width: canvas.width,
+            height: canvas.height,
+            cssWidth: canvas.getBoundingClientRect().width,
+            cssHeight: canvas.getBoundingClientRect().height,
+          } : null,
+        };
+      })()`,
+      returnByValue: true,
+    });
+    state = evaluated.result?.value ?? null;
+
+    if (state?.phase === 'editing') break;
+    if (state?.phase === 'error') {
+      throw new Error(
+        `Restaurant City entered error phase: ${state.status}. Diagnostics: ${JSON.stringify(diagnostics.slice(-20))}`,
+      );
+    }
+    await delay(100);
+  }
+
+  if (state?.phase !== 'editing') {
     throw new Error(
-      `Visual probe never reached editing phase. Browser stderr: ${dom.stderr.slice(-4000)} DOM: ${dom.stdout.slice(-4000)}`,
+      `Visual probe timed out before editing. State: ${JSON.stringify(state)} Diagnostics: ${JSON.stringify(diagnostics.slice(-20))} Browser stderr: ${processState.stderr.slice(-4000)}`,
     );
   }
-  if (!dom.stdout.includes('Loaded baseline 0.9.143a and 1 persisted restaurant item(s).')) {
-    throw new Error('Visual probe did not load the authoritative persisted fixture');
+  if (!state.status.includes('Loaded baseline 0.9.143a and 1 persisted restaurant item(s).')) {
+    throw new Error(`Unexpected editing status: ${state.status}`);
   }
-  if (!dom.stdout.includes('#3020163') || !dom.stdout.includes('Cannon')) {
-    throw new Error('Visual probe did not select the recovered Cannon fixture');
+  if (!state.selection.includes('#3020163') || !state.selection.includes('Cannon')) {
+    throw new Error(`Recovered Cannon fixture was not selected: ${state.selection}`);
+  }
+  if (state.canvas?.width !== 760 || state.canvas?.height !== 600) {
+    throw new Error(`Unexpected historical canvas size: ${JSON.stringify(state.canvas)}`);
   }
 
-  await runBrowser(browser, [
-    ...baseBrowserArgs(shotProfile, url),
-    `--screenshot=${SCREENSHOT}`,
-  ]);
-
-  if (!fs.existsSync(SCREENSHOT)) {
-    throw new Error('Headless browser did not produce the Restaurant City screenshot');
+  await delay(250);
+  const shot = await cdp.send('Page.captureScreenshot', {
+    format: 'png',
+    fromSurface: true,
+    captureBeyondViewport: false,
+  });
+  if (typeof shot.data !== 'string' || shot.data.length === 0) {
+    throw new Error('CDP did not return screenshot bytes');
   }
+  fs.writeFileSync(SCREENSHOT, Buffer.from(shot.data, 'base64'));
+
   const stat = fs.statSync(SCREENSHOT);
   if (stat.size < 10_000) {
     throw new Error(`Restaurant City screenshot is unexpectedly small: ${stat.size}`);
   }
 
   const metadata = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     browser,
+    rendererGate: 'Phaser.AUTO forced to deterministic Canvas fallback for CI',
     fixture: 'cannon-3020163-rotation-3-at-2-2',
     viewport: { width: 1280, height: 720, deviceScaleFactor: 1 },
-    phase: 'editing',
+    state,
+    diagnostics: diagnostics.slice(-20),
     screenshot: path.relative(REPO, SCREENSHOT).replaceAll('\\', '/'),
     bytes: stat.size,
     sha256: sha256(SCREENSHOT),
   };
   fs.writeFileSync(META, `${JSON.stringify(metadata, null, 2)}\n`);
+
   console.log(
     `BROWSER VISUAL PROBE PASS | browser=${browser} | bytes=${stat.size} | sha256=${metadata.sha256}`,
   );
 } finally {
+  try {
+    cdp?.close();
+  } catch {
+    // Best effort during teardown.
+  }
+  if (browserProcess && !browserProcess.killed) {
+    browserProcess.kill();
+  }
   await new Promise((resolve) => server.close(resolve));
 }
