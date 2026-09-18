@@ -45,18 +45,12 @@ where
 
     Router::new()
         .route("/api/v1/restaurant", get(load_restaurant::<V, S>))
-        .route(
-            "/api/v1/restaurant/placements",
-            post(place_item::<V, S>),
-        )
+        .route("/api/v1/restaurant/placements", post(place_item::<V, S>))
         .layer(DefaultBodyLimit::max(MAX_REQUEST_BODY_BYTES))
         .with_state(state)
 }
 
-async fn load_restaurant<V, S>(
-    State(state): State<AppState<V, S>>,
-    headers: HeaderMap,
-) -> Response
+async fn load_restaurant<V, S>(State(state): State<AppState<V, S>>, headers: HeaderMap) -> Response
 where
     V: PlatformSessionVerifier + Send + Sync + 'static,
     S: ProductStateStore + 'static,
