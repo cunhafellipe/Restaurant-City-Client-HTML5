@@ -540,7 +540,7 @@ export class RestaurantEditorScene extends Phaser.Scene {
             ? [
                 {
                   instanceId: placed.instanceId,
-                  surface: definition.placement.surface,
+                  surface: definition.placement.surface === true,
                 },
               ]
             : [];
