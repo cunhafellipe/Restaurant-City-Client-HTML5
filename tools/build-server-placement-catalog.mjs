@@ -119,6 +119,8 @@ const ids = new Map();
 let skippedWithoutFootprint = 0;
 let skippedInvalidId = 0;
 let skippedSystemOnly = 0;
+const unresolvedSurfaceDefinitions = [];
+const unresolvedStackableDefinitions = [];
 
 for (const group of database.groups ?? []) {
   for (const item of group.items ?? []) {
@@ -130,12 +132,30 @@ for (const group of database.groups ?? []) {
 
     const sizeX = asInteger(item.attributes?.sizeX);
     const sizeY = asInteger(item.attributes?.sizeY);
+    const surface = hasFlag(group, item, 'surface');
+    const stackable = hasFlag(group, item, 'stackable');
+    const systemOnly = SYSTEM_ONLY_GROUPS.has(group.name);
+
     if (sizeX === null || sizeY === null || sizeX <= 0 || sizeY <= 0) {
       skippedWithoutFootprint += 1;
+      if (!systemOnly && (surface || stackable)) {
+        const unresolved = {
+          itemId: id,
+          group: group.name,
+          className:
+            typeof item.attributes?.className === 'string'
+              ? item.attributes.className
+              : null,
+          hasSizeX: sizeX !== null && sizeX > 0,
+          hasSizeY: sizeY !== null && sizeY > 0,
+        };
+        if (surface) unresolvedSurfaceDefinitions.push(unresolved);
+        if (stackable) unresolvedStackableDefinitions.push(unresolved);
+      }
       continue;
     }
 
-    if (SYSTEM_ONLY_GROUPS.has(group.name)) {
+    if (systemOnly) {
       skippedSystemOnly += 1;
       continue;
     }
@@ -158,8 +178,8 @@ for (const group of database.groups ?? []) {
       wallpaperItem: hasFlag(group, item, 'wallpaperItem'),
       outdoor: hasFlag(group, item, 'outdoor'),
       floorTileItem: hasFlag(group, item, 'floorTileItem'),
-      surface: hasFlag(group, item, 'surface'),
-      stackable: hasFlag(group, item, 'stackable'),
+      surface,
+      stackable,
     });
   }
 }
@@ -211,6 +231,8 @@ const meta = {
   surfaceAndStackableDefinitions: definitions.filter(
     (entry) => entry.surface && entry.stackable,
   ).length,
+  unresolvedSurfaceDefinitions,
+  unresolvedStackableDefinitions,
   generatedAtBuildTime: true,
   browserRuntimeDependency: false,
 };
