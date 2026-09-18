@@ -4,12 +4,14 @@ import http from 'node:http';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { PNG } from 'pngjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(HERE, '..');
 const DIST = path.join(REPO, 'dist');
 const WORK = path.join(REPO, 'tools', '.work', 'browser-visual');
 const SCREENSHOT = path.join(WORK, 'restaurant-editor.png');
+const WORLD_SCREENSHOT = path.join(WORK, 'restaurant-world.png');
 const META = path.join(WORK, 'restaurant-editor.json');
 
 const fixture = {
@@ -211,6 +213,43 @@ function sha256(file) {
   return crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
 }
 
+function bufferSha256(value) {
+  return crypto.createHash('sha256').update(value).digest('hex');
+}
+
+function quantizedBlockSignature(png, blockSize = 8) {
+  const compact = [];
+  for (let y = 0; y < png.height; y += blockSize) {
+    for (let x = 0; x < png.width; x += blockSize) {
+      let red = 0;
+      let green = 0;
+      let blue = 0;
+      let pixels = 0;
+      const maxY = Math.min(png.height, y + blockSize);
+      const maxX = Math.min(png.width, x + blockSize);
+
+      for (let py = y; py < maxY; py += 1) {
+        for (let px = x; px < maxX; px += 1) {
+          const offset = (py * png.width + px) * 4;
+          red += png.data[offset];
+          green += png.data[offset + 1];
+          blue += png.data[offset + 2];
+          pixels += 1;
+        }
+      }
+
+      const quantize = (sum) =>
+        Math.min(15, Math.max(0, Math.floor(sum / pixels / 16)));
+      const qr = quantize(red);
+      const qg = quantize(green);
+      const qb = quantize(blue);
+      compact.push((qr << 4) | qg, qb << 4);
+    }
+  }
+
+  return bufferSha256(Buffer.from(compact));
+}
+
 if (!fs.existsSync(path.join(DIST, 'index.html'))) {
   throw new Error('Production dist is missing. Run npm run build before visual probe.');
 }
@@ -388,6 +427,32 @@ try {
   }
 
   await delay(250);
+
+  const worldData = await cdp.send('Runtime.evaluate', {
+    expression: `(() => {
+      const canvas = document.querySelector('#game-canvas-host canvas');
+      if (!(canvas instanceof HTMLCanvasElement)) return null;
+      return canvas.toDataURL('image/png');
+    })()`,
+    returnByValue: true,
+  });
+  const worldUrl = worldData.result?.value;
+  if (typeof worldUrl !== 'string' || !worldUrl.startsWith('data:image/png;base64,')) {
+    throw new Error('Could not capture native Restaurant City canvas pixels');
+  }
+  fs.writeFileSync(
+    WORLD_SCREENSHOT,
+    Buffer.from(worldUrl.slice('data:image/png;base64,'.length), 'base64'),
+  );
+  const worldPng = PNG.sync.read(fs.readFileSync(WORLD_SCREENSHOT));
+  if (worldPng.width !== 760 || worldPng.height !== 600) {
+    throw new Error(
+      `Unexpected native world PNG dimensions: ${worldPng.width}x${worldPng.height}`,
+    );
+  }
+  const worldPixelSha256 = bufferSha256(worldPng.data);
+  const worldQuantizedBlockSha256 = quantizedBlockSignature(worldPng, 8);
+
   const shot = await cdp.send('Page.captureScreenshot', {
     format: 'png',
     fromSurface: true,
@@ -414,11 +479,21 @@ try {
     screenshot: path.relative(REPO, SCREENSHOT).replaceAll('\\', '/'),
     bytes: stat.size,
     sha256: sha256(SCREENSHOT),
+    nativeWorld: {
+      screenshot: path.relative(REPO, WORLD_SCREENSHOT).replaceAll('\\', '/'),
+      width: worldPng.width,
+      height: worldPng.height,
+      bytes: fs.statSync(WORLD_SCREENSHOT).size,
+      pngSha256: sha256(WORLD_SCREENSHOT),
+      pixelSha256: worldPixelSha256,
+      blockSize: 8,
+      quantizedBlockSha256: worldQuantizedBlockSha256,
+    },
   };
   fs.writeFileSync(META, `${JSON.stringify(metadata, null, 2)}\n`);
 
   console.log(
-    `BROWSER VISUAL PROBE PASS | browser=${browser} | bytes=${stat.size} | sha256=${metadata.sha256}`,
+    `BROWSER VISUAL PROBE PASS | browser=${browser} | bytes=${stat.size} | sha256=${metadata.sha256} | worldPixel=${worldPixelSha256} | worldBlock=${worldQuantizedBlockSha256}`,
   );
 } finally {
   try {
