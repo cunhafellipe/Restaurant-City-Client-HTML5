@@ -529,6 +529,25 @@ mod tests {
     }
 
     #[test]
+    fn recovered_frame_count_limits_rotation_per_item() {
+        let mut state = RestaurantState::new(room());
+
+        assert_eq!(
+            state
+                .place(
+                    &catalog(),
+                    PlacementIntent {
+                        item_id: 20,
+                        tile: TilePoint { x: 2, y: 2 },
+                        rotation: 1,
+                    },
+                )
+                .unwrap_err(),
+            RestaurantAuthorityError::InvalidRotation { rotation: 1 }
+        );
+    }
+
+    #[test]
     fn snapshot_round_trip_revalidates_layout() {
         let catalog = catalog();
         let mut state = RestaurantState::new(room());
