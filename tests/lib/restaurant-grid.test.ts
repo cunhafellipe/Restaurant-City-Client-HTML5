@@ -6,6 +6,7 @@ import {
   projectTile,
   rotateFootprint,
   screenToTileFraction,
+  screenToTileIndex,
   validateStructuralPlacement,
 } from '../../src/core/restaurantGrid';
 
@@ -21,6 +22,8 @@ describe('Restaurant City grid contract', () => {
     expect(projectTile({ x: 3, y: 1 })).toEqual({ x: 80, y: 80 });
     expect(projectTile({ x: 1, y: 3 })).toEqual({ x: -80, y: 80 });
     expect(screenToTileFraction({ x: 80, y: 80 })).toEqual({ x: 3, y: 1 });
+    expect(screenToTileIndex({ x: 79, y: 79 })).toEqual({ x: 2, y: 0 });
+    expect(screenToTileIndex({ x: -39, y: 19 })).toEqual({ x: 0, y: 0 });
   });
 
   it('round-trips the historical OwnedItem.data nibbles', () => {
