@@ -239,9 +239,7 @@ where
     mutation_response(outcome)
 }
 
-fn mutation_response(
-    outcome: PlacementMutationOutcome,
-) -> Result<Vec<u8>, PublicProductError> {
+fn mutation_response(outcome: PlacementMutationOutcome) -> Result<Vec<u8>, PublicProductError> {
     let response = match outcome {
         PlacementMutationOutcome::Applied(item) => PlacementResponse {
             outcome: "applied",
@@ -616,8 +614,7 @@ mod tests {
         )
         .unwrap();
 
-        let transformed_json: serde_json::Value =
-            serde_json::from_slice(&transformed).unwrap();
+        let transformed_json: serde_json::Value = serde_json::from_slice(&transformed).unwrap();
         let duplicate_json: serde_json::Value =
             serde_json::from_slice(&transformed_duplicate).unwrap();
         assert_eq!(transformed_json["outcome"], "applied");
@@ -626,18 +623,10 @@ mod tests {
         assert_eq!(transformed_json["item"]["rotation"], 1);
         assert_eq!(duplicate_json["outcome"], "duplicate");
 
-        let removed = handle_remove_item(
-            &service,
-            context(Some("session"), Some("remove-edit")),
-            1,
-        )
-        .unwrap();
-        let removed_duplicate = handle_remove_item(
-            &service,
-            context(Some("session"), Some("remove-edit")),
-            1,
-        )
-        .unwrap();
+        let removed =
+            handle_remove_item(&service, context(Some("session"), Some("remove-edit")), 1).unwrap();
+        let removed_duplicate =
+            handle_remove_item(&service, context(Some("session"), Some("remove-edit")), 1).unwrap();
 
         let removed_json: serde_json::Value = serde_json::from_slice(&removed).unwrap();
         let removed_duplicate_json: serde_json::Value =
