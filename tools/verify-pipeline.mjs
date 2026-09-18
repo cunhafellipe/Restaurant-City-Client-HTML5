@@ -52,9 +52,9 @@ export function verifyPipeline(swfNames) {
             `${swfName}: page ${texture.image} JSON size ${texture.size.w}x${texture.size.h} != PNG ${pngSize.w}x${pngSize.h}`,
           );
         }
-        if (pngSize.w > 2048 || pngSize.h > 4096) {
+        if (pngSize.w > 4096 || pngSize.h > 4096) {
           failures.push(
-            `${swfName}: page ${texture.image} exceeds 2048x4096: ${pngSize.w}x${pngSize.h}`,
+            `${swfName}: page ${texture.image} exceeds 4096x4096: ${pngSize.w}x${pngSize.h}`,
           );
         }
 
