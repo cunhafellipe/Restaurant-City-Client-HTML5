@@ -12,7 +12,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "pipeline": "node tools/pipeline.mjs",
-    "pipeline:verify": "node tools/verify-pipeline.mjs"
+    "pipeline:verify": "node tools/verify-pipeline.mjs",
+    "content:extract": "node tools/extract-content.mjs"
   },
   "dependencies": {
     "phaser": "^3.90.0"
