@@ -36,6 +36,6 @@ pub use service::{
 };
 
 pub use http::{
-    PlacementResponse, PlacedItemResponse, ProductHttpContext, PublicProductError,
+    PlacedItemResponse, PlacementResponse, ProductHttpContext, PublicProductError,
     RestaurantLayoutResponse, RoomResponse, handle_load_restaurant, handle_place_item,
 };
