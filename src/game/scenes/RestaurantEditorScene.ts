@@ -29,6 +29,8 @@ import {
 } from '../../content/runtime';
 import {
   createPlacementMutationId,
+  createRemoveMutationId,
+  createTransformMutationId,
   RestaurantAuthorityError,
   type AuthoritativeInventoryAvailability,
   type AuthoritativePlacedItem,
@@ -87,6 +89,7 @@ export class RestaurantEditorScene extends Phaser.Scene {
   private authorityLoaded = false;
   private authoritySynchronized = false;
   private placementInFlight = false;
+  private selectedPlacedInstanceId: number | null = null;
 
   constructor() {
     super('RestaurantEditor');
@@ -156,11 +159,23 @@ export class RestaurantEditorScene extends Phaser.Scene {
     this.input.keyboard?.on('keydown-R', rotate);
     this.input.keyboard?.on('keydown-LEFT', () => this.selectRelative(-1));
     this.input.keyboard?.on('keydown-RIGHT', () => this.selectRelative(1));
+    this.input.keyboard?.on('keydown-ESC', () => this.cancelPlacedEdit());
+    this.input.keyboard?.on('keydown-DELETE', () => {
+      void this.removeSelectedPlacedItem();
+    });
+    this.input.keyboard?.on('keydown-BACKSPACE', () => {
+      void this.removeSelectedPlacedItem();
+    });
 
     this.unsubscribeCommands = gameUiBridge.subscribeCommands((command) => {
       if (command === 'previous-item') this.selectRelative(-1);
       else if (command === 'next-item') this.selectRelative(1);
       else if (command === 'rotate-item') rotate();
+      else if (command === 'remove-selected') {
+        void this.removeSelectedPlacedItem();
+      } else if (command === 'cancel-edit') {
+        this.cancelPlacedEdit();
+      }
     });
 
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
@@ -169,7 +184,7 @@ export class RestaurantEditorScene extends Phaser.Scene {
     });
 
     this.input.on(Phaser.Input.Events.POINTER_DOWN, () => {
-      void this.commitCurrentPlacement();
+      void this.commitCurrentMutation();
     });
   }
 
@@ -271,6 +286,16 @@ export class RestaurantEditorScene extends Phaser.Scene {
     this.authorityLoaded = true;
     this.authoritySynchronized = true;
 
+    if (this.selectedPlacedInstanceId !== null) {
+      const selected = this.selectedPlacedItem();
+      if (selected) {
+        this.rotation = selected.rotation;
+      } else {
+        this.selectedPlacedInstanceId = null;
+        this.rotation = 0;
+      }
+    }
+
     this.drawFloor();
     this.drawCommittedPlacements();
     this.refreshSelectedItem();
@@ -297,7 +322,13 @@ export class RestaurantEditorScene extends Phaser.Scene {
   }
 
   private selectRelative(delta: number): void {
-    if (this.candidates.length === 0 || this.placementInFlight) return;
+    if (
+      this.candidates.length === 0 ||
+      this.placementInFlight ||
+      this.selectedPlacedInstanceId !== null
+    ) {
+      return;
+    }
     this.selectedIndex =
       (this.selectedIndex + delta + this.candidates.length) %
       this.candidates.length;
@@ -311,6 +342,7 @@ export class RestaurantEditorScene extends Phaser.Scene {
     gameUiBridge.publish({
       ...state,
       selectedItem: this.selectedItemUi(),
+      selectedPlacedItem: this.selectedPlacedItemUi(),
     });
   }
 
@@ -343,6 +375,66 @@ export class RestaurantEditorScene extends Phaser.Scene {
     };
   }
 
+  private selectedPlacedItem(): AuthoritativePlacedItem | null {
+    if (this.selectedPlacedInstanceId === null) return null;
+    return (
+      this.authoritativeItems.find(
+        (item) => item.instanceId === this.selectedPlacedInstanceId,
+      ) ?? null
+    );
+  }
+
+  private selectedPlacedItemUi(): GameUiState['selectedPlacedItem'] {
+    const placed = this.selectedPlacedItem();
+    if (!placed) return undefined;
+    const definition = this.catalogById.get(placed.itemId);
+    return {
+      instanceId: placed.instanceId,
+      itemId: placed.itemId,
+      name: definition?.name ?? `item #${placed.itemId}`,
+      tileX: placed.tileX,
+      tileY: placed.tileY,
+      rotation: this.rotation,
+    };
+  }
+
+  private currentDefinition(): RestaurantItemDefinition | null {
+    const placed = this.selectedPlacedItem();
+    if (placed) return this.catalogById.get(placed.itemId) ?? null;
+    return this.candidates[this.selectedIndex] ?? null;
+  }
+
+  private selectPlacedItem(instanceId: number): void {
+    if (this.placementInFlight || !this.authoritySynchronized) return;
+    const placed = this.authoritativeItems.find(
+      (item) => item.instanceId === instanceId,
+    );
+    if (!placed) return;
+
+    this.selectedPlacedInstanceId = placed.instanceId;
+    this.rotation = placed.rotation;
+    this.hoverTile = { x: placed.tileX, y: placed.tileY };
+    this.drawCommittedPlacements();
+    this.drawPreview(false);
+    this.publishUi(
+      `Editing placed #${placed.instanceId}. Hover a destination and click the floor to save; Rotate changes the preview.`,
+      this.currentValidation(),
+    );
+  }
+
+  private cancelPlacedEdit(): void {
+    if (this.placementInFlight || this.selectedPlacedInstanceId === null) return;
+    const instanceId = this.selectedPlacedInstanceId;
+    this.selectedPlacedInstanceId = null;
+    this.rotation = 0;
+    this.drawCommittedPlacements();
+    this.drawPreview(false);
+    this.publishUi(
+      `Cancelled edit for placed #${instanceId}. No authoritative state was changed.`,
+      this.currentValidation(),
+    );
+  }
+
   private publishUi(
     status: string,
     validation: EditorPlacementValidation | null = null,
@@ -354,6 +446,7 @@ export class RestaurantEditorScene extends Phaser.Scene {
       phase,
       status,
       selectedItem: this.selectedItemUi(),
+      selectedPlacedItem: this.selectedPlacedItemUi(),
       placement:
         validation && this.hoverTile
           ? {
@@ -369,7 +462,7 @@ export class RestaurantEditorScene extends Phaser.Scene {
   }
 
   private currentShape(): PlacementShape | null {
-    const item = this.candidates[this.selectedIndex];
+    const item = this.currentDefinition();
     if (!item?.explicitFootprint) return null;
     const footprint = rotateFootprint(item.explicitFootprint, this.rotation);
     return { ...footprint, ...item.placement };
@@ -378,7 +471,7 @@ export class RestaurantEditorScene extends Phaser.Scene {
   private currentValidation(): EditorPlacementValidation | null {
     const shape = this.currentShape();
     const tile = this.hoverTile;
-    const item = this.candidates[this.selectedIndex];
+    const item = this.currentDefinition();
     if (!shape || !tile || !item) return null;
 
     if (this.authorityLoaded && !this.authoritySynchronized) {
@@ -388,11 +481,22 @@ export class RestaurantEditorScene extends Phaser.Scene {
     const structural = validateStructuralPlacement(shape, tile, this.room);
     if (!structural.ok) return structural;
 
-    if (this.authorityLoaded && this.availableFor(item.id) <= 0) {
+    if (
+      this.selectedPlacedInstanceId === null &&
+      this.authorityLoaded &&
+      this.availableFor(item.id) <= 0
+    ) {
       return { ok: false, reason: 'unavailable' };
     }
 
-    if (this.overlapsCommittedItem(tile, shape, structural.roomIndex)) {
+    if (
+      this.overlapsCommittedItem(
+        tile,
+        shape,
+        structural.roomIndex,
+        this.selectedPlacedInstanceId,
+      )
+    ) {
       return { ok: false, reason: 'occupied' };
     }
 
@@ -403,9 +507,15 @@ export class RestaurantEditorScene extends Phaser.Scene {
     tile: TilePoint,
     shape: PlacementShape,
     roomIndex: number,
+    excludeInstanceId: number | null = null,
   ): boolean {
     return this.authoritativeItems.some((placed) => {
-      if (placed.roomIndex !== roomIndex) return false;
+      if (
+        placed.instanceId === excludeInstanceId ||
+        placed.roomIndex !== roomIndex
+      ) {
+        return false;
+      }
 
       const definition = this.catalogById.get(placed.itemId);
       if (!definition?.explicitFootprint) return true;
@@ -421,6 +531,14 @@ export class RestaurantEditorScene extends Phaser.Scene {
         footprint,
       );
     });
+  }
+
+  private async commitCurrentMutation(): Promise<void> {
+    if (this.selectedPlacedInstanceId !== null) {
+      await this.commitSelectedTransform();
+      return;
+    }
+    await this.commitCurrentPlacement();
   }
 
   private async commitCurrentPlacement(): Promise<void> {
@@ -515,6 +633,157 @@ export class RestaurantEditorScene extends Phaser.Scene {
     }
   }
 
+  private async commitSelectedTransform(): Promise<void> {
+    const selected = this.selectedPlacedItem();
+    if (
+      this.placementInFlight ||
+      !selected ||
+      !this.hoverTile ||
+      !this.authorityLoaded
+    ) {
+      return;
+    }
+
+    if (!this.authoritySynchronized) {
+      await this.resynchronizeAuthority();
+      return;
+    }
+
+    const validation = this.currentValidation();
+    if (!validation?.ok) {
+      if (validation) {
+        this.publishUi('Move cannot be committed.', validation);
+      }
+      return;
+    }
+
+    const tile = { ...this.hoverTile };
+    const rotation = this.rotation;
+    const mutationId = createTransformMutationId();
+    this.placementInFlight = true;
+    this.publishUi(
+      `Saving placed #${selected.instanceId} at ${tile.x},${tile.y}…`,
+      validation,
+      'saving',
+    );
+
+    try {
+      const commit = await this.authority.transformItem(
+        selected.instanceId,
+        {
+          tileX: tile.x,
+          tileY: tile.y,
+          rotation,
+        },
+        mutationId,
+      );
+
+      const layout = await this.authority.loadRestaurant();
+      this.applyAuthoritativeLayout(layout);
+
+      const persisted = layout.items.some(
+        (placed) =>
+          placed.instanceId === commit.item.instanceId &&
+          placed.itemId === commit.item.itemId &&
+          placed.tileX === commit.item.tileX &&
+          placed.tileY === commit.item.tileY &&
+          placed.rotation === commit.item.rotation &&
+          placed.roomIndex === commit.item.roomIndex,
+      );
+      if (!persisted) {
+        throw new Error(
+          'Authoritative reload did not contain the transformed item acknowledged by the server',
+        );
+      }
+
+      this.selectedPlacedInstanceId = commit.item.instanceId;
+      this.hoverTile = { x: commit.item.tileX, y: commit.item.tileY };
+      this.rotation = commit.item.rotation;
+      this.drawCommittedPlacements();
+      this.drawPreview(false);
+      this.publishUi(
+        commit.outcome === 'duplicate'
+          ? `Edit #${commit.item.instanceId} reconciled and reloaded.`
+          : `Edit #${commit.item.instanceId} saved and reloaded from authority.`,
+        this.currentValidation(),
+      );
+    } catch (error) {
+      this.handleMutationFailure('Edit', error);
+    } finally {
+      this.placementInFlight = false;
+    }
+  }
+
+  private async removeSelectedPlacedItem(): Promise<void> {
+    const selected = this.selectedPlacedItem();
+    if (this.placementInFlight || !selected || !this.authorityLoaded) return;
+
+    if (!this.authoritySynchronized) {
+      await this.resynchronizeAuthority();
+      return;
+    }
+
+    const mutationId = createRemoveMutationId();
+    this.placementInFlight = true;
+    this.publishUi(
+      `Removing placed #${selected.instanceId}…`,
+      null,
+      'saving',
+    );
+
+    try {
+      const commit = await this.authority.removeItem(
+        selected.instanceId,
+        mutationId,
+      );
+      const layout = await this.authority.loadRestaurant();
+
+      if (
+        layout.items.some(
+          (placed) => placed.instanceId === commit.item.instanceId,
+        )
+      ) {
+        throw new Error(
+          'Authoritative reload still contains the item acknowledged as removed',
+        );
+      }
+
+      this.selectedPlacedInstanceId = null;
+      this.rotation = 0;
+      this.applyAuthoritativeLayout(layout);
+      this.drawPreview(false);
+      this.publishUi(
+        commit.outcome === 'duplicate'
+          ? `Removal #${commit.item.instanceId} reconciled; item is absent.`
+          : `Placed #${commit.item.instanceId} removed and inventory reconciled.`,
+        this.currentValidation(),
+      );
+    } catch (error) {
+      this.handleMutationFailure('Removal', error);
+    } finally {
+      this.placementInFlight = false;
+    }
+  }
+
+  private handleMutationFailure(operation: string, error: unknown): void {
+    const knownRejection =
+      error instanceof RestaurantAuthorityError &&
+      [400, 401, 403, 409, 422].includes(error.status);
+
+    this.authoritySynchronized = knownRejection;
+    this.drawCommittedPlacements();
+    this.drawPreview(false);
+    this.publishUi(
+      knownRejection
+        ? this.describeAuthorityError(error)
+        : `${operation} result is uncertain. Further mutation is blocked until authoritative reload succeeds: ${this.describeError(error)}`,
+      this.currentValidation(),
+      error instanceof RestaurantAuthorityError && error.status === 401
+        ? 'error'
+        : 'editing',
+    );
+  }
+
   private async resynchronizeAuthority(): Promise<void> {
     if (this.placementInFlight) return;
     this.placementInFlight = true;
@@ -570,15 +839,40 @@ export class RestaurantEditorScene extends Phaser.Scene {
         rotateFootprint(definition.explicitFootprint, placed.rotation),
         true,
       );
-      this.committedSprites.push(
-        this.createItemSprite(
-          definition,
-          visual,
-          placed.rotation,
+      const selected =
+        placed.instanceId === this.selectedPlacedInstanceId;
+      if (selected) {
+        this.committedGraphics.lineStyle(3, 0xffd166, 1);
+        this.committedGraphics.fillStyle(0xffd166, 0.18);
+        this.drawTileFootprint(
+          this.committedGraphics,
           { x: placed.tileX, y: placed.tileY },
-          1,
-        ),
+          rotateFootprint(definition.explicitFootprint, placed.rotation),
+          true,
+        );
+      }
+
+      const sprite = this.createItemSprite(
+        definition,
+        visual,
+        placed.rotation,
+        { x: placed.tileX, y: placed.tileY },
+        selected ? 0.35 : 1,
       );
+      sprite.setInteractive({ useHandCursor: true });
+      sprite.on(
+        'pointerdown',
+        (
+          _pointer: Phaser.Input.Pointer,
+          _localX: number,
+          _localY: number,
+          event: Phaser.Types.Input.EventData,
+        ) => {
+          event.stopPropagation();
+          this.selectPlacedItem(placed.instanceId);
+        },
+      );
+      this.committedSprites.push(sprite);
     }
   }
 
@@ -605,7 +899,7 @@ export class RestaurantEditorScene extends Phaser.Scene {
       true,
     );
 
-    const item = this.candidates[this.selectedIndex];
+    const item = this.currentDefinition();
     const visual = item ? this.itemVisual(item) : null;
     if (item?.explicitFootprint && visual) {
       this.previewSprite = this.createItemSprite(
@@ -679,7 +973,7 @@ export class RestaurantEditorScene extends Phaser.Scene {
   }
 
   private currentVisual(): RestaurantItemVisual | null {
-    const item = this.candidates[this.selectedIndex];
+    const item = this.currentDefinition();
     return item ? this.itemVisual(item) : null;
   }
 
@@ -740,10 +1034,10 @@ export class RestaurantEditorScene extends Phaser.Scene {
 
   private describeAuthorityError(error: RestaurantAuthorityError): string {
     if (error.status === 409) {
-      return 'Authority rejected the placement because inventory or occupied state changed. The latest state remains authoritative.';
+      return 'Authority rejected the restaurant change because inventory, occupied state, or idempotency state changed. The latest state remains authoritative.';
     }
     if (error.status === 422) {
-      return 'Authority rejected the placement under current Restaurant City placement rules.';
+      return 'Authority rejected the restaurant change under current Restaurant City placement rules.';
     }
     if (error.status === 401) {
       return 'ANEWON product session is unavailable or expired.';
