@@ -200,10 +200,10 @@ for (const group of database.groups) {
     const id = integer(item.attributes?.id);
     if (id === null || !authoritativeIds.has(id)) continue;
 
-    const sizeX = integer(item.attributes?.sizeX);
-    const sizeY = integer(item.attributes?.sizeY);
-    if (sizeX === null || sizeY === null || sizeX <= 0 || sizeY <= 0) continue;
-
+    // The trusted server catalog is the placement authority. Some definitions
+    // now have SWF-recovered footprints rather than ItemDatabase sizeX/sizeY,
+    // so do not silently discard an authoritative id just because those raw
+    // attributes are absent.
     const className = stringValue(item.attributes?.className);
     const hash = stringValue(item.attributes?.hash);
     const itemName = stringValue(item.attributes?.name);
