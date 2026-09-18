@@ -39,7 +39,6 @@ describe('historical ItemDatabase parser', () => {
     expect(db.counts).toEqual({ groups: 1, items: 2 });
     expect(db.groups[0]?.attributes.type).toEqual(['decor', 'table']);
     expect(db.groups[0]?.attributes.outdoor).toBe(false);
-
     expect(db.groups[0]?.items[0]?.attributes).toMatchObject({
       cash: 0,
       cost: 0,
@@ -51,6 +50,53 @@ describe('historical ItemDatabase parser', () => {
     expect(db.groups[0]?.items[1]?.attributes.cash).toBe('3');
     expect(db.groups[0]?.items[1]?.attributes.type).toEqual(['unique']);
     expect(db.groups[0]?.items[1]?.childrenXml).toContain('<function');
+  });
+
+  it('counts only direct group items like E4X curGroup.item', () => {
+    const db = parseItemDatabaseXml(`
+      <items>
+        <group name="quiz">
+          <item id="1" name="outer">
+            <answers>
+              <item id="999" name="nested-answer"/>
+            </answers>
+          </item>
+          <item id="2" name="second"/>
+        </group>
+      </items>
+    `);
+
+    expect(db.counts).toEqual({ groups: 1, items: 2 });
+    expect(db.groups[0]?.items.map((entry) => entry.attributes.id)).toEqual([
+      '1',
+      '2',
+    ]);
+    expect(db.groups[0]?.items[0]?.childrenXml).toContain('id="999"');
+  });
+
+  it('ignores comment and CDATA pseudo-elements', () => {
+    const db = parseItemDatabaseXml(`
+      <items>
+        <!-- <group name="fake"><item id="998"/></group> -->
+        <group name="real">
+          <![CDATA[<item id="997"/>]]>
+          <item id="1" name="real_item"/>
+        </group>
+      </items>
+    `);
+    expect(db.counts).toEqual({ groups: 1, items: 1 });
+  });
+
+  it('handles > characters inside quoted attributes', () => {
+    const db = parseItemDatabaseXml(`
+      <items>
+        <group name="g">
+          <item id="1" name="a>b" note="x > y"/>
+        </group>
+      </items>
+    `);
+    expect(db.groups[0]?.items[0]?.attributes.name).toBe('a>b');
+    expect(db.groups[0]?.items[0]?.attributes.note).toBe('x > y');
   });
 
   it('keeps duplicate ids because the original loader only warns about them', () => {
