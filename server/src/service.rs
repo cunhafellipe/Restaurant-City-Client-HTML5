@@ -22,6 +22,20 @@ pub enum PlacementMutationOutcome {
     Duplicate(PlacedItem),
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct InventoryAvailability {
+    pub item_id: u32,
+    pub owned: u32,
+    pub placed: u32,
+    pub available: u32,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RestaurantProductSnapshot {
+    pub restaurant: RestaurantSnapshot,
+    pub inventory: Vec<InventoryAvailability>,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ProductAggregate {
     player: PlayerState,
@@ -152,6 +166,21 @@ impl ProductAggregate {
             .items()
             .map(|item| (item.instance_id, *item))
             .collect();
+
+        let mut placed_counts = BTreeMap::<u32, u32>::new();
+        for item in authoritative_items.values() {
+            let count = placed_counts.entry(item.item_id).or_default();
+            *count = count
+                .checked_add(1)
+                .ok_or(ProductStateStoreError::Corrupt)?;
+        }
+        if placed_counts
+            .iter()
+            .any(|(item_id, placed)| player.inventory().quantity(*item_id) < *placed)
+        {
+            return Err(ProductStateStoreError::Corrupt);
+        }
+
         let mut placement_mutations = BTreeMap::new();
 
         for entry in persisted.placement_mutations {
@@ -226,12 +255,46 @@ impl ProductAggregate {
         Ok(PlacementMutationOutcome::Applied(placed))
     }
 
-    pub fn restaurant_snapshot(
+    pub fn restaurant_product_snapshot(
         &self,
         session: VerifiedProductSession,
-    ) -> Result<RestaurantSnapshot, ProductServiceError> {
+    ) -> Result<RestaurantProductSnapshot, ProductServiceError> {
         self.require_subject(session)?;
-        Ok(self.restaurant.snapshot())
+
+        let restaurant = self.restaurant.snapshot();
+        let mut placed_counts = BTreeMap::<u32, u32>::new();
+        for item in &restaurant.items {
+            let count = placed_counts.entry(item.item_id).or_default();
+            *count = count.checked_add(1).ok_or(ProductServiceError::Store(
+                ProductStateStoreError::Corrupt,
+            ))?;
+        }
+
+        let mut inventory = Vec::new();
+        for (item_id, owned) in self.player.inventory().entries() {
+            let placed = placed_counts.get(&item_id).copied().unwrap_or(0);
+            let available = owned.checked_sub(placed).ok_or(ProductServiceError::Store(
+                ProductStateStoreError::Corrupt,
+            ))?;
+            inventory.push(InventoryAvailability {
+                item_id,
+                owned,
+                placed,
+                available,
+            });
+        }
+
+        if placed_counts
+            .keys()
+            .any(|item_id| self.player.inventory().quantity(*item_id) == 0)
+        {
+            return Err(ProductServiceError::Store(ProductStateStoreError::Corrupt));
+        }
+
+        Ok(RestaurantProductSnapshot {
+            restaurant,
+            inventory,
+        })
     }
 
     fn require_subject(&self, session: VerifiedProductSession) -> Result<(), ProductServiceError> {
@@ -451,7 +514,7 @@ where
     pub fn load_restaurant(
         &self,
         bearer_token: &str,
-    ) -> Result<RestaurantSnapshot, ProductServiceError> {
+    ) -> Result<RestaurantProductSnapshot, ProductServiceError> {
         let session = self.verify(bearer_token)?;
         let state = self
             .store
@@ -459,7 +522,7 @@ where
             .map_err(ProductServiceError::Store)?
             .map(|loaded| loaded.state)
             .unwrap_or_else(|| ProductAggregate::new(session.subject, self.initial_room));
-        state.restaurant_snapshot(session)
+        state.restaurant_product_snapshot(session)
     }
 
     pub fn into_store(self) -> S {
@@ -621,6 +684,54 @@ mod tests {
     }
 
     #[test]
+    fn persistence_rejects_placed_item_without_owned_inventory() {
+        let session = VerifiedProductSession {
+            subject: subject(7),
+            session_id: ProductSessionId::from_verified_platform_bytes([9; 16]).unwrap(),
+        };
+        let catalog = catalog();
+        let mut aggregate = ProductAggregate::new(subject(7), room());
+        aggregate
+            .apply_player_command(
+                session,
+                mutation("grant-1"),
+                Command::GrantInventory {
+                    item_id: 10,
+                    quantity: 1,
+                },
+            )
+            .unwrap();
+        aggregate
+            .place_owned_item(
+                session,
+                &catalog,
+                mutation("place-1"),
+                PlacementIntent {
+                    item_id: 10,
+                    tile: TilePoint { x: 2, y: 2 },
+                    rotation: 0,
+                },
+            )
+            .unwrap();
+        aggregate
+            .apply_player_command(
+                session,
+                mutation("consume-1"),
+                Command::ConsumeInventory {
+                    item_id: 10,
+                    quantity: 1,
+                },
+            )
+            .unwrap();
+
+        let encoded = aggregate.encode_persisted().unwrap();
+        assert_eq!(
+            ProductAggregate::decode_persisted(&catalog, &encoded),
+            Err(ProductStateStoreError::Corrupt)
+        );
+    }
+
+    #[test]
     fn compare_and_swap_rejects_stale_revision() {
         let store = InMemoryProductStateStore::default();
         let subject = subject(7);
@@ -735,7 +846,12 @@ mod tests {
         assert_eq!(second, PlacementMutationOutcome::Duplicate(placed));
 
         let snapshot = service.load_restaurant("valid-product-session").unwrap();
-        assert_eq!(snapshot.items, vec![placed]);
+        assert_eq!(snapshot.restaurant.items, vec![placed]);
+        assert_eq!(snapshot.inventory.len(), 1);
+        assert_eq!(snapshot.inventory[0].item_id, 10);
+        assert_eq!(snapshot.inventory[0].owned, 1);
+        assert_eq!(snapshot.inventory[0].placed, 1);
+        assert_eq!(snapshot.inventory[0].available, 0);
     }
 
     #[test]
@@ -789,8 +905,9 @@ mod tests {
         let service = service();
         let snapshot = service.load_restaurant("valid-product-session").unwrap();
 
-        assert!(snapshot.items.is_empty());
-        assert_eq!(snapshot.room.inside_x, 8);
-        assert_eq!(snapshot.room.inside_y, 8);
+        assert!(snapshot.restaurant.items.is_empty());
+        assert!(snapshot.inventory.is_empty());
+        assert_eq!(snapshot.restaurant.room.inside_x, 8);
+        assert_eq!(snapshot.restaurant.room.inside_y, 8);
     }
 }
