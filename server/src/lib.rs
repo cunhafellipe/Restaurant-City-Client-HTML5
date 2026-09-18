@@ -22,8 +22,9 @@ pub use platform::{
 };
 
 pub use placement::{
-    Footprint, PlacementFlags, PlacementShape, ROOM_INDEX_MAIN, ROOM_INDEX_OUTSIDE_AREA,
-    RoomDimensions, ScreenPoint, StructuralPlacement, TilePoint,
+    Footprint, HistoricalTileStackEntry, HistoricalTileStackValidation, PlacementFlags,
+    PlacementShape, ROOM_INDEX_MAIN, ROOM_INDEX_OUTSIDE_AREA, RoomDimensions, ScreenPoint,
+    StructuralPlacement, TilePoint, validate_historical_tile_stack,
 };
 
 pub use restaurant::{
