@@ -843,10 +843,7 @@ mod tests {
             .transform(&catalog, first.instance_id, TilePoint { x: 2, y: 2 }, 0)
             .unwrap();
         assert_eq!(transformed, first);
-        assert_eq!(
-            state.snapshot().items,
-            vec![surface, previous_top, first]
-        );
+        assert_eq!(state.snapshot().items, vec![surface, previous_top, first]);
 
         // Once it is top, the recovered self-at-top quirk looks through it to
         // the previous surface and remains valid.
