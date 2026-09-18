@@ -19,8 +19,8 @@ pub struct PlacementCatalog {
     definitions: BTreeMap<u32, ItemPlacementDefinition>,
 }
 
-pub const PLACEMENT_CATALOG_MAGIC: &str = "ANEWON_RC_PLACEMENT_CATALOG_V2";
-const PLACEMENT_CATALOG_COLUMNS: &str = "item_id\tsize_x\tsize_y\trotation_count\twall_item\twall_decoration_item\twallpaper_item\toutdoor\tfloor_tile_item";
+pub const PLACEMENT_CATALOG_MAGIC: &str = "ANEWON_RC_PLACEMENT_CATALOG_V3";
+const PLACEMENT_CATALOG_COLUMNS: &str = "item_id\tsize_x\tsize_y\trotation_count\twall_item\twall_decoration_item\twallpaper_item\toutdoor\tfloor_tile_item\tsurface\tstackable";
 
 impl PlacementCatalog {
     pub fn new(
@@ -82,7 +82,7 @@ impl PlacementCatalog {
             }
 
             let fields: Vec<_> = line.split('\t').collect();
-            if fields.len() != 9 {
+            if fields.len() != 11 {
                 return Err(PlacementCatalogLoadError::InvalidRow { line: line_number });
             }
 
@@ -115,6 +115,8 @@ impl PlacementCatalog {
                     wallpaper_item: parse_bool(fields[6])?,
                     outdoor: parse_bool(fields[7])?,
                     floor_tile_item: parse_bool(fields[8])?,
+                    surface: parse_bool(fields[9])?,
+                    stackable: parse_bool(fields[10])?,
                 },
             });
         }
@@ -474,9 +476,9 @@ mod tests {
         let input = concat!(
             "ANEWON_RC_PLACEMENT_CATALOG_V2\n",
             "# baseline=0.9.143a\n",
-            "item_id\tsize_x\tsize_y\trotation_count\twall_item\twall_decoration_item\twallpaper_item\toutdoor\tfloor_tile_item\n",
-            "10\t2\t1\t4\t0\t0\t0\t0\t0\n",
-            "20\t1\t1\t1\t0\t0\t0\t0\t0\n",
+            "item_id\tsize_x\tsize_y\trotation_count\twall_item\twall_decoration_item\twallpaper_item\toutdoor\tfloor_tile_item\tsurface\tstackable\n",
+            "10\t2\t1\t4\t0\t0\t0\t0\t0\t1\t0\n",
+            "20\t1\t1\t1\t0\t0\t0\t0\t0\t0\t1\n",
         );
         let catalog = PlacementCatalog::from_trusted_tsv(input).unwrap();
         assert_eq!(catalog.get(10).unwrap().footprint.size_x, 2);
@@ -487,9 +489,9 @@ mod tests {
     fn trusted_catalog_loader_rejects_duplicate_ids() {
         let input = concat!(
             "ANEWON_RC_PLACEMENT_CATALOG_V2\n",
-            "item_id\tsize_x\tsize_y\trotation_count\twall_item\twall_decoration_item\twallpaper_item\toutdoor\tfloor_tile_item\n",
-            "10\t2\t1\t4\t0\t0\t0\t0\t0\n",
-            "10\t1\t1\t4\t0\t0\t0\t0\t0\n",
+            "item_id\tsize_x\tsize_y\trotation_count\twall_item\twall_decoration_item\twallpaper_item\toutdoor\tfloor_tile_item\tsurface\tstackable\n",
+            "10\t2\t1\t4\t0\t0\t0\t0\t0\t1\t0\n",
+            "10\t1\t1\t4\t0\t0\t0\t0\t0\t0\t1\n",
         );
         assert_eq!(
             PlacementCatalog::from_trusted_tsv(input).unwrap_err(),
