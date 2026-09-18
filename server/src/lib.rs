@@ -43,7 +43,7 @@ pub use persistence::RedbProductStateStore;
 pub use http::{
     InventoryAvailabilityResponse, PlacedItemResponse, PlacementResponse, ProductHttpContext,
     PublicProductError, RestaurantLayoutResponse, RoomResponse, handle_load_restaurant,
-    handle_place_item,
+    handle_place_item, handle_remove_item, handle_transform_item,
 };
 
 pub use axum_adapter::restaurant_router;
