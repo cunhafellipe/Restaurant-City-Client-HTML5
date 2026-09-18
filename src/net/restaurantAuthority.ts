@@ -65,6 +65,16 @@ type Fetcher = (
   init?: RequestInit,
 ) => Promise<Response>;
 
+function sameOriginGlobalFetch(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+): Promise<Response> {
+  // Window.fetch is a Web-IDL method in browsers and must keep the global
+  // receiver. Calling a detached native fetch as this.fetcher(...) can bind the
+  // authority instance as receiver and Chromium rejects it as Illegal invocation.
+  return globalThis.fetch(input, init);
+}
+
 const DEFAULT_BASE_PATH = '/api/v1';
 const MAX_MUTATION_ID_BYTES = 128;
 // Trusted placement catalog V2 derives per-item rotation_count from recovered
@@ -79,7 +89,7 @@ export class HttpRestaurantAuthority implements RestaurantAuthority {
 
   constructor(
     basePath = DEFAULT_BASE_PATH,
-    fetcher: Fetcher = fetch,
+    fetcher: Fetcher = sameOriginGlobalFetch,
   ) {
     if (
       !basePath.startsWith('/') ||
