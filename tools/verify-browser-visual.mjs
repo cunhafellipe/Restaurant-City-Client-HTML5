@@ -146,9 +146,11 @@ function baseBrowserArgs(profile, url) {
     '--hide-scrollbars',
     '--force-device-scale-factor=1',
     '--window-size=1280,720',
-    '--use-angle=swiftshader',
-    '--enable-webgl',
-    '--ignore-gpu-blocklist',
+    // Force Phaser.AUTO onto its Canvas fallback on service/headless runners.
+    // WebGL remains the preferred interactive path; the visual regression gate
+    // needs a deterministic software renderer that does not depend on GPU
+    // session availability for the NetworkService account.
+    '--disable-gpu',
     '--run-all-compositor-stages-before-draw',
     '--virtual-time-budget=8000',
     `--user-data-dir=${profile}`,
@@ -231,7 +233,7 @@ try {
 
   if (!/data-phase="editing"/.test(dom.stdout)) {
     throw new Error(
-      `Visual probe never reached editing phase. DOM: ${dom.stdout.slice(-4000)}`,
+      `Visual probe never reached editing phase. Browser stderr: ${dom.stderr.slice(-4000)} DOM: ${dom.stdout.slice(-4000)}`,
     );
   }
   if (!dom.stdout.includes('Loaded baseline 0.9.143a and 1 persisted restaurant item(s).')) {
