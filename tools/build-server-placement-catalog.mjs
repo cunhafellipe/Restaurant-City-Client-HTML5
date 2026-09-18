@@ -142,6 +142,7 @@ let skippedInvalidId = 0;
 let skippedSystemOnly = 0;
 const unresolvedSurfaceDefinitions = [];
 const unresolvedStackableDefinitions = [];
+const unsupportedDomainInventory = [];
 
 for (const group of database.groups ?? []) {
   for (const item of group.items ?? []) {
@@ -175,7 +176,57 @@ for (const group of database.groups ?? []) {
           : null;
     const surface = hasFlag(group, item, 'surface');
     const stackable = hasFlag(group, item, 'stackable');
+    const wallItem = hasFlag(group, item, 'wallItem');
+    const wallDecorationItem = hasFlag(group, item, 'wallDecorationItem');
+    const wallpaperItem = hasFlag(group, item, 'wallpaperItem');
+    const floorTileItem = hasFlag(group, item, 'floorTileItem');
+    const doorItem = hasFlag(group, item, 'doorItem');
+    const wallDivider = hasFlag(group, item, 'wallDivider');
     const systemOnly = SYSTEM_ONLY_GROUPS.has(group.name);
+
+    if (
+      !systemOnly &&
+      (wallItem ||
+        wallDecorationItem ||
+        wallpaperItem ||
+        floorTileItem ||
+        doorItem ||
+        wallDivider)
+    ) {
+      unsupportedDomainInventory.push({
+        itemId: id,
+        group: group.name,
+        name:
+          typeof item.attributes?.name === 'string'
+            ? item.attributes.name
+            : null,
+        className:
+          typeof item.attributes?.className === 'string'
+            ? item.attributes.className
+            : null,
+        explicitSizeX,
+        explicitSizeY,
+        recoveredSizeX: asInteger(recoveredFootprint?.sizeX),
+        recoveredSizeY: asInteger(recoveredFootprint?.sizeY),
+        footprintSource,
+        wallItem,
+        wallDecorationItem,
+        wallpaperItem,
+        floorTileItem,
+        doorItem,
+        wallDivider,
+        rotationCount:
+          typeof item.attributes?.className === 'string'
+            ? (() => {
+                try {
+                  return resolveRotationCount(symbolIndex, item, group.name);
+                } catch {
+                  return null;
+                }
+              })()
+            : null,
+      });
+    }
 
     if (sizeX === null || sizeY === null || sizeX <= 0 || sizeY <= 0) {
       skippedWithoutFootprint += 1;
@@ -224,11 +275,11 @@ for (const group of database.groups ?? []) {
       sizeY,
       footprintSource,
       rotationCount: resolveRotationCount(symbolIndex, item, group.name),
-      wallItem: hasFlag(group, item, 'wallItem'),
-      wallDecorationItem: hasFlag(group, item, 'wallDecorationItem'),
-      wallpaperItem: hasFlag(group, item, 'wallpaperItem'),
+      wallItem,
+      wallDecorationItem,
+      wallpaperItem,
       outdoor: hasFlag(group, item, 'outdoor'),
-      floorTileItem: hasFlag(group, item, 'floorTileItem'),
+      floorTileItem,
       surface,
       stackable,
     });
@@ -297,6 +348,24 @@ const meta = {
     (entry) => entry.footprintSource === 'recovered',
   ).length,
   recoveredGeometryContract: path.relative(REPO, RECOVERED_GEOMETRY),
+  unsupportedDomainCounts: {
+    total: unsupportedDomainInventory.length,
+    wallItem: unsupportedDomainInventory.filter((entry) => entry.wallItem).length,
+    wallDecorationItem: unsupportedDomainInventory.filter(
+      (entry) => entry.wallDecorationItem,
+    ).length,
+    wallpaperItem: unsupportedDomainInventory.filter(
+      (entry) => entry.wallpaperItem,
+    ).length,
+    floorTileItem: unsupportedDomainInventory.filter(
+      (entry) => entry.floorTileItem,
+    ).length,
+    doorItem: unsupportedDomainInventory.filter((entry) => entry.doorItem).length,
+    wallDivider: unsupportedDomainInventory.filter(
+      (entry) => entry.wallDivider,
+    ).length,
+  },
+  unsupportedDomainInventory,
   unresolvedSurfaceDefinitions,
   unresolvedStackableDefinitions,
   generatedAtBuildTime: true,
