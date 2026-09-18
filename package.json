@@ -20,7 +20,8 @@
     "hydrate:local": "node tools/hydrate-local-content.mjs",
     "runtime:verify": "node tools/verify-web-native-runtime.mjs",
     "server:catalog": "node tools/build-server-placement-catalog.mjs",
-    "assets:mapping:analyze": "node tools/analyze-item-asset-mapping.mjs"
+    "assets:mapping:analyze": "node tools/analyze-item-asset-mapping.mjs",
+    "visual:probe": "node tools/verify-browser-visual.mjs"
   },
   "dependencies": {
     "phaser": "^3.90.0"
