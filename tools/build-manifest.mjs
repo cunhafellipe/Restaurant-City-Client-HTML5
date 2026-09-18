@@ -1,11 +1,8 @@
 /**
  * Stage 3: build-manifest
  *
- * Emits the runtime manifest (contract in docs/04-asset-pipeline.md) and a
- * per-SWF coverage report. Reads work/<swf>/extract.json plus the atlas
- * JSON produced by build-atlases.
- *
- *   node tools/build-manifest.mjs [swfName ...]   (default: all visual asset SWFs)
+ * Emits runtime manifest and per-SWF coverage. Atlas entries reference a
+ * Phaser multi-atlas JSON plus its bounded PNG page set.
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -20,47 +17,58 @@ const ATLAS_DIR = path.join(GEN_DIR, 'atlases');
 export function buildManifest(swfNames) {
   const atlases = [];
   const coverage = {};
+
   for (const swfName of swfNames) {
     const cfg = SWFS[swfName];
-    if (!cfg) {
-      throw new Error(`unknown SWF "${swfName}"`);
-    }
+    if (!cfg) throw new Error(`unknown SWF "${swfName}"`);
+
     const extract = JSON.parse(
       fs.readFileSync(path.join(WORK, swfName, 'extract.json'), 'utf8'),
     );
-    const atlasJsonFile = path.join(ATLAS_DIR, `${swfName}.json`);
-    const atlas = JSON.parse(fs.readFileSync(atlasJsonFile, 'utf8'));
-    const atlasKeys = new Set(atlas.textures.flatMap((t) => t.frames.map((f) => f.filename)));
+    const atlas = JSON.parse(
+      fs.readFileSync(path.join(ATLAS_DIR, `${swfName}.json`), 'utf8'),
+    );
+
+    const atlasKeys = new Set(
+      atlas.textures.flatMap((t) => t.frames.map((f) => f.filename)),
+    );
     const expectedKeys = new Set(
       extract.symbols.flatMap((s) => s.frames.map((f) => f.key)),
     );
     const missing = [...expectedKeys].filter((k) => !atlasKeys.has(k));
     const extra = [...atlasKeys].filter((k) => !expectedKeys.has(k));
+
     if (missing.length > 0 || extra.length > 0) {
       throw new Error(
         `atlas/extract mismatch for ${swfName}: missing=${missing.length} extra=${extra.length}`,
       );
     }
+
     const symbols = extract.counts.symbols;
     const exported = extract.symbols.length;
     const pct = symbols === 0 ? 100 : Math.round((exported / symbols) * 1000) / 10;
+
     coverage[swfName] = {
       symbols,
       exported,
       frames: extract.counts.frames,
       pct,
+      pages: atlas.textures.length,
       excluded: extract.excluded,
     };
+
     atlases.push({
       id: swfName,
-      file: `atlases/${swfName}.png`,
       json: `atlases/${swfName}.json`,
+      files: atlas.textures.map((t) =>
+        t.image.replace(/^assets\/generated\//, ''),
+      ),
       source: cfg.source,
     });
   }
 
   const manifest = {
-    version: 1,
+    version: 2,
     atlases,
     audio: [],
     data: [],
@@ -74,16 +82,16 @@ export function buildManifest(swfNames) {
   console.log('manifest:', manifestFile);
   for (const [name, c] of Object.entries(coverage)) {
     console.log(
-      `  coverage ${name}: ${c.exported}/${c.symbols} symbols (${c.pct}%), ${c.frames} frames`,
+      `  coverage ${name}: ${c.exported}/${c.symbols} symbols (${c.pct}%), ${c.frames} frames, ${c.pages} page(s)`,
     );
-    for (const ex of c.excluded) {
-      console.log(`    excluded chid ${ex.chid}${ex.name ? ` "${ex.name}"` : ''}: ${ex.reason}`);
-    }
   }
   return manifest;
 }
 
-if (process.argv[1] && import.meta.url === new URL(`file:///${process.argv[1].replace(/\\/g, '/')}`).href) {
+if (
+  process.argv[1] &&
+  import.meta.url === new URL(`file:///${process.argv[1].replace(/\\/g, '/')}`).href
+) {
   const names = process.argv.slice(2);
   buildManifest(names.length > 0 ? names : ATLAS_SWFS);
 }
