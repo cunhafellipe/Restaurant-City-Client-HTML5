@@ -237,7 +237,7 @@ export class HttpRestaurantAuthority implements RestaurantAuthority {
 export function createPlacementMutationId(
   uuid: () => string = () => crypto.randomUUID(),
 ): string {
-  return createMutationId('place', uuid);
+  return createMutationId('placement', uuid);
 }
 
 export function createTransformMutationId(
@@ -253,7 +253,7 @@ export function createRemoveMutationId(
 }
 
 function createMutationId(
-  operation: 'place' | 'transform' | 'remove',
+  operation: 'placement' | 'transform' | 'remove',
   uuid: () => string,
 ): string {
   const value = `rc-${operation}-${uuid()}`;
