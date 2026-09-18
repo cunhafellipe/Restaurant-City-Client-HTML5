@@ -7,6 +7,12 @@ const REPO = path.resolve(HERE, '..');
 const GENERATED = path.join(REPO, 'public', 'assets', 'generated');
 const ITEM_DB = path.join(GENERATED, 'data', 'restaurant.items.json');
 const MANIFEST = path.join(GENERATED, 'manifest.json');
+const RECOVERED_GEOMETRY = path.join(
+  REPO,
+  'contracts',
+  'restaurant-city',
+  'recovered-room-item-geometry.json',
+);
 const OUT_DIR = path.join(REPO, 'server', 'runtime', 'generated');
 const OUT_TSV = path.join(OUT_DIR, 'restaurant-placement-catalog.tsv');
 const OUT_META = path.join(OUT_DIR, 'restaurant-placement-catalog.meta.json');
@@ -108,10 +114,25 @@ if (!fs.existsSync(ITEM_DB) || !fs.existsSync(MANIFEST)) {
 
 const database = JSON.parse(fs.readFileSync(ITEM_DB, 'utf8'));
 const manifest = JSON.parse(fs.readFileSync(MANIFEST, 'utf8'));
+const recoveredGeometry = JSON.parse(fs.readFileSync(RECOVERED_GEOMETRY, 'utf8'));
 const source = manifest.data?.find((entry) => entry.id === 'restaurant');
 const symbolIndex = buildAtlasSymbolIndex(manifest);
 if (!source) {
   throw new Error('Runtime manifest has no restaurant data family');
+}
+
+function recoveredGeometryFor(itemId, className) {
+  const leaf = leafClassName(className);
+  if (!leaf) return null;
+  const entry = recoveredGeometry.classes?.[leaf];
+  if (
+    !entry ||
+    !Array.isArray(entry.itemIds) ||
+    !entry.itemIds.includes(itemId)
+  ) {
+    return null;
+  }
+  return entry;
 }
 
 const definitions = [];
@@ -130,8 +151,28 @@ for (const group of database.groups ?? []) {
       continue;
     }
 
-    const sizeX = asInteger(item.attributes?.sizeX);
-    const sizeY = asInteger(item.attributes?.sizeY);
+    const explicitSizeX = asInteger(item.attributes?.sizeX);
+    const explicitSizeY = asInteger(item.attributes?.sizeY);
+    const geometry = recoveredGeometryFor(id, item.attributes?.className);
+    const recoveredFootprint =
+      geometry?.placementFootprintEnabled === true ? geometry.footprint : null;
+    const sizeX =
+      explicitSizeX !== null && explicitSizeX > 0
+        ? explicitSizeX
+        : asInteger(recoveredFootprint?.sizeX);
+    const sizeY =
+      explicitSizeY !== null && explicitSizeY > 0
+        ? explicitSizeY
+        : asInteger(recoveredFootprint?.sizeY);
+    const footprintSource =
+      explicitSizeX !== null &&
+      explicitSizeX > 0 &&
+      explicitSizeY !== null &&
+      explicitSizeY > 0
+        ? 'explicit'
+        : sizeX !== null && sizeY !== null
+          ? 'recovered'
+          : null;
     const surface = hasFlag(group, item, 'surface');
     const stackable = hasFlag(group, item, 'stackable');
     const systemOnly = SYSTEM_ONLY_GROUPS.has(group.name);
@@ -146,8 +187,8 @@ for (const group of database.groups ?? []) {
             typeof item.attributes?.className === 'string'
               ? item.attributes.className
               : null,
-          hasSizeX: sizeX !== null && sizeX > 0,
-          hasSizeY: sizeY !== null && sizeY > 0,
+          hasSizeX: explicitSizeX !== null && explicitSizeX > 0,
+          hasSizeY: explicitSizeY !== null && explicitSizeY > 0,
         };
         if (surface) unresolvedSurfaceDefinitions.push(unresolved);
         if (stackable) unresolvedStackableDefinitions.push(unresolved);
@@ -181,6 +222,7 @@ for (const group of database.groups ?? []) {
           : null,
       sizeX,
       sizeY,
+      footprintSource,
       rotationCount: resolveRotationCount(symbolIndex, item, group.name),
       wallItem: hasFlag(group, item, 'wallItem'),
       wallDecorationItem: hasFlag(group, item, 'wallDecorationItem'),
@@ -247,9 +289,14 @@ const meta = {
     className: entry.className,
     sizeX: entry.sizeX,
     sizeY: entry.sizeY,
+    footprintSource: entry.footprintSource,
     surface: entry.surface,
     stackable: entry.stackable,
   })),
+  recoveredFootprintDefinitions: definitions.filter(
+    (entry) => entry.footprintSource === 'recovered',
+  ).length,
+  recoveredGeometryContract: path.relative(REPO, RECOVERED_GEOMETRY),
   unresolvedSurfaceDefinitions,
   unresolvedStackableDefinitions,
   generatedAtBuildTime: true,
