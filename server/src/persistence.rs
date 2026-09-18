@@ -3,7 +3,7 @@ use crate::restaurant::PlacementCatalog;
 use crate::service::{
     LoadedProductState, ProductAggregate, ProductStateStore, ProductStateStoreError,
 };
-use redb::{Database, ReadableTable, TableDefinition};
+use redb::{Database, ReadableDatabase, ReadableTable, TableDefinition};
 use std::path::Path;
 
 const STATE_TABLE: TableDefinition<&[u8], &[u8]> =
