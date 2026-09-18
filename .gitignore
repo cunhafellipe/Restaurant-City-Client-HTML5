@@ -12,3 +12,6 @@ tools/.work/
 tests/golden/.tmp/
 *.log
 .DS_Store
+
+# Server-private generated runtime catalogs
+server/runtime/generated/
