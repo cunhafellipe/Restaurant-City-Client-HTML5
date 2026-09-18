@@ -15,6 +15,15 @@ import {
   type RestaurantItemDefinition,
 } from '../../content/items';
 import {
+  buildRestaurantItemVisualIndex,
+  frameForRestaurantItemRotation,
+  historicalRoomItemFrameOffset,
+  isSystemOnlyRestaurantItem,
+  resolveRestaurantItemVisual,
+  type RestaurantItemVisual,
+  type RestaurantItemVisualIndex,
+} from '../../content/itemVisual';
+import {
   loadGeneratedItemDatabase,
   loadRuntimeManifest,
 } from '../../content/runtime';
@@ -57,6 +66,9 @@ export class RestaurantEditorScene extends Phaser.Scene {
   private floorGraphics!: Phaser.GameObjects.Graphics;
   private committedGraphics!: Phaser.GameObjects.Graphics;
   private previewGraphics!: Phaser.GameObjects.Graphics;
+  private committedSprites: Phaser.GameObjects.Sprite[] = [];
+  private previewSprite: Phaser.GameObjects.Sprite | null = null;
+  private visualIndex: RestaurantItemVisualIndex | null = null;
   private authority!: RestaurantAuthority;
   private unsubscribeCommands: (() => void) | null = null;
 
@@ -78,6 +90,13 @@ export class RestaurantEditorScene extends Phaser.Scene {
 
   constructor() {
     super('RestaurantEditor');
+  }
+
+  preload(): void {
+    this.load.multiatlas(
+      'indoor_asset',
+      'assets/generated/atlases/indoor_asset.json',
+    );
   }
 
   create(): void {
@@ -128,7 +147,8 @@ export class RestaurantEditorScene extends Phaser.Scene {
 
     const rotate = () => {
       if (this.placementInFlight) return;
-      this.rotation = (this.rotation + 1) % 4;
+      const maxRotations = this.currentVisual()?.frames.length ?? 1;
+      this.rotation = (this.rotation + 1) % maxRotations;
       this.refreshSelectedItem();
       this.drawPreview();
     };
@@ -160,7 +180,21 @@ export class RestaurantEditorScene extends Phaser.Scene {
       const catalog = buildRestaurantItemCatalog(database);
 
       this.catalogById = new Map(catalog.map((item) => [item.id, item]));
+      this.visualIndex = buildRestaurantItemVisualIndex([
+        {
+          atlasId: 'indoor_asset',
+          frameNames: this.requireAtlasFrameNames('indoor_asset'),
+        },
+      ]);
       this.candidates = catalog.filter((item) => this.isOrdinaryPlaceable(item));
+
+      for (const item of this.candidates) {
+        if (!this.itemVisual(item)) {
+          throw new Error(
+            `Player-placeable Restaurant City item #${item.id} (${item.name}) has no exact runtime atlas visual`,
+          );
+        }
+      }
 
       if (this.candidates.length === 0) {
         throw new Error(
@@ -216,6 +250,12 @@ export class RestaurantEditorScene extends Phaser.Scene {
           `Authoritative layout references unsupported item #${placed.itemId}`,
         );
       }
+      const visual = this.itemVisual(definition);
+      if (!visual || placed.rotation >= visual.frames.length) {
+        throw new Error(
+          `Authoritative layout has invalid visual/rotation for item #${placed.itemId}`,
+        );
+      }
     }
 
     this.room = {
@@ -242,6 +282,7 @@ export class RestaurantEditorScene extends Phaser.Scene {
       footprint !== null &&
       footprint.sizeX > 0 &&
       footprint.sizeY > 0 &&
+      !isSystemOnlyRestaurantItem(item) &&
       !item.placement.wallItem &&
       !item.placement.wallDecorationItem &&
       !item.placement.wallpaperItem &&
@@ -507,10 +548,19 @@ export class RestaurantEditorScene extends Phaser.Scene {
 
   private drawCommittedPlacements(): void {
     this.committedGraphics.clear();
+    for (const sprite of this.committedSprites) sprite.destroy();
+    this.committedSprites = [];
 
     for (const placed of this.authoritativeItems) {
       const definition = this.catalogById.get(placed.itemId);
       if (!definition?.explicitFootprint) continue;
+
+      const visual = this.itemVisual(definition);
+      if (!visual) {
+        throw new Error(
+          `Authoritative item #${placed.itemId} has no runtime atlas visual`,
+        );
+      }
 
       this.committedGraphics.lineStyle(2, 0x5aa5d8, 0.95);
       this.committedGraphics.fillStyle(0x5aa5d8, 0.14);
@@ -520,11 +570,22 @@ export class RestaurantEditorScene extends Phaser.Scene {
         rotateFootprint(definition.explicitFootprint, placed.rotation),
         true,
       );
+      this.committedSprites.push(
+        this.createItemSprite(
+          definition,
+          visual,
+          placed.rotation,
+          { x: placed.tileX, y: placed.tileY },
+          1,
+        ),
+      );
     }
   }
 
   private drawPreview(publishStatus = true): void {
     this.previewGraphics.clear();
+    this.previewSprite?.destroy();
+    this.previewSprite = null;
     const shape = this.currentShape();
     const tile = this.hoverTile;
     if (!shape || !tile) return;
@@ -543,6 +604,19 @@ export class RestaurantEditorScene extends Phaser.Scene {
       { sizeX: shape.sizeX, sizeY: shape.sizeY },
       true,
     );
+
+    const item = this.candidates[this.selectedIndex];
+    const visual = item ? this.itemVisual(item) : null;
+    if (item?.explicitFootprint && visual) {
+      this.previewSprite = this.createItemSprite(
+        item,
+        visual,
+        this.rotation,
+        tile,
+        validation.ok ? 0.72 : 0.36,
+      );
+      this.previewSprite.setDepth(this.itemDrawPriority(tile) + 1);
+    }
 
     if (publishStatus) {
       this.publishUi(
@@ -584,6 +658,73 @@ export class RestaurantEditorScene extends Phaser.Scene {
         graphics.strokePath();
       }
     }
+  }
+
+  private requireAtlasFrameNames(atlasId: string): readonly string[] {
+    if (!this.textures.exists(atlasId)) {
+      throw new Error(`Required Restaurant City atlas failed to load: ${atlasId}`);
+    }
+    const frames = this.textures.get(atlasId).getFrameNames();
+    if (frames.length === 0) {
+      throw new Error(`Required Restaurant City atlas has no frames: ${atlasId}`);
+    }
+    return frames;
+  }
+
+  private itemVisual(
+    item: RestaurantItemDefinition,
+  ): RestaurantItemVisual | null {
+    if (!this.visualIndex) return null;
+    return resolveRestaurantItemVisual(item, this.visualIndex);
+  }
+
+  private currentVisual(): RestaurantItemVisual | null {
+    const item = this.candidates[this.selectedIndex];
+    return item ? this.itemVisual(item) : null;
+  }
+
+  private itemDrawPriority(tile: TilePoint): number {
+    // WorldRestaurant.getTileDrawPriority(x,y) = (y * 20 + x) << 8.
+    return (tile.y * 20 + tile.x) * 256;
+  }
+
+  private createItemSprite(
+    definition: RestaurantItemDefinition,
+    visual: RestaurantItemVisual,
+    rotation: number,
+    tile: TilePoint,
+    alpha: number,
+  ): Phaser.GameObjects.Sprite {
+    if (!definition.explicitFootprint) {
+      throw new Error(`Item #${definition.id} has no explicit footprint`);
+    }
+
+    const frameName = frameForRestaurantItemRotation(visual, rotation);
+    const atlasFrame = this.textures.getFrame(visual.atlasId, frameName);
+    if (!atlasFrame) {
+      throw new Error(
+        `Atlas frame missing at render time: ${visual.atlasId}/${frameName}`,
+      );
+    }
+
+    const footprint = rotateFootprint(definition.explicitFootprint, rotation);
+    const offset = historicalRoomItemFrameOffset(
+      footprint,
+      atlasFrame.width,
+      atlasFrame.height,
+    );
+    const projected = projectTile(tile);
+
+    return this.add
+      .sprite(
+        ORIGIN.x + projected.x + offset.x,
+        ORIGIN.y + projected.y + offset.y,
+        visual.atlasId,
+        frameName,
+      )
+      .setOrigin(0, 0)
+      .setAlpha(alpha)
+      .setDepth(this.itemDrawPriority(tile));
   }
 
   private publishInitializationError(error: unknown): void {
