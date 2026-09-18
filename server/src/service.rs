@@ -154,8 +154,8 @@ impl ProductAggregate {
         let mut placement_mutations = BTreeMap::new();
 
         for entry in persisted.placement_mutations {
-            let mutation_id = MutationId::new(entry.mutation_id)
-                .map_err(|_| ProductStateStoreError::Corrupt)?;
+            let mutation_id =
+                MutationId::new(entry.mutation_id).map_err(|_| ProductStateStoreError::Corrupt)?;
             let placed = PlacedItem::from(entry.item);
 
             if authoritative_items.get(&placed.instance_id) != Some(&placed)
@@ -468,14 +468,16 @@ where
         &self,
         subject: AnewSubject,
     ) -> Result<(Option<u64>, ProductAggregate), ProductServiceError> {
-        Ok(match self
-            .store
-            .load(subject)
-            .map_err(ProductServiceError::Store)?
-        {
-            Some(loaded) => (Some(loaded.store_revision), loaded.state),
-            None => (None, ProductAggregate::new(subject, self.initial_room)),
-        })
+        Ok(
+            match self
+                .store
+                .load(subject)
+                .map_err(ProductServiceError::Store)?
+            {
+                Some(loaded) => (Some(loaded.store_revision), loaded.state),
+                None => (None, ProductAggregate::new(subject, self.initial_room)),
+            },
+        )
     }
 }
 
@@ -617,7 +619,9 @@ mod tests {
         let first = ProductAggregate::new(subject, room());
 
         assert_eq!(
-            store.compare_and_swap(subject, None, first.clone()).unwrap(),
+            store
+                .compare_and_swap(subject, None, first.clone())
+                .unwrap(),
             1
         );
         assert_eq!(
