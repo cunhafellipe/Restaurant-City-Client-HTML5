@@ -4,6 +4,7 @@
 //! AnewPack cryptography or legacy RPC transport. Those concerns belong to
 //! ANEWON Platform, ANEWON Runtime, and compatibility adapters respectively.
 
+pub mod axum_adapter;
 pub mod domain;
 pub mod http;
 pub mod persistence;
@@ -42,3 +43,5 @@ pub use http::{
     PlacedItemResponse, PlacementResponse, ProductHttpContext, PublicProductError,
     RestaurantLayoutResponse, RoomResponse, handle_load_restaurant, handle_place_item,
 };
+
+pub use axum_adapter::restaurant_router;
