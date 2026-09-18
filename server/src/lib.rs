@@ -30,6 +30,6 @@ pub use restaurant::{
 };
 
 pub use service::{
-    InMemoryProductStateStore, PlacementMutationOutcome, ProductAggregate,
-    ProductServiceError, ProductStateStore, ProductStateStoreError, RestaurantProductService,
+    InMemoryProductStateStore, PlacementMutationOutcome, ProductAggregate, ProductServiceError,
+    ProductStateStore, ProductStateStoreError, RestaurantProductService,
 };
