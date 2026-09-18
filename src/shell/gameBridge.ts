@@ -1,7 +1,9 @@
 export type GameUiCommand =
   | 'previous-item'
   | 'next-item'
-  | 'rotate-item';
+  | 'rotate-item'
+  | 'remove-selected'
+  | 'cancel-edit';
 
 export interface GameUiState {
   readonly phase:
@@ -24,6 +26,14 @@ export interface GameUiState {
       readonly placed: number;
       readonly available: number;
     };
+  };
+  readonly selectedPlacedItem?: {
+    readonly instanceId: number;
+    readonly itemId: number;
+    readonly name: string;
+    readonly tileX: number;
+    readonly tileY: number;
+    readonly rotation: number;
   };
   readonly placement?: {
     readonly tileX: number;
