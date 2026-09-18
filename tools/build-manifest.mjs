@@ -13,6 +13,8 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const WORK = path.join(HERE, '.work');
 const GEN_DIR = path.resolve(HERE, '..', 'public', 'assets', 'generated');
 const ATLAS_DIR = path.join(GEN_DIR, 'atlases');
+const DATA_INDEX = path.join(GEN_DIR, 'data', 'runtime-index.json');
+const AUDIO_INDEX = path.join(WORK, 'sound_asset', 'audio-index.json');
 
 export function buildManifest(swfNames) {
   const atlases = [];
@@ -67,12 +69,50 @@ export function buildManifest(swfNames) {
     });
   }
 
+  const dataIndex = fs.existsSync(DATA_INDEX)
+    ? JSON.parse(fs.readFileSync(DATA_INDEX, 'utf8'))
+    : { families: [] };
+  const audioIndex = fs.existsSync(AUDIO_INDEX)
+    ? JSON.parse(fs.readFileSync(AUDIO_INDEX, 'utf8'))
+    : { files: [] };
+
+  const data = dataIndex.families.map((family) => ({
+    id: family.family,
+    xml: family.xml,
+    itemDatabase: family.itemDatabase ?? null,
+    source: family.source,
+    sourceSha256: family.sourceSha256,
+    decodedSha256: family.decodedSha256,
+    rightsClass: dataIndex.rightsClass ?? 'LEGACY_RESEARCH',
+    releaseEligible: dataIndex.releaseEligible === true,
+  }));
+
+  const audio = audioIndex.files.map((file) => ({
+    id: file.id,
+    file: file.file,
+    format: file.format,
+    bytes: file.bytes,
+    sha256: file.sha256,
+    source: audioIndex.source,
+    rightsClass: audioIndex.rightsClass ?? 'LEGACY_RESEARCH',
+    releaseEligible: false,
+  }));
+
+  const langs = data
+    .filter((entry) => entry.id.startsWith('lang_'))
+    .map((entry) => ({
+      code: entry.id.slice('lang_'.length),
+      xml: entry.xml,
+      itemDatabase: entry.itemDatabase,
+    }));
+
   const manifest = {
-    version: 2,
+    version: 3,
+    baseline: dataIndex.baseline ?? '0.9.143a',
     atlases,
-    audio: [],
-    data: [],
-    langs: [],
+    audio,
+    data,
+    langs,
     coverage,
   };
   const manifestFile = path.join(GEN_DIR, 'manifest.json');
@@ -80,6 +120,9 @@ export function buildManifest(swfNames) {
   fs.writeFileSync(manifestFile, `${JSON.stringify(manifest, null, 2)}\n`);
 
   console.log('manifest:', manifestFile);
+  console.log(
+    `  data: ${data.length} families, audio: ${audio.length} files, langs: ${langs.length}`,
+  );
   for (const [name, c] of Object.entries(coverage)) {
     console.log(
       `  coverage ${name}: ${c.exported}/${c.symbols} symbols (${c.pct}%), ${c.frames} frames, ${c.pages} page(s)`,
