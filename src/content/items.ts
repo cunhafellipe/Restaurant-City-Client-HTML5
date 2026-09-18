@@ -5,6 +5,10 @@ import type {
   LegacyAttributeValue,
 } from './runtime';
 import type { Footprint, PlacementShape } from '../core/restaurantGrid';
+import {
+  recoveredPlacementFootprint,
+  recoveredRoomItemGeometry,
+} from './recoveredRoomItemGeometry';
 
 export interface RestaurantItemDefinition {
   readonly id: number;
@@ -16,6 +20,9 @@ export interface RestaurantItemDefinition {
   readonly cash: number;
   readonly types: readonly string[];
   readonly explicitFootprint: Footprint | null;
+  readonly placementFootprint: Footprint | null;
+  readonly footprintSource: 'explicit' | 'recovered' | null;
+  readonly itemHeightTwips: number | null;
   readonly placement: Omit<PlacementShape, keyof Footprint>;
   readonly stackable: boolean;
   readonly surface: boolean;
@@ -104,31 +111,56 @@ export function buildRestaurantItemDefinition(
   item: GeneratedItem,
 ): RestaurantItemDefinition {
   const types = effectiveTypes(group, item);
+  const id = requireId(item);
+  const className = stringValue(item.attributes, 'className');
+  const sourceFootprint = explicitFootprint(item);
+  const recoveredFootprint =
+    sourceFootprint === null ? recoveredPlacementFootprint(id, className) : null;
+  const placementFootprint = sourceFootprint ?? recoveredFootprint;
+  const geometry = recoveredRoomItemGeometry(id, className);
+  const stackable =
+    hasType(types, 'stackable') || booleanValue(item.attributes, 'stackable');
+  const surface =
+    hasType(types, 'surface') || booleanValue(item.attributes, 'surface');
+
   return {
-    id: requireId(item),
+    id,
     name: requireName(item),
     group: group.name,
-    className: stringValue(item.attributes, 'className'),
+    className,
     hash: stringValue(item.attributes, 'hash'),
     cost: integerValue(item.attributes, 'cost', 0) ?? 0,
     cash: integerValue(item.attributes, 'cash', 0) ?? 0,
     types,
-    explicitFootprint: explicitFootprint(item),
+    explicitFootprint: sourceFootprint,
+    placementFootprint,
+    footprintSource:
+      sourceFootprint !== null
+        ? 'explicit'
+        : recoveredFootprint !== null
+          ? 'recovered'
+          : null,
+    itemHeightTwips: geometry?.itemHeightTwips ?? null,
     placement: {
-      wallItem: hasType(types, 'wallItem') || booleanValue(item.attributes, 'wallItem'),
+      wallItem:
+        hasType(types, 'wallItem') ||
+        booleanValue(item.attributes, 'wallItem'),
       wallDecorationItem:
         hasType(types, 'wallDecorationItem') ||
         booleanValue(item.attributes, 'wallDecorationItem'),
       wallpaperItem:
         hasType(types, 'wallpaperItem') ||
         booleanValue(item.attributes, 'wallpaperItem'),
-      outdoor: hasType(types, 'outdoor') || booleanValue(item.attributes, 'outdoor'),
+      outdoor:
+        hasType(types, 'outdoor') || booleanValue(item.attributes, 'outdoor'),
       floorTileItem:
         hasType(types, 'floorTileItem') ||
         booleanValue(item.attributes, 'floorTileItem'),
+      surface,
+      stackable,
     },
-    stackable: hasType(types, 'stackable') || booleanValue(item.attributes, 'stackable'),
-    surface: hasType(types, 'surface') || booleanValue(item.attributes, 'surface'),
+    stackable,
+    surface,
     raw: item,
   };
 }
