@@ -33,6 +33,14 @@ describe('HttpRestaurantAuthority', () => {
             room_index: 0,
           },
         ],
+        inventory: [
+          {
+            item_id: 10,
+            owned: 2,
+            placed: 1,
+            available: 1,
+          },
+        ],
       }),
     );
 
@@ -40,6 +48,12 @@ describe('HttpRestaurantAuthority', () => {
     const layout = await authority.loadRestaurant();
 
     expect(layout.items[0]?.instanceId).toBe(1);
+    expect(layout.inventory[0]).toEqual({
+      itemId: 10,
+      owned: 2,
+      placed: 1,
+      available: 1,
+    });
     expect(layout.room.insideX).toBe(8);
 
     const [url, init] = fetcher.mock.calls[0]!;
@@ -106,6 +120,35 @@ describe('HttpRestaurantAuthority', () => {
     );
     await expect(denied.loadRestaurant()).rejects.toEqual(
       new RestaurantAuthorityError(401, 'UNAUTHENTICATED'),
+    );
+  });
+
+  it('rejects inconsistent authoritative inventory arithmetic', async () => {
+    const authority = new HttpRestaurantAuthority(
+      '/api/v1',
+      async () =>
+        okJson({
+          room: {
+            inside_x: 8,
+            inside_y: 8,
+            outside_x: 0,
+            outside_y: 0,
+          },
+          next_instance_id: 1,
+          items: [],
+          inventory: [
+            {
+              item_id: 10,
+              owned: 1,
+              placed: 1,
+              available: 1,
+            },
+          ],
+        }),
+    );
+
+    await expect(authority.loadRestaurant()).rejects.toThrow(
+      'Malformed authoritative inventory invariant',
     );
   });
 
