@@ -5,7 +5,10 @@ export interface AppShell {
   destroy(): void;
 }
 
-function button(label: string, command: Parameters<typeof gameUiBridge.command>[0]): HTMLButtonElement {
+function button(
+  label: string,
+  command: Parameters<typeof gameUiBridge.command>[0],
+): HTMLButtonElement {
   const element = document.createElement('button');
   element.type = 'button';
   element.className = 'rc-control-button';
@@ -30,21 +33,41 @@ function renderState(
   selection: HTMLElement,
   placement: HTMLElement,
   corpus: HTMLElement,
+  previousButton: HTMLButtonElement,
+  rotateButton: HTMLButtonElement,
+  nextButton: HTMLButtonElement,
+  removeButton: HTMLButtonElement,
+  cancelButton: HTMLButtonElement,
 ): void {
   status.textContent = state.status;
   status.dataset.phase = state.phase;
 
-  selection.textContent = state.selectedItem
+  selection.textContent = state.selectedPlacedItem
     ? [
-        `#${state.selectedItem.id}`,
-        state.selectedItem.name,
-        state.selectedItem.footprint,
-        `rot ${state.selectedItem.rotation}`,
-        state.selectedItem.inventory
-          ? `inventory ${state.selectedItem.inventory.available} available · ${state.selectedItem.inventory.placed}/${state.selectedItem.inventory.owned} placed`
-          : 'inventory unavailable',
+        `Editing placed #${state.selectedPlacedItem.instanceId}`,
+        state.selectedPlacedItem.name,
+        `tile ${state.selectedPlacedItem.tileX},${state.selectedPlacedItem.tileY}`,
+        `rot ${state.selectedPlacedItem.rotation}`,
+        'hover a destination and click the floor to save',
       ].join(' · ')
-    : 'No item selected';
+    : state.selectedItem
+      ? [
+          `#${state.selectedItem.id}`,
+          state.selectedItem.name,
+          state.selectedItem.footprint,
+          `rot ${state.selectedItem.rotation}`,
+          state.selectedItem.inventory
+            ? `inventory ${state.selectedItem.inventory.available} available · ${state.selectedItem.inventory.placed}/${state.selectedItem.inventory.owned} placed`
+            : 'inventory unavailable',
+        ].join(' · ')
+      : 'No item selected';
+
+  const editingPlaced = state.selectedPlacedItem !== undefined;
+  previousButton.disabled = editingPlaced;
+  nextButton.disabled = editingPlaced;
+  removeButton.disabled = !editingPlaced || state.phase === 'saving';
+  cancelButton.disabled = !editingPlaced || state.phase === 'saving';
+  rotateButton.textContent = editingPlaced ? 'Rotate preview' : 'Rotate';
 
   placement.textContent = state.placement
     ? `tile ${state.placement.tileX},${state.placement.tileY} · ${state.placement.detail}`
@@ -115,10 +138,19 @@ export function createAppShell(root: HTMLElement): AppShell {
 
   const controls = document.createElement('div');
   controls.className = 'rc-controls';
+  const previousButton = button('← Previous', 'previous-item');
+  const rotateButton = button('Rotate', 'rotate-item');
+  const nextButton = button('Next →', 'next-item');
+  const removeButton = button('Remove placed', 'remove-selected');
+  const cancelButton = button('Cancel edit', 'cancel-edit');
+  removeButton.disabled = true;
+  cancelButton.disabled = true;
   controls.append(
-    button('← Previous', 'previous-item'),
-    button('Rotate', 'rotate-item'),
-    button('Next →', 'next-item'),
+    previousButton,
+    rotateButton,
+    nextButton,
+    removeButton,
+    cancelButton,
   );
 
   const status = document.createElement('div');
@@ -133,7 +165,18 @@ export function createAppShell(root: HTMLElement): AppShell {
   root.append(header, layout);
 
   const unsubscribe = gameUiBridge.subscribeState((state) =>
-    renderState(state, status, selection, placement, corpus),
+    renderState(
+      state,
+      status,
+      selection,
+      placement,
+      corpus,
+      previousButton,
+      rotateButton,
+      nextButton,
+      removeButton,
+      cancelButton,
+    ),
   );
 
   return {
