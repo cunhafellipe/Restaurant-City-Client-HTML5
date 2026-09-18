@@ -120,7 +120,9 @@ where
     S: ProductStateStore,
 {
     let session_token = session_token(context.session_token)?;
-    let snapshot = service.load_restaurant(session_token).map_err(map_service_error)?;
+    let snapshot = service
+        .load_restaurant(session_token)
+        .map_err(map_service_error)?;
     json_bytes(&layout_response(snapshot))
 }
 
@@ -298,9 +300,9 @@ mod tests {
     impl PlatformSessionVerifier for FakeVerifier {
         fn verify_product_session(
             &self,
-            bearer_token: &str,
+            session_token: &str,
         ) -> Result<VerifiedProductSession, PlatformSessionError> {
-            if bearer_token != "session" {
+            if session_token != "session" {
                 return Err(PlatformSessionError::Invalid);
             }
             Ok(VerifiedProductSession {
@@ -451,18 +453,10 @@ mod tests {
             .unwrap();
 
         let request = br#"{"item_id":10,"tile_x":2,"tile_y":2,"rotation":0}"#;
-        handle_place_item(
-            &service,
-            context(Some("session"), Some("place-1")),
-            request,
-        )
-        .unwrap();
-        let duplicate = handle_place_item(
-            &service,
-            context(Some("session"), Some("place-1")),
-            request,
-        )
-        .unwrap();
+        handle_place_item(&service, context(Some("session"), Some("place-1")), request).unwrap();
+        let duplicate =
+            handle_place_item(&service, context(Some("session"), Some("place-1")), request)
+                .unwrap();
 
         let json: serde_json::Value = serde_json::from_slice(&duplicate).unwrap();
         assert_eq!(json["outcome"], "duplicate");
