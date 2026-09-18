@@ -475,11 +475,11 @@ where
 
     pub fn apply_player_command(
         &self,
-        bearer_token: &str,
+        session_token: &str,
         mutation_id: MutationId,
         command: Command,
     ) -> Result<MutationOutcome, ProductServiceError> {
-        let session = self.verify(bearer_token)?;
+        let session = self.verify(session_token)?;
 
         for _ in 0..MAX_STORE_RETRIES {
             let (expected_revision, mut state) = self.load_or_initialize(session.subject)?;
@@ -505,11 +505,11 @@ where
 
     pub fn place_item(
         &self,
-        bearer_token: &str,
+        session_token: &str,
         mutation_id: MutationId,
         intent: PlacementIntent,
     ) -> Result<PlacementMutationOutcome, ProductServiceError> {
-        let session = self.verify(bearer_token)?;
+        let session = self.verify(session_token)?;
 
         for _ in 0..MAX_STORE_RETRIES {
             let (expected_revision, mut state) = self.load_or_initialize(session.subject)?;
@@ -535,9 +535,9 @@ where
 
     pub fn load_restaurant(
         &self,
-        bearer_token: &str,
+        session_token: &str,
     ) -> Result<RestaurantProductSnapshot, ProductServiceError> {
-        let session = self.verify(bearer_token)?;
+        let session = self.verify(session_token)?;
         let state = self
             .store
             .load(session.subject)
@@ -551,9 +551,9 @@ where
         self.store
     }
 
-    fn verify(&self, bearer_token: &str) -> Result<VerifiedProductSession, ProductServiceError> {
+    fn verify(&self, session_token: &str) -> Result<VerifiedProductSession, ProductServiceError> {
         self.verifier
-            .verify_product_session(bearer_token)
+            .verify_product_session(session_token)
             .map_err(ProductServiceError::Session)
     }
 
@@ -613,9 +613,9 @@ mod tests {
     impl PlatformSessionVerifier for FakeVerifier {
         fn verify_product_session(
             &self,
-            bearer_token: &str,
+            session_token: &str,
         ) -> Result<VerifiedProductSession, PlatformSessionError> {
-            if bearer_token != "valid-product-session" {
+            if session_token != "valid-product-session" {
                 return Err(PlatformSessionError::Invalid);
             }
             let _ = PRODUCT_ID;
