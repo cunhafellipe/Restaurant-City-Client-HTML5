@@ -35,7 +35,7 @@ export function buildAtlas(swfName) {
 
   const frameByKey = new Map(frames.map((f) => [f.key, f]));
   const pages = packFramePages(frames, {
-    maxWidth: 2048,
+    maxWidth: 4096,
     maxHeight: 4096,
     padding: 2,
   });
