@@ -69,7 +69,7 @@ pub struct VerifiedProductSession {
 pub trait PlatformSessionVerifier {
     fn verify_product_session(
         &self,
-        bearer_token: &str,
+        session_token: &str,
     ) -> Result<VerifiedProductSession, PlatformSessionError>;
 }
 
