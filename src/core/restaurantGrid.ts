@@ -85,6 +85,18 @@ export function screenToTileFraction(screen: ScreenPoint): TilePoint {
   };
 }
 
+/**
+ * Matches the historical ActionScript return type `int` used by
+ * WorldRestaurant.getTileIndexX/Y: conversion truncates toward zero.
+ */
+export function screenToTileIndex(screen: ScreenPoint): TilePoint {
+  const fractional = screenToTileFraction(screen);
+  return {
+    x: Math.trunc(fractional.x),
+    y: Math.trunc(fractional.y),
+  };
+}
+
 export function decodeOwnedItemData(data: number): DecodedOwnedItemData {
   requireInteger(data, 'data');
   if (data < 0 || data > 0xff) {
