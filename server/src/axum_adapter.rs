@@ -150,6 +150,10 @@ mod tests {
         path::PathBuf,
         sync::atomic::{AtomicU64, Ordering},
     };
+    use tokio::{
+        io::{AsyncReadExt, AsyncWriteExt},
+        net::{TcpListener, TcpStream},
+    };
     use tower::ServiceExt;
 
     static NEXT_DB_ID: AtomicU64 = AtomicU64::new(1);
@@ -225,6 +229,41 @@ mod tests {
             .header(CONTENT_TYPE, "application/json")
             .body(Body::from(body))
             .unwrap()
+    }
+
+    #[tokio::test]
+    async fn router_serves_over_real_loopback_socket() {
+        let service = RestaurantProductService::new(
+            verifier(),
+            crate::service::InMemoryProductStateStore::default(),
+            catalog(),
+            room(),
+        );
+        let app = restaurant_router(service);
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+
+        let mut stream = TcpStream::connect(address).await.unwrap();
+        stream
+            .write_all(
+                b"GET /api/v1/restaurant HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n",
+            )
+            .await
+            .unwrap();
+
+        let mut response = Vec::new();
+        stream.read_to_end(&mut response).await.unwrap();
+        let response = String::from_utf8(response).unwrap();
+
+        assert!(response.starts_with("HTTP/1.1 401 Unauthorized\r\n"));
+        assert!(response.contains("cache-control: no-store"));
+        assert!(response.contains("\"code\":\"UNAUTHENTICATED\""));
+
+        server.abort();
     }
 
     #[tokio::test]
