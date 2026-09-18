@@ -1,45 +1,14 @@
 name: ANEWON Restaurant City branch verification
 
 on:
-  push:
-    branches:
-      - anewon/revival-content
   workflow_dispatch:
 
 permissions:
   contents: read
 
-concurrency:
-  group: restaurant-city-anewon-revival-content
-  cancel-in-progress: true
-
 jobs:
-  verify:
-    runs-on: [self-hosted, Windows, X64, anew-revival]
-    timeout-minutes: 20
+  delegated:
+    runs-on: ubuntu-24.04
+    if: ${{ false }}
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
-        with:
-          persist-credentials: false
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
-        with:
-          node-version: 24
-          cache: npm
-      - run: npm ci
-      - run: npm run check
-      - run: npm test
-      - run: npm run build
-      - name: Verify product-authority Rust domain
-        shell: pwsh
-        run: |
-          Push-Location server
-          try {
-            cargo fmt --all --check
-            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-            cargo clippy --all-targets -- -D warnings
-            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-            cargo test
-            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          } finally {
-            Pop-Location
-          }
+      - run: echo "Physical verification is SHA-pinned and executed by anewonhq/anew-revival-lab on ANEWON-REVIVAL-01."
