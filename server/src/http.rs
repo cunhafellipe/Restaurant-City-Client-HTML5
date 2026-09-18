@@ -346,8 +346,12 @@ fn map_service_error(error: ProductServiceError) -> PublicProductError {
         ProductServiceError::ItemUnavailable { .. } => PublicProductError::Conflict,
         ProductServiceError::PlayerAuthority(_) => PublicProductError::Conflict,
         ProductServiceError::RestaurantAuthority(
-            crate::restaurant::RestaurantAuthorityError::Collision { .. },
+            crate::restaurant::RestaurantAuthorityError::Collision { .. }
+            | crate::restaurant::RestaurantAuthorityError::StackLimit { .. },
         ) => PublicProductError::Conflict,
+        ProductServiceError::RestaurantAuthority(
+            crate::restaurant::RestaurantAuthorityError::CorruptStackOrder { .. },
+        ) => PublicProductError::Internal,
         ProductServiceError::RestaurantAuthority(_) => PublicProductError::Unprocessable,
         ProductServiceError::MutationIdConflict => PublicProductError::Conflict,
         ProductServiceError::RestaurantMutationSequenceExhausted => PublicProductError::Internal,
