@@ -224,7 +224,7 @@ export class RestaurantEditorScene extends Phaser.Scene {
         status: 'Loading authoritative ANEWON restaurant state…',
         corpus: {
           restaurantRecords: catalog.length,
-          placementFootprints: this.candidates.length,
+          explicitFootprints: this.candidates.length,
         },
       });
 
@@ -245,7 +245,7 @@ export class RestaurantEditorScene extends Phaser.Scene {
         selectedItem: this.selectedItemUi(),
         corpus: {
           restaurantRecords: catalog.length,
-          placementFootprints: this.candidates.length,
+          explicitFootprints: this.candidates.length,
         },
       });
       this.drawPreview(false);
