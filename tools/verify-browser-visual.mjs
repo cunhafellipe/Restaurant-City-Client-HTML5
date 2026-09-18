@@ -750,12 +750,15 @@ try {
     throw new Error(`Rotated selection has no rotation: ${rotatedState}`);
   }
   const previewRotation = Number.parseInt(rotatedMatch[1], 10);
-  const movedFootprint = rotatedFootprint(baseFootprint, previewRotation);
   const targetTile = { x: 4, y: 3 };
+  // Pointer-to-tile conversion is anchored to the hovered tile, not the
+  // footprint center. Using the center of a 1x1 target tile yields fractional
+  // coordinates (x+.5,y+.5), which historical ActionScript int conversion
+  // deterministically truncates back to the requested tile.
   const targetCenter = tileCenterInCanvas(
     targetTile.x,
     targetTile.y,
-    movedFootprint,
+    { sizeX: 1, sizeY: 1 },
   );
   await dispatchMouseClick(
     cdp,
