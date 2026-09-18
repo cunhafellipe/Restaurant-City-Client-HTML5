@@ -44,9 +44,7 @@ impl RedbProductStateStore {
         subject: AnewSubject,
         record: &'a [u8],
     ) -> Result<(u64, ProductAggregate), ProductStateStoreError> {
-        if record.len() < RECORD_HEADER_BYTES
-            || &record[..RECORD_MAGIC.len()] != RECORD_MAGIC
-        {
+        if record.len() < RECORD_HEADER_BYTES || &record[..RECORD_MAGIC.len()] != RECORD_MAGIC {
             return Err(ProductStateStoreError::Corrupt);
         }
 
