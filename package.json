@@ -16,7 +16,8 @@
     "content:extract": "node tools/extract-content.mjs",
     "audio:extract": "node tools/build-audio.mjs",
     "data:build": "node tools/build-data.mjs",
-    "pipeline:full": "node tools/pipeline-full.mjs"
+    "pipeline:full": "node tools/pipeline-full.mjs",
+    "hydrate:local": "node tools/hydrate-local-content.mjs"
   },
   "dependencies": {
     "phaser": "^3.90.0"
