@@ -16,6 +16,10 @@ import {
   loadGeneratedItemDatabase,
   loadRuntimeManifest,
 } from '../../content/runtime';
+import {
+  gameUiBridge,
+  type GameUiState,
+} from '../../shell/gameBridge';
 
 /**
  * GameWorld.LEVEL_THRESHOLDS[0] in the recovered client is 8x8.
@@ -34,8 +38,7 @@ const ORIGIN = { x: 380, y: 105 };
 export class RestaurantEditorScene extends Phaser.Scene {
   private floorGraphics!: Phaser.GameObjects.Graphics;
   private previewGraphics!: Phaser.GameObjects.Graphics;
-  private statusText!: Phaser.GameObjects.Text;
-  private itemText!: Phaser.GameObjects.Text;
+  private unsubscribeCommands: (() => void) | null = null;
   private candidates: readonly RestaurantItemDefinition[] = [];
   private selectedIndex = 0;
   private rotation = 0;
@@ -48,32 +51,12 @@ export class RestaurantEditorScene extends Phaser.Scene {
   create(): void {
     this.cameras.main.setBackgroundColor(0x1c2b33);
 
-    this.add
-      .text(16, 14, 'ANEWON Restaurant City — M2 world/editor', {
-        fontFamily: 'Arial, sans-serif',
-        fontSize: '20px',
-        color: '#ffffff',
-      });
-
-    this.add
-      .text(16, 40, 'Historical level-0 room: 8×8 · R rotate · ←/→ item', {
-        fontFamily: 'monospace',
-        fontSize: '12px',
-        color: '#a9c7d5',
-      });
-
     this.floorGraphics = this.add.graphics();
     this.previewGraphics = this.add.graphics();
-    this.statusText = this.add.text(16, 548, 'Loading generated Restaurant City data…', {
-      fontFamily: 'monospace',
-      fontSize: '12px',
-      color: '#c8c8c8',
-      wordWrap: { width: 728 },
-    });
-    this.itemText = this.add.text(16, 520, 'No item selected', {
-      fontFamily: 'monospace',
-      fontSize: '12px',
-      color: '#ffffff',
+
+    gameUiBridge.publish({
+      phase: 'loading-content',
+      status: 'Loading generated Restaurant City data…',
     });
 
     this.drawFloor();
@@ -113,19 +96,33 @@ export class RestaurantEditorScene extends Phaser.Scene {
       this.drawPreview();
     });
 
-    this.input.keyboard?.on('keydown-R', () => {
+    const rotate = () => {
       this.rotation = (this.rotation + 1) % 4;
       this.drawPreview();
-    });
+    };
+
+    this.input.keyboard?.on('keydown-R', rotate);
     this.input.keyboard?.on('keydown-LEFT', () => this.selectRelative(-1));
     this.input.keyboard?.on('keydown-RIGHT', () => this.selectRelative(1));
+
+    this.unsubscribeCommands = gameUiBridge.subscribeCommands((command) => {
+      if (command === 'previous-item') this.selectRelative(-1);
+      else if (command === 'next-item') this.selectRelative(1);
+      else if (command === 'rotate-item') rotate();
+    });
+
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.unsubscribeCommands?.();
+      this.unsubscribeCommands = null;
+    });
 
     this.input.on(Phaser.Input.Events.POINTER_DOWN, () => {
       if (!this.hoverTile || this.candidates.length === 0) return;
       const validation = this.currentValidation();
       if (!validation?.ok) return;
-      this.statusText.setText(
-        'Placement preview is valid. Persistence is intentionally blocked until the authoritative placement command is wired.',
+      this.publishUi(
+        'Placement preview is valid. Persistence remains blocked until the authoritative placement command is wired.',
+        validation,
       );
     });
   }
@@ -159,14 +156,24 @@ export class RestaurantEditorScene extends Phaser.Scene {
       this.selectedIndex = 0;
       this.rotation = 0;
       this.refreshSelectedItem();
-      this.statusText.setText(
-        `Loaded baseline ${manifest.baseline}: ${catalog.length} restaurant records; ${this.candidates.length} structurally placeable with explicit footprints.`,
-      );
+      gameUiBridge.publish({
+        phase: 'editing',
+        baseline: manifest.baseline,
+        status:
+          `Loaded baseline ${manifest.baseline}. Move the pointer over the restaurant floor.`,
+        selectedItem: this.selectedItemUi(),
+        corpus: {
+          restaurantRecords: catalog.length,
+          explicitFootprints: this.candidates.length,
+        },
+      });
       this.drawPreview();
     } catch (error) {
-      this.statusText.setText(
-        `Generated content unavailable: ${error instanceof Error ? error.message : String(error)}. Run npm run hydrate:local after R16.`,
-      );
+      gameUiBridge.publish({
+        phase: 'error',
+        status:
+          `Generated content unavailable: ${error instanceof Error ? error.message : String(error)}. Run npm run hydrate:local after R16.`,
+      });
     }
   }
 
@@ -181,14 +188,47 @@ export class RestaurantEditorScene extends Phaser.Scene {
   }
 
   private refreshSelectedItem(): void {
+    const state = gameUiBridge.getState();
+    gameUiBridge.publish({
+      ...state,
+      selectedItem: this.selectedItemUi(),
+    });
+  }
+
+  private selectedItemUi(): GameUiState['selectedItem'] {
     const item = this.candidates[this.selectedIndex];
-    if (!item || !item.explicitFootprint) {
-      this.itemText.setText('No item selected');
-      return;
-    }
-    this.itemText.setText(
-      `item #${item.id} ${item.name} · group=${item.group} · footprint=${item.explicitFootprint.sizeX}×${item.explicitFootprint.sizeY} · rotation=${this.rotation}`,
-    );
+    if (!item?.explicitFootprint) return undefined;
+    return {
+      id: item.id,
+      name: item.name,
+      group: item.group,
+      footprint: `${item.explicitFootprint.sizeX}×${item.explicitFootprint.sizeY}`,
+      rotation: this.rotation,
+    };
+  }
+
+  private publishUi(
+    status: string,
+    validation: ReturnType<typeof validateStructuralPlacement> | null = null,
+  ): void {
+    const state = gameUiBridge.getState();
+    gameUiBridge.publish({
+      ...state,
+      phase: state.phase === 'error' ? 'error' : 'editing',
+      status,
+      selectedItem: this.selectedItemUi(),
+      placement:
+        validation && this.hoverTile
+          ? {
+              tileX: this.hoverTile.x,
+              tileY: this.hoverTile.y,
+              valid: validation.ok,
+              detail: validation.ok
+                ? `valid · roomIndex=${validation.roomIndex}`
+                : validation.reason,
+            }
+          : undefined,
+    });
   }
 
   private currentShape(): PlacementShape | null {
@@ -241,11 +281,11 @@ export class RestaurantEditorScene extends Phaser.Scene {
       }
     }
 
-    this.refreshSelectedItem();
-    this.statusText.setText(
+    this.publishUi(
       validation.ok
-        ? `tile=(${tile.x},${tile.y}) valid · roomIndex=${validation.roomIndex}`
-        : `tile=(${tile.x},${tile.y}) invalid · ${validation.reason}`,
+        ? 'Placement preview is structurally valid.'
+        : 'Placement preview is structurally invalid.',
+      validation,
     );
   }
 }
