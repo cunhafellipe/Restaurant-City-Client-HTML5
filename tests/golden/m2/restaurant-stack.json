@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "baseline": "0.9.143a",
+  "fixture": "table-3030000-plus-violin-3020179-at-3-3",
+  "canvas": {
+    "width": 760,
+    "height": 600
+  },
+  "blockSize": 8,
+  "expectedQuantizedBlockSha256": "3ff6f0af4834e779c86d56815da02b84194899f551449ca33d3dc8895a1a1ee1",
+  "referencePixelSha256": "559f5c12e1f57ac802163e3121b237862030f1cbd5188c46d2e84be82142d99d",
+  "referencePngSha256": "2a27edb90bd95cfa3863bdeeb563c2a0e0b85e363dfac449537901f904663151",
+  "expectedHistoricalCurHeightPx": 25,
+  "referenceProductSha": "61c888f219c838fdf747800a67a4ee97055d30ad",
+  "deterministicValidationRuns": [
+    35396953377
+  ],
+  "note": "Inspected ANEWON self-hosted Edge CDP WebGL composite. Table #3030000 is the recovered 1x1 surface; Violin Case #3020179 renders above it using historical int curHeight=25. Gate compares the quantized 8x8 world signature."
+}
