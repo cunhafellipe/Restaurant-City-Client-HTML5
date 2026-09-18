@@ -1,6 +1,7 @@
 use crate::placement::{
-    Footprint, PlacementFlags, PlacementShape, RoomDimensions, StructuralPlacement, TilePoint,
-    rotate_footprint, validate_structural_placement,
+    Footprint, HistoricalTileStackEntry, HistoricalTileStackValidation, PlacementFlags,
+    PlacementShape, RoomDimensions, StructuralPlacement, TilePoint, rotate_footprint,
+    validate_historical_tile_stack, validate_structural_placement,
 };
 use std::collections::BTreeMap;
 
@@ -157,6 +158,10 @@ pub struct RestaurantState {
     room: RoomDimensions,
     next_instance_id: u64,
     items: BTreeMap<u64, PlacedItem>,
+    // Historical WorldRestaurant.itemMap ordering is bottom -> top. Keep that
+    // ordering explicitly; instance ids identify objects but a transform
+    // removes/re-adds an object and therefore makes it the newest/top entry.
+    stack_order: Vec<u64>,
 }
 
 impl RestaurantState {
@@ -165,6 +170,7 @@ impl RestaurantState {
             room,
             next_instance_id: 1,
             items: BTreeMap::new(),
+            stack_order: Vec::new(),
         }
     }
 
@@ -173,7 +179,9 @@ impl RestaurantState {
     }
 
     pub fn items(&self) -> impl Iterator<Item = &PlacedItem> {
-        self.items.values()
+        self.stack_order
+            .iter()
+            .filter_map(|instance_id| self.items.get(instance_id))
     }
 
     pub fn place(
@@ -188,13 +196,15 @@ impl RestaurantState {
                     item_id: intent.item_id,
                 })?;
 
-        let placed = self.validate_new_item(catalog, definition, intent, self.next_instance_id)?;
+        let placed =
+            self.validate_new_item(catalog, definition, intent, self.next_instance_id, None)?;
 
         self.next_instance_id = self
             .next_instance_id
             .checked_add(1)
             .ok_or(RestaurantAuthorityError::InstanceIdExhausted)?;
         self.items.insert(placed.instance_id, placed);
+        self.stack_order.push(placed.instance_id);
         Ok(placed)
     }
 
@@ -205,9 +215,9 @@ impl RestaurantState {
         tile: TilePoint,
         rotation: u8,
     ) -> Result<PlacedItem, RestaurantAuthorityError> {
-        let original = self
+        let original = *self
             .items
-            .remove(&instance_id)
+            .get(&instance_id)
             .ok_or(RestaurantAuthorityError::UnknownInstance { instance_id })?;
 
         let definition =
@@ -222,29 +232,36 @@ impl RestaurantState {
             rotation,
         };
 
-        match self.validate_new_item(catalog, definition, intent, instance_id) {
-            Ok(updated) => {
-                self.items.insert(instance_id, updated);
-                Ok(updated)
-            }
-            Err(error) => {
-                self.items.insert(instance_id, original);
-                Err(error)
-            }
-        }
+        // WorldRestaurant.isValid keeps the edited item in itemMap and, when it
+        // is currently the top entry, explicitly looks through itself. Preserve
+        // that quirk instead of removing self before validation.
+        let updated =
+            self.validate_new_item(catalog, definition, intent, instance_id, Some(instance_id))?;
+
+        self.items.insert(instance_id, updated);
+        self.stack_order.retain(|value| *value != instance_id);
+        self.stack_order.push(instance_id);
+        Ok(updated)
     }
 
     pub fn remove(&mut self, instance_id: u64) -> Result<PlacedItem, RestaurantAuthorityError> {
-        self.items
+        let removed = self
+            .items
             .remove(&instance_id)
-            .ok_or(RestaurantAuthorityError::UnknownInstance { instance_id })
+            .ok_or(RestaurantAuthorityError::UnknownInstance { instance_id })?;
+        self.stack_order.retain(|value| *value != instance_id);
+        Ok(removed)
     }
 
     pub fn snapshot(&self) -> RestaurantSnapshot {
         RestaurantSnapshot {
             room: self.room,
             next_instance_id: self.next_instance_id,
-            items: self.items.values().copied().collect(),
+            items: self
+                .stack_order
+                .iter()
+                .filter_map(|instance_id| self.items.get(instance_id).copied())
+                .collect(),
         }
     }
 
@@ -256,6 +273,7 @@ impl RestaurantState {
             room: snapshot.room,
             next_instance_id: 1,
             items: BTreeMap::new(),
+            stack_order: Vec::new(),
         };
 
         let mut max_instance_id = 0_u64;
@@ -278,7 +296,7 @@ impl RestaurantState {
                 rotation: stored.rotation,
             };
             let validated =
-                state.validate_new_item(catalog, definition, intent, stored.instance_id)?;
+                state.validate_new_item(catalog, definition, intent, stored.instance_id, None)?;
 
             if validated.room_index != stored.room_index {
                 return Err(RestaurantAuthorityError::SnapshotRoomMismatch {
@@ -288,6 +306,7 @@ impl RestaurantState {
 
             max_instance_id = max_instance_id.max(stored.instance_id);
             state.items.insert(stored.instance_id, stored);
+            state.stack_order.push(stored.instance_id);
         }
 
         if snapshot.next_instance_id == 0 || snapshot.next_instance_id <= max_instance_id {
@@ -306,6 +325,7 @@ impl RestaurantState {
         definition: ItemPlacementDefinition,
         intent: PlacementIntent,
         instance_id: u64,
+        self_instance_id: Option<u64>,
     ) -> Result<PlacedItem, RestaurantAuthorityError> {
         if intent.rotation >= definition.rotation_count {
             return Err(RestaurantAuthorityError::InvalidRotation {
@@ -342,25 +362,71 @@ impl RestaurantState {
             }
         };
 
-        for existing in self.items.values() {
-            if existing.room_index != room_index {
-                continue;
-            }
+        // WorldRestaurant.itemMap stores one ordered stack per occupied tile.
+        // Validate every tile in the candidate footprint independently, using
+        // the exact recovered rule: candidate.stackable && top.surface, with a
+        // maximum of five entries and the historical self-at-top edit quirk.
+        for dx in 0..footprint.size_x {
+            for dy in 0..footprint.size_y {
+                let tile_x = i64::from(intent.tile.x) + i64::from(dx);
+                let tile_y = i64::from(intent.tile.y) + i64::from(dy);
+                let mut stack = Vec::new();
 
-            let existing_definition =
-                *catalog
-                    .get(existing.item_id)
-                    .ok_or(RestaurantAuthorityError::UnknownItem {
-                        item_id: existing.item_id,
-                    })?;
-            let existing_footprint =
-                rotate_footprint(existing_definition.footprint, i32::from(existing.rotation));
+                for existing_id in &self.stack_order {
+                    let existing = self
+                        .items
+                        .get(existing_id)
+                        .ok_or(RestaurantAuthorityError::CorruptStackOrder {
+                            instance_id: *existing_id,
+                        })?;
+                    if existing.room_index != room_index {
+                        continue;
+                    }
 
-            if rectangles_overlap(intent.tile, footprint, existing.tile, existing_footprint) {
-                return Err(RestaurantAuthorityError::Collision {
-                    item_id: definition.item_id,
-                    with_instance_id: existing.instance_id,
-                });
+                    let existing_definition =
+                        *catalog
+                            .get(existing.item_id)
+                            .ok_or(RestaurantAuthorityError::UnknownItem {
+                                item_id: existing.item_id,
+                            })?;
+                    let existing_footprint = rotate_footprint(
+                        existing_definition.footprint,
+                        i32::from(existing.rotation),
+                    );
+
+                    if footprint_contains_tile(
+                        existing.tile,
+                        existing_footprint,
+                        tile_x,
+                        tile_y,
+                    ) {
+                        stack.push(HistoricalTileStackEntry {
+                            instance_id: existing.instance_id,
+                            surface: existing_definition.flags.surface,
+                        });
+                    }
+                }
+
+                match validate_historical_tile_stack(
+                    definition.flags.stackable,
+                    &stack,
+                    self_instance_id,
+                ) {
+                    HistoricalTileStackValidation::Valid => {}
+                    HistoricalTileStackValidation::BlockedTop {
+                        instance_id: blocking_instance_id,
+                    } => {
+                        return Err(RestaurantAuthorityError::Collision {
+                            item_id: definition.item_id,
+                            with_instance_id: blocking_instance_id,
+                        });
+                    }
+                    HistoricalTileStackValidation::StackLimit => {
+                        return Err(RestaurantAuthorityError::StackLimit {
+                            item_id: definition.item_id,
+                        });
+                    }
+                }
             }
         }
 
@@ -374,16 +440,17 @@ impl RestaurantState {
     }
 }
 
-fn rectangles_overlap(a_tile: TilePoint, a: Footprint, b_tile: TilePoint, b: Footprint) -> bool {
-    let a_max_x = i64::from(a_tile.x) + i64::from(a.size_x) - 1;
-    let a_max_y = i64::from(a_tile.y) + i64::from(a.size_y) - 1;
-    let b_max_x = i64::from(b_tile.x) + i64::from(b.size_x) - 1;
-    let b_max_y = i64::from(b_tile.y) + i64::from(b.size_y) - 1;
-
-    i64::from(a_tile.x) <= b_max_x
-        && a_max_x >= i64::from(b_tile.x)
-        && i64::from(a_tile.y) <= b_max_y
-        && a_max_y >= i64::from(b_tile.y)
+fn footprint_contains_tile(
+    origin: TilePoint,
+    footprint: Footprint,
+    tile_x: i64,
+    tile_y: i64,
+) -> bool {
+    let min_x = i64::from(origin.x);
+    let min_y = i64::from(origin.y);
+    let max_x = min_x + i64::from(footprint.size_x) - 1;
+    let max_y = min_y + i64::from(footprint.size_y) - 1;
+    tile_x >= min_x && tile_x <= max_x && tile_y >= min_y && tile_y <= max_y
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -421,6 +488,12 @@ pub enum RestaurantAuthorityError {
     Collision {
         item_id: u32,
         with_instance_id: u64,
+    },
+    StackLimit {
+        item_id: u32,
+    },
+    CorruptStackOrder {
+        instance_id: u64,
     },
     InstanceIdExhausted,
     InvalidSnapshotInstanceId {
