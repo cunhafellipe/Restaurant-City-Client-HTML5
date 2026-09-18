@@ -158,6 +158,8 @@ for (const group of database.groups ?? []) {
       wallpaperItem: hasFlag(group, item, 'wallpaperItem'),
       outdoor: hasFlag(group, item, 'outdoor'),
       floorTileItem: hasFlag(group, item, 'floorTileItem'),
+      surface: hasFlag(group, item, 'surface'),
+      stackable: hasFlag(group, item, 'stackable'),
     });
   }
 }
@@ -167,11 +169,11 @@ fs.mkdirSync(OUT_DIR, { recursive: true });
 
 const bool = (value) => (value ? '1' : '0');
 const lines = [
-  'ANEWON_RC_PLACEMENT_CATALOG_V2',
+  'ANEWON_RC_PLACEMENT_CATALOG_V3',
   `# baseline=${manifest.baseline ?? 'unknown'}`,
   `# source_decoded_sha256=${source.decodedSha256 ?? ''}`,
   `# source_file=${source.source ?? ''}`,
-  'item_id\tsize_x\tsize_y\trotation_count\twall_item\twall_decoration_item\twallpaper_item\toutdoor\tfloor_tile_item',
+  'item_id\tsize_x\tsize_y\trotation_count\twall_item\twall_decoration_item\twallpaper_item\toutdoor\tfloor_tile_item\tsurface\tstackable',
   ...definitions.map((entry) =>
     [
       entry.itemId,
@@ -183,6 +185,8 @@ const lines = [
       bool(entry.wallpaperItem),
       bool(entry.outdoor),
       bool(entry.floorTileItem),
+      bool(entry.surface),
+      bool(entry.stackable),
     ].join('\t'),
   ),
 ];
@@ -190,7 +194,7 @@ const lines = [
 fs.writeFileSync(OUT_TSV, `${lines.join('\n')}\n`);
 
 const meta = {
-  schemaVersion: 2,
+  schemaVersion: 3,
   format: 'ANEWON_RC_PLACEMENT_CATALOG_V2',
   baseline: manifest.baseline ?? null,
   sourceFamily: 'restaurant',
@@ -202,6 +206,11 @@ const meta = {
   skippedInvalidId,
   skippedSystemOnly,
   duplicateIds: 0,
+  surfaceDefinitions: definitions.filter((entry) => entry.surface).length,
+  stackableDefinitions: definitions.filter((entry) => entry.stackable).length,
+  surfaceAndStackableDefinitions: definitions.filter(
+    (entry) => entry.surface && entry.stackable,
+  ).length,
   generatedAtBuildTime: true,
   browserRuntimeDependency: false,
 };
@@ -209,6 +218,9 @@ const meta = {
 fs.writeFileSync(OUT_META, `${JSON.stringify(meta, null, 2)}\n`);
 console.log(
   `server catalog: ${definitions.length} player placement definitions · ` +
+    `surface=${definitions.filter((entry) => entry.surface).length} ` +
+    `stackable=${definitions.filter((entry) => entry.stackable).length} ` +
+    `both=${definitions.filter((entry) => entry.surface && entry.stackable).length} · ` +
     `skipped footprint=${skippedWithoutFootprint} systemOnly=${skippedSystemOnly} invalidId=${skippedInvalidId} · ` +
     `${path.relative(REPO, OUT_TSV)}`,
 );
