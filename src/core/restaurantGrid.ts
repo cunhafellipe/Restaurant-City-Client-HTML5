@@ -91,9 +91,12 @@ export function screenToTileFraction(screen: ScreenPoint): TilePoint {
  */
 export function screenToTileIndex(screen: ScreenPoint): TilePoint {
   const fractional = screenToTileFraction(screen);
+  const x = Math.trunc(fractional.x);
+  const y = Math.trunc(fractional.y);
   return {
-    x: Math.trunc(fractional.x),
-    y: Math.trunc(fractional.y),
+    // ActionScript int has one zero value; JS exposes signed -0.
+    x: Object.is(x, -0) ? 0 : x,
+    y: Object.is(y, -0) ? 0 : y,
   };
 }
 
