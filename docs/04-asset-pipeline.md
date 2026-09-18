@@ -31,8 +31,9 @@ them.
 ## Target formats
 
 - **Sprites:** PNG atlases + Phaser multi-atlas JSON for M0 (lossless PNG
-  tier of ADR-0004; WebP tier is a later pipeline upgrade), one atlas per
-  source SWF per scale tier. Power of two where practical; max 4096px.
+  tier of ADR-0004; WebP tier is a later pipeline upgrade), one or more bounded atlas pages per source SWF per scale tier. Pages are
+  deterministic, max 2048x4096 in the current PNG tier, and consumed as one
+  Phaser multi-atlas.
 - **Audio:** ogg/webm + mp3 dual-format with a per-track manifest
   (Web Audio via Phaser). Export from `sound_asset.swf`'s embedded MP3s.
 - **Data:** typed JSON generated from the `bin-xml` files by the readers in
@@ -44,7 +45,7 @@ them.
 | Script | What it does | FFDec invocation used |
 |---|---|---|
 | `tools/extract-symbols.mjs` | Parse tag tree + linkage, export sprite frames, write `extract.json` | `-dumpSWF`, `-export symbolClass`, `-format sprite:png -export sprite` |
-| `tools/build-atlases.mjs` | Shelf-pack frames, compose PNG atlas + multi-atlas JSON (pngjs, no native deps) | — |
+| `tools/build-atlases.mjs` | Shelf-pack frames into bounded deterministic PNG pages + multi-atlas JSON (pngjs, no native deps) | — |
 | `tools/build-manifest.mjs` | Emit `manifest.json` + coverage report | — |
 | `tools/verify-pipeline.mjs` | Re-extract from the original SWF, compare sets, fail on <100% | `-dumpSWF`, `-export symbolClass`, `-format sprite:png -export sprite` |
 | `tools/pipeline.mjs` | Runs all stages in order | — |
@@ -130,7 +131,7 @@ self-contained. `tests/lib/atlas-contract.test.mjs` guards both rules.
 
 - M0: `ingredient_asset.swf` -> atlas -> one animated sprite renders in the
   Boot scene; coverage report green for that SWF.
-- M1: all 9 asset SWFs exported at full coverage; audio exported; data JSONs
+- M1: all 7 visual asset SWFs exported at full coverage; audio exported; data JSONs
   for all `bin-xml` files; manifest loads in the dev server.
 
 ## Guardrails
