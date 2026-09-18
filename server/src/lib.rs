@@ -6,6 +6,7 @@
 
 pub mod domain;
 pub mod platform;
+pub mod placement;
 
 pub use domain::{
     AuthorityError, Command, Inventory, MutationId, MutationOutcome, PlayerState, Wallet,
@@ -13,4 +14,9 @@ pub use domain::{
 pub use platform::{
     AnewSubject, PlatformSessionError, PlatformSessionVerifier, ProductSessionId, PRODUCT_ID,
     VerifiedProductSession,
+};
+
+pub use placement::{
+    Footprint, PlacementFlags, PlacementShape, RoomDimensions, ScreenPoint, StructuralPlacement,
+    TilePoint, ROOM_INDEX_MAIN, ROOM_INDEX_OUTSIDE_AREA,
 };
