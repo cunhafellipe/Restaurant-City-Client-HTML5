@@ -10,4 +10,7 @@ pub mod platform;
 pub use domain::{
     AuthorityError, Command, Inventory, MutationId, MutationOutcome, PlayerState, Wallet,
 };
-pub use platform::{AnewSubject, PlatformSessionError, PlatformSessionVerifier, VerifiedProductSession};
+pub use platform::{
+    AnewSubject, PlatformSessionError, PlatformSessionVerifier, ProductSessionId, PRODUCT_ID,
+    VerifiedProductSession,
+};
