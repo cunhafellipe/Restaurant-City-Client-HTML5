@@ -13,6 +13,13 @@ const WORK = path.join(REPO, 'tools', '.work', 'browser-visual');
 const SCREENSHOT = path.join(WORK, 'restaurant-editor.png');
 const WORLD_SCREENSHOT = path.join(WORK, 'restaurant-world.png');
 const META = path.join(WORK, 'restaurant-editor.json');
+const GOLDEN = path.join(
+  REPO,
+  'tests',
+  'golden',
+  'm2',
+  'restaurant-editor-world.json',
+);
 
 const fixture = {
   room: { inside_x: 8, inside_y: 8, outside_x: 0, outside_y: 0 },
@@ -470,6 +477,27 @@ try {
   const worldPixelSha256 = bufferSha256(worldPng.data);
   const worldQuantizedBlockSha256 = quantizedBlockSignature(worldPng, 8);
 
+  if (!fs.existsSync(GOLDEN)) {
+    throw new Error(`Restaurant City M2 visual golden is missing: ${GOLDEN}`);
+  }
+  const golden = JSON.parse(fs.readFileSync(GOLDEN, 'utf8'));
+  if (
+    golden.schemaVersion !== 1 ||
+    golden.fixture !== 'cannon-3020163-rotation-3-at-2-2' ||
+    golden.canvas?.width !== worldPng.width ||
+    golden.canvas?.height !== worldPng.height ||
+    golden.blockSize !== 8 ||
+    typeof golden.expectedQuantizedBlockSha256 !== 'string'
+  ) {
+    throw new Error('Restaurant City M2 visual golden contract is malformed');
+  }
+  if (worldQuantizedBlockSha256 !== golden.expectedQuantizedBlockSha256) {
+    throw new Error(
+      `Restaurant City M2 visual golden mismatch expected=${golden.expectedQuantizedBlockSha256} actual=${worldQuantizedBlockSha256} pixel=${worldPixelSha256}`,
+    );
+  }
+  const exactPixelMatch = worldPixelSha256 === golden.referencePixelSha256;
+
   const shot = await cdp.send('Page.captureScreenshot', {
     format: 'png',
     fromSurface: true,
@@ -505,12 +533,19 @@ try {
       pixelSha256: worldPixelSha256,
       blockSize: 8,
       quantizedBlockSha256: worldQuantizedBlockSha256,
+      golden: {
+        path: path.relative(REPO, GOLDEN).replaceAll('\\', '/'),
+        expectedQuantizedBlockSha256: golden.expectedQuantizedBlockSha256,
+        quantizedBlockMatch: true,
+        referencePixelSha256: golden.referencePixelSha256,
+        exactPixelMatch,
+      },
     },
   };
   fs.writeFileSync(META, `${JSON.stringify(metadata, null, 2)}\n`);
 
   console.log(
-    `BROWSER VISUAL PROBE PASS | browser=${browser} | bytes=${stat.size} | sha256=${metadata.sha256} | worldPixel=${worldPixelSha256} | worldBlock=${worldQuantizedBlockSha256}`,
+    `BROWSER VISUAL GOLDEN PASS | browser=${browser} | bytes=${stat.size} | sha256=${metadata.sha256} | worldPixel=${worldPixelSha256} | exactPixelMatch=${exactPixelMatch} | worldBlock=${worldQuantizedBlockSha256}`,
   );
 } finally {
   try {
