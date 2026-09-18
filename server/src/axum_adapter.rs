@@ -60,10 +60,7 @@ where
         .with_state(state)
 }
 
-async fn load_restaurant<V, S>(
-    State(state): State<AppState<V, S>>,
-    headers: HeaderMap,
-) -> Response
+async fn load_restaurant<V, S>(State(state): State<AppState<V, S>>, headers: HeaderMap) -> Response
 where
     V: PlatformSessionVerifier + Send + Sync + 'static,
     S: ProductStateStore + 'static,
