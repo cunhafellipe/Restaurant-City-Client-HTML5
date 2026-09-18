@@ -29,3 +29,17 @@ jobs:
       - run: npm run check
       - run: npm test
       - run: npm run build
+      - name: Verify product-authority Rust domain
+        shell: pwsh
+        run: |
+          Push-Location server
+          try {
+            cargo fmt --all --check
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            cargo clippy --all-targets -- -D warnings
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            cargo test
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          } finally {
+            Pop-Location
+          }
