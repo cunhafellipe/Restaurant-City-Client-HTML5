@@ -96,7 +96,7 @@ impl ProductStateStore for RedbProductStateStore {
     }
 
     fn compare_and_swap(
-        &mut self,
+        &self,
         subject: AnewSubject,
         expected_revision: Option<u64>,
         state: ProductAggregate,
@@ -241,7 +241,7 @@ mod tests {
         let expected = aggregate();
 
         {
-            let mut store = RedbProductStateStore::open(&path, catalog.clone()).unwrap();
+            let store = RedbProductStateStore::open(&path, catalog.clone()).unwrap();
             assert_eq!(
                 store
                     .compare_and_swap(subject(), None, expected.clone())
@@ -265,7 +265,7 @@ mod tests {
         let path = temp_database();
         let catalog = catalog();
         let expected = aggregate();
-        let mut store = RedbProductStateStore::open(&path, catalog).unwrap();
+        let store = RedbProductStateStore::open(&path, catalog).unwrap();
 
         assert_eq!(
             store
