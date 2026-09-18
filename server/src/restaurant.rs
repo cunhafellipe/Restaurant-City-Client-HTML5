@@ -474,7 +474,7 @@ mod tests {
     #[test]
     fn trusted_catalog_loader_accepts_generated_contract() {
         let input = concat!(
-            "ANEWON_RC_PLACEMENT_CATALOG_V2\n",
+            "ANEWON_RC_PLACEMENT_CATALOG_V3\n",
             "# baseline=0.9.143a\n",
             "item_id\tsize_x\tsize_y\trotation_count\twall_item\twall_decoration_item\twallpaper_item\toutdoor\tfloor_tile_item\tsurface\tstackable\n",
             "10\t2\t1\t4\t0\t0\t0\t0\t0\t1\t0\n",
@@ -488,7 +488,7 @@ mod tests {
     #[test]
     fn trusted_catalog_loader_rejects_duplicate_ids() {
         let input = concat!(
-            "ANEWON_RC_PLACEMENT_CATALOG_V2\n",
+            "ANEWON_RC_PLACEMENT_CATALOG_V3\n",
             "item_id\tsize_x\tsize_y\trotation_count\twall_item\twall_decoration_item\twallpaper_item\toutdoor\tfloor_tile_item\tsurface\tstackable\n",
             "10\t2\t1\t4\t0\t0\t0\t0\t0\t1\t0\n",
             "10\t1\t1\t4\t0\t0\t0\t0\t0\t0\t1\n",
