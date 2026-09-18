@@ -32,8 +32,8 @@ const INITIAL_ROOM: RoomDimensions = {
 const ORIGIN = { x: 380, y: 105 };
 
 export class RestaurantEditorScene extends Phaser.Scene {
-  private readonly floorGraphics!: Phaser.GameObjects.Graphics;
-  private readonly previewGraphics!: Phaser.GameObjects.Graphics;
+  private floorGraphics!: Phaser.GameObjects.Graphics;
+  private previewGraphics!: Phaser.GameObjects.Graphics;
   private statusText!: Phaser.GameObjects.Text;
   private itemText!: Phaser.GameObjects.Text;
   private candidates: readonly RestaurantItemDefinition[] = [];
