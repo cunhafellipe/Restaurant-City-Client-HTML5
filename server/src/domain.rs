@@ -259,7 +259,7 @@ mod tests {
 
     fn player() -> PlayerState {
         PlayerState::new(
-            AnewSubject::from_verified_platform_subject("anew_test_subject".to_owned()).unwrap(),
+            AnewSubject::from_verified_platform_bytes([1; 16]).unwrap(),
         )
     }
 
