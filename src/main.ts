@@ -2,6 +2,8 @@ import Phaser from 'phaser';
 import './app.css';
 import { RestaurantEditorScene } from './game/scenes/RestaurantEditorScene';
 import { BootScene } from './game/scenes/BootScene';
+import { installRestaurantAuthority } from './game/services';
+import { HttpRestaurantAuthority } from './net/restaurantAuthority';
 import { createAppShell } from './shell/AppShell';
 
 const root = document.getElementById('app');
@@ -10,6 +12,7 @@ if (!root) {
 }
 
 const shell = createAppShell(root);
+const restaurantAuthority = new HttpRestaurantAuthority();
 
 /**
  * Phaser is the world renderer/simulation presentation layer.
@@ -27,6 +30,11 @@ const game = new Phaser.Game({
   scale: {
     mode: Phaser.Scale.FIT,
     autoCenter: Phaser.Scale.CENTER_BOTH,
+  },
+  callbacks: {
+    preBoot: (game) => {
+      installRestaurantAuthority(game, restaurantAuthority);
+    },
   },
   scene: [RestaurantEditorScene, BootScene],
 });
