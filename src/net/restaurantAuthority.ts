@@ -14,10 +14,18 @@ export interface AuthoritativePlacedItem {
   readonly roomIndex: number;
 }
 
+export interface AuthoritativeInventoryAvailability {
+  readonly itemId: number;
+  readonly owned: number;
+  readonly placed: number;
+  readonly available: number;
+}
+
 export interface RestaurantLayout {
   readonly room: AuthoritativeRoom;
   readonly nextInstanceId: number;
   readonly items: readonly AuthoritativePlacedItem[];
+  readonly inventory: readonly AuthoritativeInventoryAvailability[];
 }
 
 export interface PlacementCommand {
@@ -186,7 +194,12 @@ async function authorityError(
 }
 
 function parseRestaurantLayout(value: unknown): RestaurantLayout {
-  if (!isObject(value) || !isObject(value.room) || !Array.isArray(value.items)) {
+  if (
+    !isObject(value) ||
+    !isObject(value.room) ||
+    !Array.isArray(value.items) ||
+    !Array.isArray(value.inventory)
+  ) {
     throw new Error('Malformed authoritative restaurant layout');
   }
 
@@ -202,6 +215,29 @@ function parseRestaurantLayout(value: unknown): RestaurantLayout {
       'next_instance_id',
     ),
     items: value.items.map(parsePlacedItem),
+    inventory: value.inventory.map(parseInventoryAvailability),
+  };
+}
+
+function parseInventoryAvailability(
+  value: unknown,
+): AuthoritativeInventoryAvailability {
+  if (!isObject(value)) {
+    throw new Error('Malformed authoritative inventory availability');
+  }
+
+  const owned = requireUInt(value.owned, 'inventory.owned');
+  const placed = requireUInt(value.placed, 'inventory.placed');
+  const available = requireUInt(value.available, 'inventory.available');
+  if (placed > owned || available !== owned - placed) {
+    throw new Error('Malformed authoritative inventory invariant');
+  }
+
+  return {
+    itemId: requireUInt(value.item_id, 'inventory.item_id'),
+    owned,
+    placed,
+    available,
   };
 }
 
