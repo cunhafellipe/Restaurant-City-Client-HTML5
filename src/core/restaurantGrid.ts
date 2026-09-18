@@ -49,6 +49,10 @@ export interface PlacementShape extends Footprint {
   readonly wallpaperItem?: boolean;
   readonly outdoor?: boolean;
   readonly floorTileItem?: boolean;
+  /** Recovered RoomItem flag: this item may support another stackable item. */
+  readonly surface?: boolean;
+  /** Recovered RoomItem flag: this item may be placed on a surface item. */
+  readonly stackable?: boolean;
 }
 
 export interface DecodedOwnedItemData {
