@@ -84,14 +84,9 @@ pub const fn rotate_footprint(footprint: Footprint, quarter_turns: i32) -> Footp
     }
 }
 
-pub fn is_item_out_of_bounds(
-    shape: PlacementShape,
-    tile: TilePoint,
-    room: RoomDimensions,
-) -> bool {
-    let wall_domain = shape.flags.wall_item
-        || shape.flags.wall_decoration_item
-        || shape.flags.wallpaper_item;
+pub fn is_item_out_of_bounds(shape: PlacementShape, tile: TilePoint, room: RoomDimensions) -> bool {
+    let wall_domain =
+        shape.flags.wall_item || shape.flags.wall_decoration_item || shape.flags.wallpaper_item;
 
     if wall_domain {
         return !(tile.x >= 0
@@ -119,8 +114,7 @@ pub fn is_item_out_of_bounds(
     };
 
     if max_y >= room.inside_y {
-        max_x >= room.outside_x
-            || max_y >= room.inside_y.saturating_add(room.outside_y)
+        max_x >= room.outside_x || max_y >= room.inside_y.saturating_add(room.outside_y)
     } else {
         max_x >= room.inside_x || max_y >= room.inside_y
     }
