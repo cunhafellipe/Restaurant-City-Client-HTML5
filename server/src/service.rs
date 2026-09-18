@@ -184,9 +184,7 @@ where
         let session = self.verify(bearer_token)?;
         let mut state = self.load_or_initialize(session.subject)?;
         let outcome = state.place_owned_item(session, &self.catalog, mutation_id, intent)?;
-        self.store
-            .save(state)
-            .map_err(ProductServiceError::Store)?;
+        self.store.save(state).map_err(ProductServiceError::Store)?;
         Ok(outcome)
     }
 
@@ -249,8 +247,8 @@ pub enum ProductServiceError {
 mod tests {
     use super::*;
     use crate::domain::Command;
-    use crate::platform::{PRODUCT_ID, ProductSessionId};
     use crate::placement::{Footprint, PlacementFlags, TilePoint};
+    use crate::platform::{PRODUCT_ID, ProductSessionId};
     use crate::restaurant::ItemPlacementDefinition;
 
     #[derive(Clone, Copy)]
