@@ -698,12 +698,9 @@ mod tests {
                 .unwrap();
             assert_eq!(transformed.status(), StatusCode::OK);
 
-            let transformed_body = to_bytes(
-                transformed.into_body(),
-                MAX_REQUEST_BODY_BYTES,
-            )
-            .await
-            .unwrap();
+            let transformed_body = to_bytes(transformed.into_body(), MAX_REQUEST_BODY_BYTES)
+                .await
+                .unwrap();
             let transformed_json: serde_json::Value =
                 serde_json::from_slice(&transformed_body).unwrap();
             assert_eq!(transformed_json["item"]["instance_id"], 1);
