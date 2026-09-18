@@ -4,7 +4,13 @@ export type GameUiCommand =
   | 'rotate-item';
 
 export interface GameUiState {
-  readonly phase: 'booting' | 'loading-content' | 'editing' | 'error';
+  readonly phase:
+    | 'booting'
+    | 'loading-content'
+    | 'loading-authority'
+    | 'editing'
+    | 'saving'
+    | 'error';
   readonly baseline?: string;
   readonly status: string;
   readonly selectedItem?: {
@@ -13,6 +19,11 @@ export interface GameUiState {
     readonly group: string;
     readonly footprint: string;
     readonly rotation: number;
+    readonly inventory?: {
+      readonly owned: number;
+      readonly placed: number;
+      readonly available: number;
+    };
   };
   readonly placement?: {
     readonly tileX: number;
