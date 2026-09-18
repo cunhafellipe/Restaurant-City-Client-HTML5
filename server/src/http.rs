@@ -1,8 +1,9 @@
 //! Framework-independent HTTP/wire contract for the Restaurant City product.
 //!
 //! This module deliberately does not own sockets, TLS, routing, cookies or
-//! ANEWON Platform authentication. A concrete HTTP adapter supplies headers
-//! and bytes; the product service verifies a Product-scoped bearer session.
+//! ANEWON Platform authentication. A concrete HTTP adapter extracts the opaque
+//! product-session token and supplies it with request bytes; the product
+//! service verifies the Product-scoped session.
 
 use crate::domain::MutationId;
 use crate::placement::TilePoint;
@@ -14,12 +15,12 @@ use crate::service::{
 use serde::{Deserialize, Serialize};
 
 const MAX_BODY_BYTES: usize = 4 * 1024;
-const MAX_AUTHORIZATION_BYTES: usize = 8 * 1024;
+const MAX_SESSION_TOKEN_BYTES: usize = 2 * 1024;
 const MAX_MUTATION_ID_BYTES: usize = 128;
 
 #[derive(Clone, Copy, Debug)]
 pub struct ProductHttpContext<'a> {
-    pub authorization: Option<&'a str>,
+    pub session_token: Option<&'a str>,
     pub mutation_id: Option<&'a str>,
 }
 
@@ -108,8 +109,8 @@ where
     V: PlatformSessionVerifier,
     S: ProductStateStore,
 {
-    let bearer = bearer_token(context.authorization)?;
-    let snapshot = service.load_restaurant(bearer).map_err(map_service_error)?;
+    let session_token = session_token(context.session_token)?;
+    let snapshot = service.load_restaurant(session_token).map_err(map_service_error)?;
     json_bytes(&layout_response(snapshot))
 }
 
@@ -122,7 +123,7 @@ where
     V: PlatformSessionVerifier,
     S: ProductStateStore,
 {
-    let bearer = bearer_token(context.authorization)?;
+    let session_token = session_token(context.session_token)?;
     let mutation_id = mutation_id(context.mutation_id)?;
 
     if body.is_empty() || body.len() > MAX_BODY_BYTES {
@@ -138,7 +139,7 @@ where
 
     let outcome = service
         .place_item(
-            bearer,
+            session_token,
             mutation_id,
             PlacementIntent {
                 item_id: dto.item_id,
@@ -165,19 +166,13 @@ where
     json_bytes(&response)
 }
 
-fn bearer_token(authorization: Option<&str>) -> Result<&str, PublicProductError> {
-    let value = authorization.ok_or(PublicProductError::Unauthenticated)?;
-    if value.is_empty() || value.len() > MAX_AUTHORIZATION_BYTES {
-        return Err(PublicProductError::Unauthenticated);
-    }
-
-    let Some(token) = value.strip_prefix("Bearer ") else {
-        return Err(PublicProductError::Unauthenticated);
-    };
-
+fn session_token(value: Option<&str>) -> Result<&str, PublicProductError> {
+    let token = value.ok_or(PublicProductError::Unauthenticated)?;
     if token.is_empty()
+        || token.len() > MAX_SESSION_TOKEN_BYTES
+        || !token.is_ascii()
         || token.bytes().any(|byte| byte.is_ascii_whitespace())
-        || token.contains(',')
+        || token.contains([';', ','])
     {
         return Err(PublicProductError::Unauthenticated);
     }
@@ -316,17 +311,17 @@ mod tests {
     }
 
     fn context<'a>(
-        authorization: Option<&'a str>,
+        session_token: Option<&'a str>,
         mutation_id: Option<&'a str>,
     ) -> ProductHttpContext<'a> {
         ProductHttpContext {
-            authorization,
+            session_token,
             mutation_id,
         }
     }
 
     #[test]
-    fn load_requires_strict_bearer_scheme() {
+    fn load_requires_bounded_opaque_session_token() {
         let service = service();
 
         assert_eq!(
@@ -334,10 +329,10 @@ mod tests {
             Err(PublicProductError::Unauthenticated)
         );
         assert_eq!(
-            handle_load_restaurant(&service, context(Some("Basic session"), None)),
+            handle_load_restaurant(&service, context(Some("session token"), None)),
             Err(PublicProductError::Unauthenticated)
         );
-        assert!(handle_load_restaurant(&service, context(Some("Bearer session"), None)).is_ok());
+        assert!(handle_load_restaurant(&service, context(Some("session"), None)).is_ok());
     }
 
     #[test]
@@ -347,7 +342,7 @@ mod tests {
         assert_eq!(
             handle_place_item(
                 &service,
-                context(Some("Bearer session"), Some("p-1")),
+                context(Some("session"), Some("p-1")),
                 br#"{"item_id":10,"tile_x":2,"tile_y":2,"rotation":0,"extra":true}"#,
             ),
             Err(PublicProductError::InvalidRequest)
@@ -356,7 +351,7 @@ mod tests {
         assert_eq!(
             handle_place_item(
                 &service,
-                context(Some("Bearer session"), None),
+                context(Some("session"), None),
                 br#"{"item_id":10,"tile_x":2,"tile_y":2,"rotation":0}"#,
             ),
             Err(PublicProductError::InvalidRequest)
@@ -379,7 +374,7 @@ mod tests {
 
         let body = handle_place_item(
             &service,
-            context(Some("Bearer session"), Some("place-1")),
+            context(Some("session"), Some("place-1")),
             br#"{"item_id":10,"tile_x":2,"tile_y":2,"rotation":0}"#,
         )
         .unwrap();
@@ -407,13 +402,13 @@ mod tests {
         let request = br#"{"item_id":10,"tile_x":2,"tile_y":2,"rotation":0}"#;
         handle_place_item(
             &service,
-            context(Some("Bearer session"), Some("place-1")),
+            context(Some("session"), Some("place-1")),
             request,
         )
         .unwrap();
         let duplicate = handle_place_item(
             &service,
-            context(Some("Bearer session"), Some("place-1")),
+            context(Some("session"), Some("place-1")),
             request,
         )
         .unwrap();
