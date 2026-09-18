@@ -33,15 +33,17 @@ pub use restaurant::{
 };
 
 pub use service::{
-    InMemoryProductStateStore, LoadedProductState, PlacementMutationOutcome, ProductAggregate,
-    ProductServiceError, ProductStateStore, ProductStateStoreError, RestaurantProductService,
+    InMemoryProductStateStore, InventoryAvailability, LoadedProductState,
+    PlacementMutationOutcome, ProductAggregate, ProductServiceError, ProductStateStore,
+    ProductStateStoreError, RestaurantProductService, RestaurantProductSnapshot,
 };
 
 pub use persistence::RedbProductStateStore;
 
 pub use http::{
-    PlacedItemResponse, PlacementResponse, ProductHttpContext, PublicProductError,
-    RestaurantLayoutResponse, RoomResponse, handle_load_restaurant, handle_place_item,
+    InventoryAvailabilityResponse, PlacedItemResponse, PlacementResponse, ProductHttpContext,
+    PublicProductError, RestaurantLayoutResponse, RoomResponse, handle_load_restaurant,
+    handle_place_item,
 };
 
 pub use axum_adapter::restaurant_router;
