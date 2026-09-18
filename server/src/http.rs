@@ -18,6 +18,10 @@ use serde::{Deserialize, Serialize};
 const MAX_BODY_BYTES: usize = 4 * 1024;
 const MAX_SESSION_TOKEN_BYTES: usize = 2 * 1024;
 const MAX_MUTATION_ID_BYTES: usize = 128;
+// PlacementCatalog V2 bounds recovered RoomItem rotation_count to at most 16
+// frames. HTTP accepts that transport range; per-item limits remain enforced by
+// RestaurantState against the trusted catalog.
+const MAX_HISTORICAL_ROTATION_INDEX: u8 = 15;
 
 #[derive(Clone, Copy, Debug)]
 pub struct ProductHttpContext<'a> {
@@ -145,7 +149,7 @@ where
     let dto: PlacementRequestDto =
         serde_json::from_slice(body).map_err(|_| PublicProductError::InvalidRequest)?;
 
-    if dto.rotation > 3 {
+    if dto.rotation > MAX_HISTORICAL_ROTATION_INDEX {
         return Err(PublicProductError::Unprocessable);
     }
 
@@ -310,14 +314,16 @@ mod tests {
         }
     }
 
-    fn service() -> RestaurantProductService<FakeVerifier, InMemoryProductStateStore> {
+    fn service_with_rotation_count(
+        rotation_count: u8,
+    ) -> RestaurantProductService<FakeVerifier, InMemoryProductStateStore> {
         let catalog = PlacementCatalog::new([ItemPlacementDefinition {
             item_id: 10,
             footprint: Footprint {
                 size_x: 2,
                 size_y: 1,
             },
-            rotation_count: 4,
+            rotation_count,
             flags: PlacementFlags::default(),
         }])
         .unwrap();
@@ -336,6 +342,10 @@ mod tests {
                 outside_y: 0,
             },
         )
+    }
+
+    fn service() -> RestaurantProductService<FakeVerifier, InMemoryProductStateStore> {
+        service_with_rotation_count(4)
     }
 
     fn context<'a>(
@@ -407,6 +417,39 @@ mod tests {
                 br#"{"item_id":10,"tile_x":2,"tile_y":2,"rotation":0}"#,
             ),
             Err(PublicProductError::InvalidRequest)
+        );
+    }
+
+    #[test]
+    fn placement_transport_accepts_recovered_sixteen_frame_rotation_range() {
+        let service = service_with_rotation_count(16);
+        service
+            .apply_player_command(
+                "session",
+                MutationId::new("grant-rotation-15".to_owned()).unwrap(),
+                Command::GrantInventory {
+                    item_id: 10,
+                    quantity: 1,
+                },
+            )
+            .unwrap();
+
+        let body = handle_place_item(
+            &service,
+            context(Some("session"), Some("place-rotation-15")),
+            br#"{"item_id":10,"tile_x":2,"tile_y":2,"rotation":15}"#,
+        )
+        .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["item"]["rotation"], 15);
+
+        assert_eq!(
+            handle_place_item(
+                &service,
+                context(Some("session"), Some("place-rotation-16")),
+                br#"{"item_id":10,"tile_x":5,"tile_y":2,"rotation":16}"#,
+            ),
+            Err(PublicProductError::Unprocessable)
         );
     }
 
