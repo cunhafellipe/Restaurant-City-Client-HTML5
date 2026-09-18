@@ -195,7 +195,7 @@ fs.writeFileSync(OUT_TSV, `${lines.join('\n')}\n`);
 
 const meta = {
   schemaVersion: 3,
-  format: 'ANEWON_RC_PLACEMENT_CATALOG_V2',
+  format: 'ANEWON_RC_PLACEMENT_CATALOG_V3',
   baseline: manifest.baseline ?? null,
   sourceFamily: 'restaurant',
   sourceFile: source.source,
