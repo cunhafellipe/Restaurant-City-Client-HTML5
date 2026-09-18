@@ -8,6 +8,7 @@ import {
   rotateFootprint,
   screenToTileFraction,
   screenToTileIndex,
+  validateHistoricalTileStack,
   validateStructuralPlacement,
 } from '../../src/core/restaurantGrid';
 
@@ -75,6 +76,74 @@ describe('Restaurant City grid contract', () => {
         { sizeX: 1, sizeY: 1 },
       ),
     ).toBe(false);
+  });
+
+  it('matches the recovered stackable-on-surface rule', () => {
+    expect(
+      validateHistoricalTileStack(
+        { stackable: true },
+        [{ instanceId: 1, surface: true }],
+      ),
+    ).toEqual({ ok: true });
+
+    expect(
+      validateHistoricalTileStack(
+        { stackable: false },
+        [{ instanceId: 1, surface: true }],
+      ),
+    ).toEqual({
+      ok: false,
+      reason: 'blocked-top',
+      blockingInstanceId: 1,
+    });
+
+    expect(
+      validateHistoricalTileStack(
+        { stackable: true },
+        [{ instanceId: 1, surface: false }],
+      ),
+    ).toEqual({
+      ok: false,
+      reason: 'blocked-top',
+      blockingInstanceId: 1,
+    });
+  });
+
+  it('enforces the recovered five-entry itemMap limit', () => {
+    const surfaces = [1, 2, 3, 4].map((instanceId) => ({
+      instanceId,
+      surface: true,
+    }));
+    expect(
+      validateHistoricalTileStack({ stackable: true }, surfaces),
+    ).toEqual({ ok: true });
+
+    const five = [...surfaces, { instanceId: 5, surface: true }];
+    expect(
+      validateHistoricalTileStack({ stackable: true }, five),
+    ).toEqual({ ok: false, reason: 'stack-limit' });
+  });
+
+  it('matches the historical self-at-top validation quirk', () => {
+    const stack = [
+      { instanceId: 1, surface: true },
+      { instanceId: 2, surface: true },
+      { instanceId: 3, surface: true },
+      { instanceId: 4, surface: true },
+      { instanceId: 5, surface: false },
+    ];
+
+    expect(
+      validateHistoricalTileStack({ stackable: true }, stack, 5),
+    ).toEqual({ ok: true });
+
+    expect(
+      validateHistoricalTileStack({ stackable: true }, stack, 4),
+    ).toEqual({
+      ok: false,
+      reason: 'blocked-top',
+      blockingInstanceId: 5,
+    });
   });
 
   it('reserves row and column zero for ordinary room items', () => {
