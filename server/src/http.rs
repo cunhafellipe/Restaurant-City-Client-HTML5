@@ -6,11 +6,11 @@
 
 use crate::domain::MutationId;
 use crate::placement::TilePoint;
+use crate::platform::{PlatformSessionError, PlatformSessionVerifier};
 use crate::restaurant::{PlacedItem, PlacementIntent, RestaurantSnapshot};
 use crate::service::{
     PlacementMutationOutcome, ProductServiceError, ProductStateStore, RestaurantProductService,
 };
-use crate::platform::{PlatformSessionError, PlatformSessionVerifier};
 use serde::{Deserialize, Serialize};
 
 const MAX_BODY_BYTES: usize = 4 * 1024;
@@ -109,9 +109,7 @@ where
     S: ProductStateStore,
 {
     let bearer = bearer_token(context.authorization)?;
-    let snapshot = service
-        .load_restaurant(bearer)
-        .map_err(map_service_error)?;
+    let snapshot = service.load_restaurant(bearer).map_err(map_service_error)?;
     json_bytes(&layout_response(snapshot))
 }
 
