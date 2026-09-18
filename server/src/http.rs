@@ -224,9 +224,7 @@ fn layout_response(snapshot: RestaurantProductSnapshot) -> RestaurantLayoutRespo
     }
 }
 
-fn inventory_availability_response(
-    item: InventoryAvailability,
-) -> InventoryAvailabilityResponse {
+fn inventory_availability_response(item: InventoryAvailability) -> InventoryAvailabilityResponse {
     InventoryAvailabilityResponse {
         item_id: item.item_id,
         owned: item.owned,
