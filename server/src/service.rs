@@ -1,5 +1,7 @@
-use crate::domain::{AuthorityError, Command, MutationId, MutationOutcome, PlayerState};
-use crate::placement::RoomDimensions;
+use crate::domain::{
+    AuthorityError, Command, MutationId, MutationOutcome, PlayerPersistenceSnapshot, PlayerState,
+};
+use crate::placement::{RoomDimensions, TilePoint};
 use crate::platform::{
     AnewSubject, PlatformSessionError, PlatformSessionVerifier, VerifiedProductSession,
 };
@@ -7,7 +9,11 @@ use crate::restaurant::{
     PlacedItem, PlacementCatalog, PlacementIntent, RestaurantAuthorityError, RestaurantSnapshot,
     RestaurantState,
 };
+use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
+
+const PRODUCT_PERSISTENCE_SCHEMA_VERSION: u8 = 1;
+const MAX_STORE_RETRIES: usize = 3;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum PlacementMutationOutcome {
@@ -20,6 +26,50 @@ pub struct ProductAggregate {
     player: PlayerState,
     restaurant: RestaurantState,
     placement_mutations: BTreeMap<MutationId, PlacedItem>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PersistedAggregate {
+    schema_version: u8,
+    player: PlayerPersistenceSnapshot,
+    restaurant: PersistedRestaurant,
+    placement_mutations: Vec<PersistedPlacementMutation>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PersistedRestaurant {
+    room: PersistedRoom,
+    next_instance_id: u64,
+    items: Vec<PersistedPlacedItem>,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PersistedRoom {
+    inside_x: u32,
+    inside_y: u32,
+    outside_x: u32,
+    outside_y: u32,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PersistedPlacedItem {
+    instance_id: u64,
+    item_id: u32,
+    tile_x: i32,
+    tile_y: i32,
+    rotation: u8,
+    room_index: u8,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PersistedPlacementMutation {
+    mutation_id: String,
+    item: PersistedPlacedItem,
 }
 
 impl ProductAggregate {
@@ -41,6 +91,89 @@ impl ProductAggregate {
 
     pub fn restaurant(&self) -> &RestaurantState {
         &self.restaurant
+    }
+
+    pub(crate) fn encode_persisted(&self) -> Result<Vec<u8>, ProductStateStoreError> {
+        let snapshot = self.restaurant.snapshot();
+        let persisted = PersistedAggregate {
+            schema_version: PRODUCT_PERSISTENCE_SCHEMA_VERSION,
+            player: self.player.persistence_snapshot(),
+            restaurant: PersistedRestaurant {
+                room: PersistedRoom::from(snapshot.room),
+                next_instance_id: snapshot.next_instance_id,
+                items: snapshot
+                    .items
+                    .into_iter()
+                    .map(PersistedPlacedItem::from)
+                    .collect(),
+            },
+            placement_mutations: self
+                .placement_mutations
+                .iter()
+                .map(|(mutation_id, item)| PersistedPlacementMutation {
+                    mutation_id: mutation_id.as_str().to_owned(),
+                    item: PersistedPlacedItem::from(*item),
+                })
+                .collect(),
+        };
+
+        serde_json::to_vec(&persisted).map_err(|_| ProductStateStoreError::Corrupt)
+    }
+
+    pub(crate) fn decode_persisted(
+        catalog: &PlacementCatalog,
+        bytes: &[u8],
+    ) -> Result<Self, ProductStateStoreError> {
+        let persisted: PersistedAggregate =
+            serde_json::from_slice(bytes).map_err(|_| ProductStateStoreError::Corrupt)?;
+
+        if persisted.schema_version != PRODUCT_PERSISTENCE_SCHEMA_VERSION {
+            return Err(ProductStateStoreError::Corrupt);
+        }
+
+        let player = PlayerState::from_persistence_snapshot(persisted.player)
+            .map_err(|_| ProductStateStoreError::Corrupt)?;
+
+        let snapshot = RestaurantSnapshot {
+            room: persisted.restaurant.room.into(),
+            next_instance_id: persisted.restaurant.next_instance_id,
+            items: persisted
+                .restaurant
+                .items
+                .into_iter()
+                .map(PlacedItem::from)
+                .collect(),
+        };
+        let restaurant = RestaurantState::from_snapshot(catalog, snapshot)
+            .map_err(|_| ProductStateStoreError::Corrupt)?;
+
+        let authoritative_items: BTreeMap<_, _> = restaurant
+            .items()
+            .map(|item| (item.instance_id, *item))
+            .collect();
+        let mut placement_mutations = BTreeMap::new();
+
+        for entry in persisted.placement_mutations {
+            let mutation_id = MutationId::new(entry.mutation_id)
+                .map_err(|_| ProductStateStoreError::Corrupt)?;
+            let placed = PlacedItem::from(entry.item);
+
+            if authoritative_items.get(&placed.instance_id) != Some(&placed)
+                || placement_mutations.insert(mutation_id, placed).is_some()
+            {
+                return Err(ProductStateStoreError::Corrupt);
+            }
+        }
+
+        if placement_mutations.len() != authoritative_items.len() {
+            return Err(ProductStateStoreError::Corrupt);
+        }
+
+        Ok(Self {
+            player,
+            restaurant,
+            placement_mutations,
+        })
     }
 
     pub fn apply_player_command(
@@ -108,31 +241,116 @@ impl ProductAggregate {
     }
 }
 
+impl From<RoomDimensions> for PersistedRoom {
+    fn from(value: RoomDimensions) -> Self {
+        Self {
+            inside_x: value.inside_x,
+            inside_y: value.inside_y,
+            outside_x: value.outside_x,
+            outside_y: value.outside_y,
+        }
+    }
+}
+
+impl From<PersistedRoom> for RoomDimensions {
+    fn from(value: PersistedRoom) -> Self {
+        Self {
+            inside_x: value.inside_x,
+            inside_y: value.inside_y,
+            outside_x: value.outside_x,
+            outside_y: value.outside_y,
+        }
+    }
+}
+
+impl From<PlacedItem> for PersistedPlacedItem {
+    fn from(value: PlacedItem) -> Self {
+        Self {
+            instance_id: value.instance_id,
+            item_id: value.item_id,
+            tile_x: value.tile.x,
+            tile_y: value.tile.y,
+            rotation: value.rotation,
+            room_index: value.room_index,
+        }
+    }
+}
+
+impl From<PersistedPlacedItem> for PlacedItem {
+    fn from(value: PersistedPlacedItem) -> Self {
+        Self {
+            instance_id: value.instance_id,
+            item_id: value.item_id,
+            tile: TilePoint {
+                x: value.tile_x,
+                y: value.tile_y,
+            },
+            rotation: value.rotation,
+            room_index: value.room_index,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct LoadedProductState {
+    pub store_revision: u64,
+    pub state: ProductAggregate,
+}
+
 pub trait ProductStateStore {
     fn load(
         &self,
         subject: AnewSubject,
-    ) -> Result<Option<ProductAggregate>, ProductStateStoreError>;
+    ) -> Result<Option<LoadedProductState>, ProductStateStoreError>;
 
-    fn save(&mut self, state: ProductAggregate) -> Result<(), ProductStateStoreError>;
+    fn compare_and_swap(
+        &mut self,
+        subject: AnewSubject,
+        expected_revision: Option<u64>,
+        state: ProductAggregate,
+    ) -> Result<u64, ProductStateStoreError>;
 }
 
 #[derive(Clone, Debug, Default)]
 pub struct InMemoryProductStateStore {
-    states: BTreeMap<AnewSubject, ProductAggregate>,
+    states: BTreeMap<AnewSubject, (u64, ProductAggregate)>,
 }
 
 impl ProductStateStore for InMemoryProductStateStore {
     fn load(
         &self,
         subject: AnewSubject,
-    ) -> Result<Option<ProductAggregate>, ProductStateStoreError> {
-        Ok(self.states.get(&subject).cloned())
+    ) -> Result<Option<LoadedProductState>, ProductStateStoreError> {
+        Ok(self
+            .states
+            .get(&subject)
+            .map(|(store_revision, state)| LoadedProductState {
+                store_revision: *store_revision,
+                state: state.clone(),
+            }))
     }
 
-    fn save(&mut self, state: ProductAggregate) -> Result<(), ProductStateStoreError> {
-        self.states.insert(state.subject(), state);
-        Ok(())
+    fn compare_and_swap(
+        &mut self,
+        subject: AnewSubject,
+        expected_revision: Option<u64>,
+        state: ProductAggregate,
+    ) -> Result<u64, ProductStateStoreError> {
+        if state.subject() != subject {
+            return Err(ProductStateStoreError::Corrupt);
+        }
+
+        let current_revision = self.states.get(&subject).map(|(revision, _)| *revision);
+        if current_revision != expected_revision {
+            return Err(ProductStateStoreError::Conflict);
+        }
+
+        let next_revision = current_revision
+            .unwrap_or(0)
+            .checked_add(1)
+            .ok_or(ProductStateStoreError::Corrupt)?;
+        self.states.insert(subject, (next_revision, state));
+        Ok(next_revision)
     }
 }
 
@@ -169,10 +387,27 @@ where
         command: Command,
     ) -> Result<MutationOutcome, ProductServiceError> {
         let session = self.verify(bearer_token)?;
-        let mut state = self.load_or_initialize(session.subject)?;
-        let outcome = state.apply_player_command(session, mutation_id, command)?;
-        self.store.save(state).map_err(ProductServiceError::Store)?;
-        Ok(outcome)
+
+        for _ in 0..MAX_STORE_RETRIES {
+            let (expected_revision, mut state) = self.load_or_initialize(session.subject)?;
+            let outcome =
+                state.apply_player_command(session, mutation_id.clone(), command.clone())?;
+
+            if matches!(outcome, MutationOutcome::Duplicate { .. }) {
+                return Ok(outcome);
+            }
+
+            match self
+                .store
+                .compare_and_swap(session.subject, expected_revision, state)
+            {
+                Ok(_) => return Ok(outcome),
+                Err(ProductStateStoreError::Conflict) => continue,
+                Err(error) => return Err(ProductServiceError::Store(error)),
+            }
+        }
+
+        Err(ProductServiceError::StoreConflict)
     }
 
     pub fn place_item(
@@ -182,10 +417,27 @@ where
         intent: PlacementIntent,
     ) -> Result<PlacementMutationOutcome, ProductServiceError> {
         let session = self.verify(bearer_token)?;
-        let mut state = self.load_or_initialize(session.subject)?;
-        let outcome = state.place_owned_item(session, &self.catalog, mutation_id, intent)?;
-        self.store.save(state).map_err(ProductServiceError::Store)?;
-        Ok(outcome)
+
+        for _ in 0..MAX_STORE_RETRIES {
+            let (expected_revision, mut state) = self.load_or_initialize(session.subject)?;
+            let outcome =
+                state.place_owned_item(session, &self.catalog, mutation_id.clone(), intent)?;
+
+            if matches!(outcome, PlacementMutationOutcome::Duplicate(_)) {
+                return Ok(outcome);
+            }
+
+            match self
+                .store
+                .compare_and_swap(session.subject, expected_revision, state)
+            {
+                Ok(_) => return Ok(outcome),
+                Err(ProductStateStoreError::Conflict) => continue,
+                Err(error) => return Err(ProductServiceError::Store(error)),
+            }
+        }
+
+        Err(ProductServiceError::StoreConflict)
     }
 
     pub fn load_restaurant(
@@ -197,6 +449,7 @@ where
             .store
             .load(session.subject)
             .map_err(ProductServiceError::Store)?
+            .map(|loaded| loaded.state)
             .unwrap_or_else(|| ProductAggregate::new(session.subject, self.initial_room));
         state.restaurant_snapshot(session)
     }
@@ -214,12 +467,15 @@ where
     fn load_or_initialize(
         &self,
         subject: AnewSubject,
-    ) -> Result<ProductAggregate, ProductServiceError> {
-        Ok(self
+    ) -> Result<(Option<u64>, ProductAggregate), ProductServiceError> {
+        Ok(match self
             .store
             .load(subject)
             .map_err(ProductServiceError::Store)?
-            .unwrap_or_else(|| ProductAggregate::new(subject, self.initial_room)))
+        {
+            Some(loaded) => (Some(loaded.store_revision), loaded.state),
+            None => (None, ProductAggregate::new(subject, self.initial_room)),
+        })
     }
 }
 
@@ -227,12 +483,14 @@ where
 pub enum ProductStateStoreError {
     Unavailable,
     Corrupt,
+    Conflict,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ProductServiceError {
     Session(PlatformSessionError),
     Store(ProductStateStoreError),
+    StoreConflict,
     SubjectMismatch,
     PlayerAuthority(AuthorityError),
     RestaurantAuthority(RestaurantAuthorityError),
@@ -281,12 +539,8 @@ mod tests {
         MutationId::new(value.to_owned()).unwrap()
     }
 
-    fn service() -> RestaurantProductService<FakeVerifier, InMemoryProductStateStore> {
-        let verifier = FakeVerifier {
-            subject: subject(7),
-            session_id: ProductSessionId::from_verified_platform_bytes([9; 16]).unwrap(),
-        };
-        let catalog = PlacementCatalog::new([ItemPlacementDefinition {
+    fn catalog() -> PlacementCatalog {
+        PlacementCatalog::new([ItemPlacementDefinition {
             item_id: 10,
             footprint: Footprint {
                 size_x: 2,
@@ -294,19 +548,82 @@ mod tests {
             },
             flags: PlacementFlags::default(),
         }])
-        .unwrap();
+        .unwrap()
+    }
+
+    fn room() -> RoomDimensions {
+        RoomDimensions {
+            inside_x: 8,
+            inside_y: 8,
+            outside_x: 0,
+            outside_y: 0,
+        }
+    }
+
+    fn service() -> RestaurantProductService<FakeVerifier, InMemoryProductStateStore> {
+        let verifier = FakeVerifier {
+            subject: subject(7),
+            session_id: ProductSessionId::from_verified_platform_bytes([9; 16]).unwrap(),
+        };
 
         RestaurantProductService::new(
             verifier,
             InMemoryProductStateStore::default(),
-            catalog,
-            RoomDimensions {
-                inside_x: 8,
-                inside_y: 8,
-                outside_x: 0,
-                outside_y: 0,
-            },
+            catalog(),
+            room(),
         )
+    }
+
+    #[test]
+    fn persistence_codec_round_trip_revalidates_authoritative_state() {
+        let session = VerifiedProductSession {
+            subject: subject(7),
+            session_id: ProductSessionId::from_verified_platform_bytes([9; 16]).unwrap(),
+        };
+        let catalog = catalog();
+        let mut aggregate = ProductAggregate::new(subject(7), room());
+        aggregate
+            .apply_player_command(
+                session,
+                mutation("grant-1"),
+                Command::GrantInventory {
+                    item_id: 10,
+                    quantity: 1,
+                },
+            )
+            .unwrap();
+        aggregate
+            .place_owned_item(
+                session,
+                &catalog,
+                mutation("place-1"),
+                PlacementIntent {
+                    item_id: 10,
+                    tile: TilePoint { x: 2, y: 2 },
+                    rotation: 0,
+                },
+            )
+            .unwrap();
+
+        let encoded = aggregate.encode_persisted().unwrap();
+        let restored = ProductAggregate::decode_persisted(&catalog, &encoded).unwrap();
+        assert_eq!(restored, aggregate);
+    }
+
+    #[test]
+    fn compare_and_swap_rejects_stale_revision() {
+        let mut store = InMemoryProductStateStore::default();
+        let subject = subject(7);
+        let first = ProductAggregate::new(subject, room());
+
+        assert_eq!(
+            store.compare_and_swap(subject, None, first.clone()).unwrap(),
+            1
+        );
+        assert_eq!(
+            store.compare_and_swap(subject, None, first),
+            Err(ProductStateStoreError::Conflict)
+        );
     }
 
     #[test]
