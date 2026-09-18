@@ -213,6 +213,28 @@ impl ProductAggregate {
         command: Command,
     ) -> Result<MutationOutcome, ProductServiceError> {
         self.require_subject(session)?;
+
+        if let Command::ConsumeInventory { item_id, quantity } = &command {
+            let owned = self.player.inventory().quantity(*item_id);
+            let placed = self
+                .restaurant
+                .items()
+                .filter(|item| item.item_id == *item_id)
+                .count();
+            let placed = u32::try_from(placed)
+                .map_err(|_| ProductServiceError::Store(ProductStateStoreError::Corrupt))?;
+            let available = owned.checked_sub(placed).ok_or(ProductServiceError::Store(
+                ProductStateStoreError::Corrupt,
+            ))?;
+            if *quantity > available {
+                return Err(ProductServiceError::ItemUnavailable {
+                    item_id: *item_id,
+                    owned,
+                    placed,
+                });
+            }
+        }
+
         self.player
             .apply(mutation_id, command)
             .map_err(ProductServiceError::PlayerAuthority)
@@ -713,21 +735,59 @@ mod tests {
                 },
             )
             .unwrap();
-        aggregate
+
+        let encoded = aggregate.encode_persisted().unwrap();
+        let mut value: serde_json::Value = serde_json::from_slice(&encoded).unwrap();
+        value["player"]["inventory"] = serde_json::json!([]);
+        let tampered = serde_json::to_vec(&value).unwrap();
+
+        assert_eq!(
+            ProductAggregate::decode_persisted(&catalog, &tampered),
+            Err(ProductStateStoreError::Corrupt)
+        );
+    }
+
+    #[test]
+    fn consuming_inventory_cannot_orphan_a_placed_item() {
+        let service = service();
+        service
             .apply_player_command(
-                session,
-                mutation("consume-1"),
-                Command::ConsumeInventory {
+                "valid-product-session",
+                mutation("grant-1"),
+                Command::GrantInventory {
                     item_id: 10,
                     quantity: 1,
                 },
             )
             .unwrap();
+        service
+            .place_item(
+                "valid-product-session",
+                mutation("place-1"),
+                PlacementIntent {
+                    item_id: 10,
+                    tile: TilePoint { x: 2, y: 2 },
+                    rotation: 0,
+                },
+            )
+            .unwrap();
 
-        let encoded = aggregate.encode_persisted().unwrap();
         assert_eq!(
-            ProductAggregate::decode_persisted(&catalog, &encoded),
-            Err(ProductStateStoreError::Corrupt)
+            service
+                .apply_player_command(
+                    "valid-product-session",
+                    mutation("consume-1"),
+                    Command::ConsumeInventory {
+                        item_id: 10,
+                        quantity: 1,
+                    },
+                )
+                .unwrap_err(),
+            ProductServiceError::ItemUnavailable {
+                item_id: 10,
+                owned: 1,
+                placed: 1,
+            }
         );
     }
 
