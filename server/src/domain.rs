@@ -186,13 +186,14 @@ impl PlayerState {
             Command::ConsumeInventory { item_id, quantity } => {
                 require_quantity(quantity)?;
                 let current = self.inventory.quantity(item_id);
-                let value = current
-                    .checked_sub(quantity)
-                    .ok_or(AuthorityError::InsufficientInventory {
-                        item_id,
-                        available: current,
-                        requested: quantity,
-                    })?;
+                let value =
+                    current
+                        .checked_sub(quantity)
+                        .ok_or(AuthorityError::InsufficientInventory {
+                            item_id,
+                            available: current,
+                            requested: quantity,
+                        })?;
                 Ok(ValidatedCommand::SetInventory { item_id, value })
             }
         }
@@ -258,9 +259,7 @@ mod tests {
     use crate::platform::AnewSubject;
 
     fn player() -> PlayerState {
-        PlayerState::new(
-            AnewSubject::from_verified_platform_bytes([1; 16]).unwrap(),
-        )
+        PlayerState::new(AnewSubject::from_verified_platform_bytes([1; 16]).unwrap())
     }
 
     fn id(value: &str) -> MutationId {
