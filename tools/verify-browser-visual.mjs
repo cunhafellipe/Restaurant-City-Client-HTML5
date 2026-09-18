@@ -330,7 +330,7 @@ try {
       '--disable-gpu',
       '--hide-scrollbars',
       '--force-device-scale-factor=1',
-      '--window-size=1280,720',
+      '--window-size=1052,656',
       '--remote-debugging-port=0',
       `--user-data-dir=${profile}`,
       url,
@@ -372,8 +372,8 @@ try {
   await cdp.send('Runtime.enable');
   await cdp.send('Log.enable');
   await cdp.send('Emulation.setDeviceMetricsOverride', {
-    width: 1280,
-    height: 720,
+    width: 1052,
+    height: 656,
     deviceScaleFactor: 1,
     mobile: false,
   });
@@ -390,12 +390,20 @@ try {
           phase: status?.dataset.phase ?? null,
           status: status?.textContent ?? '',
           selection: selection?.textContent ?? '',
-          canvas: canvas ? {
-            width: canvas.width,
-            height: canvas.height,
-            cssWidth: canvas.getBoundingClientRect().width,
-            cssHeight: canvas.getBoundingClientRect().height,
-          } : null,
+          canvas: canvas ? (() => {
+            const rect = canvas.getBoundingClientRect();
+            const webgl2 = canvas.getContext('webgl2');
+            const webgl = webgl2 ? null : canvas.getContext('webgl');
+            return {
+              width: canvas.width,
+              height: canvas.height,
+              x: rect.x,
+              y: rect.y,
+              cssWidth: rect.width,
+              cssHeight: rect.height,
+              renderer: webgl2 ? 'webgl2' : webgl ? 'webgl' : 'canvas2d',
+            };
+          })() : null,
         };
       })()`,
       returnByValue: true,
@@ -428,26 +436,35 @@ try {
 
   await delay(250);
 
-  const worldData = await cdp.send('Runtime.evaluate', {
-    expression: `(() => {
-      const canvas = document.querySelector('#game-canvas-host canvas');
-      if (!(canvas instanceof HTMLCanvasElement)) return null;
-      return canvas.toDataURL('image/png');
-    })()`,
-    returnByValue: true,
-  });
-  const worldUrl = worldData.result?.value;
-  if (typeof worldUrl !== 'string' || !worldUrl.startsWith('data:image/png;base64,')) {
-    throw new Error('Could not capture native Restaurant City canvas pixels');
+  if (
+    Math.abs(state.canvas.cssWidth - 760) > 0.01 ||
+    Math.abs(state.canvas.cssHeight - 600) > 0.01
+  ) {
+    throw new Error(
+      `Visual gate must capture the world at 1:1 CSS scale; got ${JSON.stringify(state.canvas)}`,
+    );
   }
-  fs.writeFileSync(
-    WORLD_SCREENSHOT,
-    Buffer.from(worldUrl.slice('data:image/png;base64,'.length), 'base64'),
-  );
+
+  const worldShot = await cdp.send('Page.captureScreenshot', {
+    format: 'png',
+    fromSurface: true,
+    captureBeyondViewport: false,
+    clip: {
+      x: state.canvas.x,
+      y: state.canvas.y,
+      width: state.canvas.cssWidth,
+      height: state.canvas.cssHeight,
+      scale: 1,
+    },
+  });
+  if (typeof worldShot.data !== 'string' || worldShot.data.length === 0) {
+    throw new Error('CDP did not return Restaurant City world screenshot bytes');
+  }
+  fs.writeFileSync(WORLD_SCREENSHOT, Buffer.from(worldShot.data, 'base64'));
   const worldPng = PNG.sync.read(fs.readFileSync(WORLD_SCREENSHOT));
   if (worldPng.width !== 760 || worldPng.height !== 600) {
     throw new Error(
-      `Unexpected native world PNG dimensions: ${worldPng.width}x${worldPng.height}`,
+      `Unexpected composited world PNG dimensions: ${worldPng.width}x${worldPng.height}`,
     );
   }
   const worldPixelSha256 = bufferSha256(worldPng.data);
@@ -471,9 +488,9 @@ try {
   const metadata = {
     schemaVersion: 2,
     browser,
-    rendererGate: 'Phaser.AUTO forced to deterministic Canvas fallback for CI',
+    rendererGate: 'Phaser.AUTO composited through Edge CDP at exact 760x600 CSS scale',
     fixture: 'cannon-3020163-rotation-3-at-2-2',
-    viewport: { width: 1280, height: 720, deviceScaleFactor: 1 },
+    viewport: { width: 1052, height: 656, deviceScaleFactor: 1 },
     state,
     diagnostics: diagnostics.slice(-20),
     screenshot: path.relative(REPO, SCREENSHOT).replaceAll('\\', '/'),
