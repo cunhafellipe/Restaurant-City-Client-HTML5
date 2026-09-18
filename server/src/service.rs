@@ -485,8 +485,15 @@ impl ProductAggregate {
     ) -> Result<PlacementMutationOutcome, ProductServiceError> {
         self.require_subject(session)?;
 
-        if let Some(existing) = self.placement_mutations.get(&mutation_id) {
-            return Ok(PlacementMutationOutcome::Duplicate(*existing));
+        if let Some(existing) = self.restaurant_mutations.get(&mutation_id) {
+            if existing.operation != RestaurantMutationOperation::Place
+                || existing.item.item_id != intent.item_id
+                || existing.item.tile != intent.tile
+                || existing.item.rotation != intent.rotation
+            {
+                return Err(ProductServiceError::MutationIdConflict);
+            }
+            return Ok(PlacementMutationOutcome::Duplicate(existing.item));
         }
 
         let owned = self.player.inventory().quantity(intent.item_id);
@@ -509,8 +516,107 @@ impl ProductAggregate {
             .place(catalog, intent)
             .map_err(ProductServiceError::RestaurantAuthority)?;
 
-        self.placement_mutations.insert(mutation_id, placed);
+        self.record_restaurant_mutation(
+            mutation_id,
+            RestaurantMutationOperation::Place,
+            placed,
+        )?;
         Ok(PlacementMutationOutcome::Applied(placed))
+    }
+
+    pub fn transform_owned_item(
+        &mut self,
+        session: VerifiedProductSession,
+        catalog: &PlacementCatalog,
+        mutation_id: MutationId,
+        instance_id: u64,
+        tile: TilePoint,
+        rotation: u8,
+    ) -> Result<PlacementMutationOutcome, ProductServiceError> {
+        self.require_subject(session)?;
+
+        if let Some(existing) = self.restaurant_mutations.get(&mutation_id) {
+            if existing.operation != RestaurantMutationOperation::Transform
+                || existing.item.instance_id != instance_id
+                || existing.item.tile != tile
+                || existing.item.rotation != rotation
+            {
+                return Err(ProductServiceError::MutationIdConflict);
+            }
+            return Ok(PlacementMutationOutcome::Duplicate(existing.item));
+        }
+
+        let updated = self
+            .restaurant
+            .transform(catalog, instance_id, tile, rotation)
+            .map_err(ProductServiceError::RestaurantAuthority)?;
+
+        self.record_restaurant_mutation(
+            mutation_id,
+            RestaurantMutationOperation::Transform,
+            updated,
+        )?;
+        Ok(PlacementMutationOutcome::Applied(updated))
+    }
+
+    pub fn remove_owned_item(
+        &mut self,
+        session: VerifiedProductSession,
+        mutation_id: MutationId,
+        instance_id: u64,
+    ) -> Result<PlacementMutationOutcome, ProductServiceError> {
+        self.require_subject(session)?;
+
+        if let Some(existing) = self.restaurant_mutations.get(&mutation_id) {
+            if existing.operation != RestaurantMutationOperation::Remove
+                || existing.item.instance_id != instance_id
+            {
+                return Err(ProductServiceError::MutationIdConflict);
+            }
+            return Ok(PlacementMutationOutcome::Duplicate(existing.item));
+        }
+
+        let removed = self
+            .restaurant
+            .remove(instance_id)
+            .map_err(ProductServiceError::RestaurantAuthority)?;
+
+        self.record_restaurant_mutation(
+            mutation_id,
+            RestaurantMutationOperation::Remove,
+            removed,
+        )?;
+        Ok(PlacementMutationOutcome::Applied(removed))
+    }
+
+    fn record_restaurant_mutation(
+        &mut self,
+        mutation_id: MutationId,
+        operation: RestaurantMutationOperation,
+        item: PlacedItem,
+    ) -> Result<(), ProductServiceError> {
+        let sequence = self.next_restaurant_mutation_sequence;
+        let next_sequence = sequence
+            .checked_add(1)
+            .ok_or(ProductServiceError::RestaurantMutationSequenceExhausted)?;
+
+        if self
+            .restaurant_mutations
+            .insert(
+                mutation_id,
+                RestaurantMutationRecord {
+                    sequence,
+                    operation,
+                    item,
+                },
+            )
+            .is_some()
+        {
+            return Err(ProductServiceError::Store(ProductStateStoreError::Corrupt));
+        }
+
+        self.next_restaurant_mutation_sequence = next_sequence;
+        Ok(())
     }
 
     pub fn restaurant_product_snapshot(
@@ -769,6 +875,74 @@ where
         Err(ProductServiceError::StoreConflict)
     }
 
+    pub fn transform_item(
+        &self,
+        session_token: &str,
+        mutation_id: MutationId,
+        instance_id: u64,
+        tile: TilePoint,
+        rotation: u8,
+    ) -> Result<PlacementMutationOutcome, ProductServiceError> {
+        let session = self.verify(session_token)?;
+
+        for _ in 0..MAX_STORE_RETRIES {
+            let (expected_revision, mut state) = self.load_or_initialize(session.subject)?;
+            let outcome = state.transform_owned_item(
+                session,
+                &self.catalog,
+                mutation_id.clone(),
+                instance_id,
+                tile,
+                rotation,
+            )?;
+
+            if matches!(outcome, PlacementMutationOutcome::Duplicate(_)) {
+                return Ok(outcome);
+            }
+
+            match self
+                .store
+                .compare_and_swap(session.subject, expected_revision, state)
+            {
+                Ok(_) => return Ok(outcome),
+                Err(ProductStateStoreError::Conflict) => continue,
+                Err(error) => return Err(ProductServiceError::Store(error)),
+            }
+        }
+
+        Err(ProductServiceError::StoreConflict)
+    }
+
+    pub fn remove_item(
+        &self,
+        session_token: &str,
+        mutation_id: MutationId,
+        instance_id: u64,
+    ) -> Result<PlacementMutationOutcome, ProductServiceError> {
+        let session = self.verify(session_token)?;
+
+        for _ in 0..MAX_STORE_RETRIES {
+            let (expected_revision, mut state) = self.load_or_initialize(session.subject)?;
+            let outcome =
+                state.remove_owned_item(session, mutation_id.clone(), instance_id)?;
+
+            if matches!(outcome, PlacementMutationOutcome::Duplicate(_)) {
+                return Ok(outcome);
+            }
+
+            match self
+                .store
+                .compare_and_swap(session.subject, expected_revision, state)
+            {
+                Ok(_) => return Ok(outcome),
+                Err(ProductStateStoreError::Conflict) => continue,
+                Err(error) => return Err(ProductServiceError::Store(error)),
+            }
+        }
+
+        Err(ProductServiceError::StoreConflict)
+    }
+
     pub fn load_restaurant(
         &self,
         session_token: &str,
@@ -830,6 +1004,8 @@ pub enum ProductServiceError {
         owned: u32,
         placed: u32,
     },
+    MutationIdConflict,
+    RestaurantMutationSequenceExhausted,
 }
 
 #[cfg(test)]
