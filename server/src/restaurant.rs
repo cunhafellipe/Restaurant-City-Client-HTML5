@@ -16,6 +16,10 @@ pub struct PlacementCatalog {
     definitions: BTreeMap<u32, ItemPlacementDefinition>,
 }
 
+pub const PLACEMENT_CATALOG_MAGIC: &str = "ANEWON_RC_PLACEMENT_CATALOG_V1";
+const PLACEMENT_CATALOG_COLUMNS: &str =
+    "item_id\tsize_x\tsize_y\twall_item\twall_decoration_item\twallpaper_item\toutdoor\tfloor_tile_item";
+
 impl PlacementCatalog {
     pub fn new(
         definitions: impl IntoIterator<Item = ItemPlacementDefinition>,
@@ -42,6 +46,80 @@ impl PlacementCatalog {
 
     pub fn get(&self, item_id: u32) -> Option<&ItemPlacementDefinition> {
         self.definitions.get(&item_id)
+    }
+
+    pub fn from_trusted_tsv(input: &str) -> Result<Self, PlacementCatalogLoadError> {
+        let mut lines = input.lines().enumerate();
+        let Some((_, magic)) = lines.next() else {
+            return Err(PlacementCatalogLoadError::MissingMagic);
+        };
+        if magic.trim() != PLACEMENT_CATALOG_MAGIC {
+            return Err(PlacementCatalogLoadError::MissingMagic);
+        }
+
+        let mut saw_columns = false;
+        let mut definitions = Vec::new();
+
+        for (index, raw) in lines {
+            let line_number = index + 1;
+            let line = raw.trim();
+            if line.is_empty() || line.starts_with('#') {
+                continue;
+            }
+
+            if !saw_columns {
+                if line != PLACEMENT_CATALOG_COLUMNS {
+                    return Err(PlacementCatalogLoadError::InvalidColumns {
+                        line: line_number,
+                    });
+                }
+                saw_columns = true;
+                continue;
+            }
+
+            let fields: Vec<_> = line.split('\t').collect();
+            if fields.len() != 8 {
+                return Err(PlacementCatalogLoadError::InvalidRow {
+                    line: line_number,
+                });
+            }
+
+            let parse_u32 = |value: &str| {
+                value
+                    .parse::<u32>()
+                    .map_err(|_| PlacementCatalogLoadError::InvalidRow {
+                        line: line_number,
+                    })
+            };
+            let parse_bool = |value: &str| match value {
+                "0" => Ok(false),
+                "1" => Ok(true),
+                _ => Err(PlacementCatalogLoadError::InvalidRow {
+                    line: line_number,
+                }),
+            };
+
+            definitions.push(ItemPlacementDefinition {
+                item_id: parse_u32(fields[0])?,
+                footprint: Footprint {
+                    size_x: parse_u32(fields[1])?,
+                    size_y: parse_u32(fields[2])?,
+                },
+                flags: PlacementFlags {
+                    wall_item: parse_bool(fields[3])?,
+                    wall_decoration_item: parse_bool(fields[4])?,
+                    wallpaper_item: parse_bool(fields[5])?,
+                    outdoor: parse_bool(fields[6])?,
+                    floor_tile_item: parse_bool(fields[7])?,
+                },
+            });
+        }
+
+        if !saw_columns {
+            return Err(PlacementCatalogLoadError::InvalidColumns { line: 1 });
+        }
+
+        Self::new(definitions).map_err(PlacementCatalogLoadError::Definition)
     }
 }
 
@@ -261,6 +339,14 @@ fn rectangles_overlap(a_tile: TilePoint, a: Footprint, b_tile: TilePoint, b: Foo
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum PlacementCatalogLoadError {
+    MissingMagic,
+    InvalidColumns { line: usize },
+    InvalidRow { line: usize },
+    Definition(RestaurantAuthorityError),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum RestaurantAuthorityError {
     UnknownItem {
         item_id: u32,
@@ -330,6 +416,36 @@ mod tests {
             },
         ])
         .unwrap()
+    }
+
+    #[test]
+    fn trusted_catalog_loader_accepts_generated_contract() {
+        let input = concat!(
+            "ANEWON_RC_PLACEMENT_CATALOG_V1\n",
+            "# baseline=0.9.143a\n",
+            "item_id\tsize_x\tsize_y\twall_item\twall_decoration_item\twallpaper_item\toutdoor\tfloor_tile_item\n",
+            "10\t2\t1\t0\t0\t0\t0\t0\n",
+            "20\t1\t1\t0\t0\t0\t0\t0\n",
+        );
+        let catalog = PlacementCatalog::from_trusted_tsv(input).unwrap();
+        assert_eq!(catalog.get(10).unwrap().footprint.size_x, 2);
+        assert_eq!(catalog.get(20).unwrap().footprint.size_y, 1);
+    }
+
+    #[test]
+    fn trusted_catalog_loader_rejects_duplicate_ids() {
+        let input = concat!(
+            "ANEWON_RC_PLACEMENT_CATALOG_V1\n",
+            "item_id\tsize_x\tsize_y\twall_item\twall_decoration_item\twallpaper_item\toutdoor\tfloor_tile_item\n",
+            "10\t2\t1\t0\t0\t0\t0\t0\n",
+            "10\t1\t1\t0\t0\t0\t0\t0\n",
+        );
+        assert_eq!(
+            PlacementCatalog::from_trusted_tsv(input).unwrap_err(),
+            PlacementCatalogLoadError::Definition(
+                RestaurantAuthorityError::DuplicateDefinition { item_id: 10 }
+            )
+        );
     }
 
     #[test]
