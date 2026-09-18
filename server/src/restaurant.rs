@@ -208,11 +208,12 @@ impl RestaurantState {
             .remove(&instance_id)
             .ok_or(RestaurantAuthorityError::UnknownInstance { instance_id })?;
 
-        let definition = *catalog
-            .get(original.item_id)
-            .ok_or(RestaurantAuthorityError::UnknownItem {
-                item_id: original.item_id,
-            })?;
+        let definition =
+            *catalog
+                .get(original.item_id)
+                .ok_or(RestaurantAuthorityError::UnknownItem {
+                    item_id: original.item_id,
+                })?;
         let intent = PlacementIntent {
             item_id: original.item_id,
             tile,
@@ -231,10 +232,7 @@ impl RestaurantState {
         }
     }
 
-    pub fn remove(
-        &mut self,
-        instance_id: u64,
-    ) -> Result<PlacedItem, RestaurantAuthorityError> {
+    pub fn remove(&mut self, instance_id: u64) -> Result<PlacedItem, RestaurantAuthorityError> {
         self.items
             .remove(&instance_id)
             .ok_or(RestaurantAuthorityError::UnknownInstance { instance_id })
@@ -648,12 +646,7 @@ mod tests {
 
         assert_eq!(
             state
-                .transform(
-                    &catalog,
-                    second.instance_id,
-                    TilePoint { x: 2, y: 1 },
-                    0,
-                )
+                .transform(&catalog, second.instance_id, TilePoint { x: 2, y: 1 }, 0)
                 .unwrap_err(),
             RestaurantAuthorityError::Collision {
                 item_id: 20,
