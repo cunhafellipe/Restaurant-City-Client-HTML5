@@ -1,9 +1,11 @@
 import Phaser from 'phaser';
 import {
+  footprintsOverlap,
   projectTile,
   rotateFootprint,
   screenToTileIndex,
   validateStructuralPlacement,
+  type Footprint,
   type PlacementShape,
   type RoomDimensions,
   type TilePoint,
@@ -17,9 +19,18 @@ import {
   loadRuntimeManifest,
 } from '../../content/runtime';
 import {
+  createPlacementMutationId,
+  RestaurantAuthorityError,
+  type AuthoritativeInventoryAvailability,
+  type AuthoritativePlacedItem,
+  type RestaurantAuthority,
+  type RestaurantLayout,
+} from '../../net/restaurantAuthority';
+import {
   gameUiBridge,
   type GameUiState,
 } from '../../shell/gameBridge';
+import { requireRestaurantAuthority } from '../services';
 
 /**
  * GameWorld.LEVEL_THRESHOLDS[0] in the recovered client is 8x8.
@@ -35,14 +46,35 @@ const INITIAL_ROOM: RoomDimensions = {
 
 const ORIGIN = { x: 380, y: 105 };
 
+type EditorPlacementValidation =
+  | ReturnType<typeof validateStructuralPlacement>
+  | {
+      readonly ok: false;
+      readonly reason: 'occupied' | 'unavailable' | 'authority-desynced';
+    };
+
 export class RestaurantEditorScene extends Phaser.Scene {
   private floorGraphics!: Phaser.GameObjects.Graphics;
+  private committedGraphics!: Phaser.GameObjects.Graphics;
   private previewGraphics!: Phaser.GameObjects.Graphics;
+  private authority!: RestaurantAuthority;
   private unsubscribeCommands: (() => void) | null = null;
+
   private candidates: readonly RestaurantItemDefinition[] = [];
+  private catalogById = new Map<number, RestaurantItemDefinition>();
+  private inventoryByItemId = new Map<
+    number,
+    AuthoritativeInventoryAvailability
+  >();
+  private authoritativeItems: readonly AuthoritativePlacedItem[] = [];
+
+  private room: RoomDimensions = INITIAL_ROOM;
   private selectedIndex = 0;
   private rotation = 0;
   private hoverTile: TilePoint | null = null;
+  private authorityLoaded = false;
+  private authoritySynchronized = false;
+  private placementInFlight = false;
 
   constructor() {
     super('RestaurantEditor');
@@ -50,8 +82,10 @@ export class RestaurantEditorScene extends Phaser.Scene {
 
   create(): void {
     this.cameras.main.setBackgroundColor(0x1c2b33);
+    this.authority = requireRestaurantAuthority(this);
 
     this.floorGraphics = this.add.graphics();
+    this.committedGraphics = this.add.graphics();
     this.previewGraphics = this.add.graphics();
 
     gameUiBridge.publish({
@@ -61,43 +95,41 @@ export class RestaurantEditorScene extends Phaser.Scene {
 
     this.drawFloor();
     this.bindInput();
-    void this.loadHistoricalCatalog();
+    void this.initializeEditor();
   }
 
   private drawFloor(): void {
     this.floorGraphics.clear();
     this.floorGraphics.lineStyle(1, 0x6f8b96, 0.75);
 
-    for (let x = 0; x < INITIAL_ROOM.insideX; x += 1) {
-      for (let y = 0; y < INITIAL_ROOM.insideY; y += 1) {
-        const corners = [
-          projectTile({ x, y }),
-          projectTile({ x: x + 1, y }),
-          projectTile({ x: x + 1, y: y + 1 }),
-          projectTile({ x, y: y + 1 }),
-        ];
-        this.floorGraphics.beginPath();
-        this.floorGraphics.moveTo(ORIGIN.x + corners[0]!.x, ORIGIN.y + corners[0]!.y);
-        for (const corner of corners.slice(1)) {
-          this.floorGraphics.lineTo(ORIGIN.x + corner.x, ORIGIN.y + corner.y);
-        }
-        this.floorGraphics.closePath();
-        this.floorGraphics.strokePath();
+    for (let x = 0; x < this.room.insideX; x += 1) {
+      for (let y = 0; y < this.room.insideY; y += 1) {
+        this.drawTileFootprint(
+          this.floorGraphics,
+          { x, y },
+          { sizeX: 1, sizeY: 1 },
+          false,
+        );
       }
     }
   }
 
   private bindInput(): void {
-    this.input.on(Phaser.Input.Events.POINTER_MOVE, (pointer: Phaser.Input.Pointer) => {
-      this.hoverTile = screenToTileIndex({
-        x: pointer.x - ORIGIN.x,
-        y: pointer.y - ORIGIN.y,
-      });
-      this.drawPreview();
-    });
+    this.input.on(
+      Phaser.Input.Events.POINTER_MOVE,
+      (pointer: Phaser.Input.Pointer) => {
+        this.hoverTile = screenToTileIndex({
+          x: pointer.x - ORIGIN.x,
+          y: pointer.y - ORIGIN.y,
+        });
+        this.drawPreview();
+      },
+    );
 
     const rotate = () => {
+      if (this.placementInFlight) return;
       this.rotation = (this.rotation + 1) % 4;
+      this.refreshSelectedItem();
       this.drawPreview();
     };
 
@@ -117,35 +149,18 @@ export class RestaurantEditorScene extends Phaser.Scene {
     });
 
     this.input.on(Phaser.Input.Events.POINTER_DOWN, () => {
-      if (!this.hoverTile || this.candidates.length === 0) return;
-      const validation = this.currentValidation();
-      if (!validation?.ok) return;
-      this.publishUi(
-        'Placement preview is valid. Persistence remains blocked until the authoritative placement command is wired.',
-        validation,
-      );
+      void this.commitCurrentPlacement();
     });
   }
 
-  private async loadHistoricalCatalog(): Promise<void> {
+  private async initializeEditor(): Promise<void> {
     try {
       const manifest = await loadRuntimeManifest();
       const database = await loadGeneratedItemDatabase(manifest, 'restaurant');
       const catalog = buildRestaurantItemCatalog(database);
 
-      this.candidates = catalog.filter((item) => {
-        const footprint = item.explicitFootprint;
-        return (
-          footprint !== null &&
-          footprint.sizeX > 0 &&
-          footprint.sizeY > 0 &&
-          !item.placement.wallItem &&
-          !item.placement.wallDecorationItem &&
-          !item.placement.wallpaperItem &&
-          !item.placement.outdoor &&
-          !item.placement.floorTileItem
-        );
-      });
+      this.catalogById = new Map(catalog.map((item) => [item.id, item]));
+      this.candidates = catalog.filter((item) => this.isOrdinaryPlaceable(item));
 
       if (this.candidates.length === 0) {
         throw new Error(
@@ -153,32 +168,95 @@ export class RestaurantEditorScene extends Phaser.Scene {
         );
       }
 
-      this.selectedIndex = 0;
+      gameUiBridge.publish({
+        phase: 'loading-authority',
+        baseline: manifest.baseline,
+        status: 'Loading authoritative ANEWON restaurant state…',
+        corpus: {
+          restaurantRecords: catalog.length,
+          explicitFootprints: this.candidates.length,
+        },
+      });
+
+      const layout = await this.authority.loadRestaurant();
+      this.applyAuthoritativeLayout(layout);
+
+      const firstAvailable = this.candidates.findIndex(
+        (item) => this.availableFor(item.id) > 0,
+      );
+      this.selectedIndex = firstAvailable >= 0 ? firstAvailable : 0;
       this.rotation = 0;
-      this.refreshSelectedItem();
+
       gameUiBridge.publish({
         phase: 'editing',
         baseline: manifest.baseline,
         status:
-          `Loaded baseline ${manifest.baseline}. Move the pointer over the restaurant floor.`,
+          `Loaded baseline ${manifest.baseline} and ${layout.items.length} persisted restaurant item(s).`,
         selectedItem: this.selectedItemUi(),
         corpus: {
           restaurantRecords: catalog.length,
           explicitFootprints: this.candidates.length,
         },
       });
-      this.drawPreview();
+      this.drawPreview(false);
     } catch (error) {
-      gameUiBridge.publish({
-        phase: 'error',
-        status:
-          `Generated content unavailable: ${error instanceof Error ? error.message : String(error)}. Run npm run hydrate:local after R16.`,
-      });
+      this.publishInitializationError(error);
     }
   }
 
+  private applyAuthoritativeLayout(layout: RestaurantLayout): void {
+    if (layout.room.insideX === 0 || layout.room.insideY === 0) {
+      throw new Error('Authoritative restaurant room has invalid zero dimensions');
+    }
+
+    for (const placed of layout.items) {
+      const definition = this.catalogById.get(placed.itemId);
+      if (!definition || !this.isOrdinaryPlaceable(definition)) {
+        throw new Error(
+          `Authoritative layout references unsupported item #${placed.itemId}`,
+        );
+      }
+    }
+
+    this.room = {
+      insideX: layout.room.insideX,
+      insideY: layout.room.insideY,
+      outsideX: layout.room.outsideX,
+      outsideY: layout.room.outsideY,
+    };
+    this.authoritativeItems = [...layout.items];
+    this.inventoryByItemId = new Map(
+      layout.inventory.map((entry) => [entry.itemId, entry]),
+    );
+    this.authorityLoaded = true;
+    this.authoritySynchronized = true;
+
+    this.drawFloor();
+    this.drawCommittedPlacements();
+    this.refreshSelectedItem();
+  }
+
+  private isOrdinaryPlaceable(item: RestaurantItemDefinition): boolean {
+    const footprint = item.explicitFootprint;
+    return (
+      footprint !== null &&
+      footprint.sizeX > 0 &&
+      footprint.sizeY > 0 &&
+      !item.placement.wallItem &&
+      !item.placement.wallDecorationItem &&
+      !item.placement.wallpaperItem &&
+      !item.placement.outdoor &&
+      !item.placement.floorTileItem
+    );
+  }
+
+  private availableFor(itemId: number): number {
+    if (!this.authorityLoaded) return 0;
+    return this.inventoryByItemId.get(itemId)?.available ?? 0;
+  }
+
   private selectRelative(delta: number): void {
-    if (this.candidates.length === 0) return;
+    if (this.candidates.length === 0 || this.placementInFlight) return;
     this.selectedIndex =
       (this.selectedIndex + delta + this.candidates.length) %
       this.candidates.length;
@@ -198,23 +276,41 @@ export class RestaurantEditorScene extends Phaser.Scene {
   private selectedItemUi(): GameUiState['selectedItem'] {
     const item = this.candidates[this.selectedIndex];
     if (!item?.explicitFootprint) return undefined;
+
+    const inventory = this.authorityLoaded
+      ? this.inventoryByItemId.get(item.id) ?? {
+          itemId: item.id,
+          owned: 0,
+          placed: 0,
+          available: 0,
+        }
+      : undefined;
+
     return {
       id: item.id,
       name: item.name,
       group: item.group,
       footprint: `${item.explicitFootprint.sizeX}×${item.explicitFootprint.sizeY}`,
       rotation: this.rotation,
+      inventory: inventory
+        ? {
+            owned: inventory.owned,
+            placed: inventory.placed,
+            available: inventory.available,
+          }
+        : undefined,
     };
   }
 
   private publishUi(
     status: string,
-    validation: ReturnType<typeof validateStructuralPlacement> | null = null,
+    validation: EditorPlacementValidation | null = null,
+    phase: GameUiState['phase'] = 'editing',
   ): void {
     const state = gameUiBridge.getState();
     gameUiBridge.publish({
       ...state,
-      phase: state.phase === 'error' ? 'error' : 'editing',
+      phase,
       status,
       selectedItem: this.selectedItemUi(),
       placement:
@@ -238,27 +334,234 @@ export class RestaurantEditorScene extends Phaser.Scene {
     return { ...footprint, ...item.placement };
   }
 
-  private currentValidation() {
+  private currentValidation(): EditorPlacementValidation | null {
     const shape = this.currentShape();
-    if (!shape || !this.hoverTile) return null;
-    return validateStructuralPlacement(shape, this.hoverTile, INITIAL_ROOM);
+    const tile = this.hoverTile;
+    const item = this.candidates[this.selectedIndex];
+    if (!shape || !tile || !item) return null;
+
+    if (this.authorityLoaded && !this.authoritySynchronized) {
+      return { ok: false, reason: 'authority-desynced' };
+    }
+
+    const structural = validateStructuralPlacement(shape, tile, this.room);
+    if (!structural.ok) return structural;
+
+    if (this.authorityLoaded && this.availableFor(item.id) <= 0) {
+      return { ok: false, reason: 'unavailable' };
+    }
+
+    if (this.overlapsCommittedItem(tile, shape, structural.roomIndex)) {
+      return { ok: false, reason: 'occupied' };
+    }
+
+    return structural;
   }
 
-  private drawPreview(): void {
+  private overlapsCommittedItem(
+    tile: TilePoint,
+    shape: PlacementShape,
+    roomIndex: number,
+  ): boolean {
+    return this.authoritativeItems.some((placed) => {
+      if (placed.roomIndex !== roomIndex) return false;
+
+      const definition = this.catalogById.get(placed.itemId);
+      if (!definition?.explicitFootprint) return true;
+
+      const footprint = rotateFootprint(
+        definition.explicitFootprint,
+        placed.rotation,
+      );
+      return footprintsOverlap(
+        tile,
+        { sizeX: shape.sizeX, sizeY: shape.sizeY },
+        { x: placed.tileX, y: placed.tileY },
+        footprint,
+      );
+    });
+  }
+
+  private async commitCurrentPlacement(): Promise<void> {
+    if (
+      this.placementInFlight ||
+      !this.hoverTile ||
+      this.candidates.length === 0 ||
+      !this.authorityLoaded
+    ) {
+      return;
+    }
+
+    if (!this.authoritySynchronized) {
+      await this.resynchronizeAuthority();
+      return;
+    }
+
+    const item = this.candidates[this.selectedIndex];
+    const validation = this.currentValidation();
+    if (!item || !validation?.ok) {
+      if (validation) {
+        this.publishUi('Placement cannot be committed.', validation);
+      }
+      return;
+    }
+
+    const tile = { ...this.hoverTile };
+    const rotation = this.rotation;
+    const mutationId = createPlacementMutationId();
+    this.placementInFlight = true;
+
+    this.publishUi(
+      `Saving item #${item.id} at ${tile.x},${tile.y}…`,
+      validation,
+      'saving',
+    );
+
+    try {
+      const commit = await this.authority.placeItem(
+        {
+          itemId: item.id,
+          tileX: tile.x,
+          tileY: tile.y,
+          rotation,
+        },
+        mutationId,
+      );
+
+      const layout = await this.authority.loadRestaurant();
+      this.applyAuthoritativeLayout(layout);
+
+      const persisted = layout.items.some(
+        (placed) =>
+          placed.instanceId === commit.item.instanceId &&
+          placed.itemId === commit.item.itemId &&
+          placed.tileX === commit.item.tileX &&
+          placed.tileY === commit.item.tileY &&
+          placed.rotation === commit.item.rotation &&
+          placed.roomIndex === commit.item.roomIndex,
+      );
+      if (!persisted) {
+        throw new Error(
+          'Authoritative reload did not contain the placement acknowledged by the server',
+        );
+      }
+
+      this.drawPreview(false);
+      this.publishUi(
+        commit.outcome === 'duplicate'
+          ? `Placement #${commit.item.instanceId} reconciled and reloaded.`
+          : `Placement #${commit.item.instanceId} saved and reloaded from authority.`,
+        this.currentValidation(),
+      );
+    } catch (error) {
+      const knownRejection =
+        error instanceof RestaurantAuthorityError &&
+        [400, 401, 403, 409, 422].includes(error.status);
+
+      this.authoritySynchronized = knownRejection;
+      this.drawPreview(false);
+      this.publishUi(
+        knownRejection
+          ? this.describeAuthorityError(error)
+          : `Placement result is uncertain. New placement is blocked until authoritative reload succeeds: ${this.describeError(error)}`,
+        this.currentValidation(),
+        error instanceof RestaurantAuthorityError && error.status === 401
+          ? 'error'
+          : 'editing',
+      );
+    } finally {
+      this.placementInFlight = false;
+    }
+  }
+
+  private async resynchronizeAuthority(): Promise<void> {
+    if (this.placementInFlight) return;
+    this.placementInFlight = true;
+    this.publishUi(
+      'Resynchronizing authoritative restaurant state…',
+      null,
+      'saving',
+    );
+
+    try {
+      const layout = await this.authority.loadRestaurant();
+      this.applyAuthoritativeLayout(layout);
+      this.drawPreview(false);
+      this.publishUi(
+        `Authoritative state resynchronized: ${layout.items.length} persisted item(s).`,
+        this.currentValidation(),
+      );
+    } catch (error) {
+      this.authoritySynchronized = false;
+      this.publishUi(
+        `Authoritative resynchronization failed: ${this.describeError(error)}`,
+        null,
+        error instanceof RestaurantAuthorityError && error.status === 401
+          ? 'error'
+          : 'editing',
+      );
+    } finally {
+      this.placementInFlight = false;
+    }
+  }
+
+  private drawCommittedPlacements(): void {
+    this.committedGraphics.clear();
+
+    for (const placed of this.authoritativeItems) {
+      const definition = this.catalogById.get(placed.itemId);
+      if (!definition?.explicitFootprint) continue;
+
+      this.committedGraphics.lineStyle(2, 0x5aa5d8, 0.95);
+      this.committedGraphics.fillStyle(0x5aa5d8, 0.14);
+      this.drawTileFootprint(
+        this.committedGraphics,
+        { x: placed.tileX, y: placed.tileY },
+        rotateFootprint(definition.explicitFootprint, placed.rotation),
+        true,
+      );
+    }
+  }
+
+  private drawPreview(publishStatus = true): void {
     this.previewGraphics.clear();
     const shape = this.currentShape();
     const tile = this.hoverTile;
     if (!shape || !tile) return;
 
-    const validation = validateStructuralPlacement(shape, tile, INITIAL_ROOM);
+    const validation = this.currentValidation();
+    if (!validation) return;
+
     const line = validation.ok ? 0x74d680 : 0xff6b6b;
     const fill = validation.ok ? 0x74d680 : 0xff6b6b;
 
     this.previewGraphics.lineStyle(2, line, 1);
     this.previewGraphics.fillStyle(fill, 0.2);
+    this.drawTileFootprint(
+      this.previewGraphics,
+      tile,
+      { sizeX: shape.sizeX, sizeY: shape.sizeY },
+      true,
+    );
 
-    for (let dx = 0; dx < shape.sizeX; dx += 1) {
-      for (let dy = 0; dy < shape.sizeY; dy += 1) {
+    if (publishStatus) {
+      this.publishUi(
+        validation.ok
+          ? 'Placement preview matches current authoritative constraints.'
+          : `Placement preview rejected: ${validation.reason}.`,
+        validation,
+      );
+    }
+  }
+
+  private drawTileFootprint(
+    graphics: Phaser.GameObjects.Graphics,
+    tile: TilePoint,
+    footprint: Footprint,
+    fill: boolean,
+  ): void {
+    for (let dx = 0; dx < footprint.sizeX; dx += 1) {
+      for (let dy = 0; dy < footprint.sizeY; dy += 1) {
         const x = tile.x + dx;
         const y = tile.y + dy;
         const corners = [
@@ -267,25 +570,47 @@ export class RestaurantEditorScene extends Phaser.Scene {
           projectTile({ x: x + 1, y: y + 1 }),
           projectTile({ x, y: y + 1 }),
         ];
-        this.previewGraphics.beginPath();
-        this.previewGraphics.moveTo(
+
+        graphics.beginPath();
+        graphics.moveTo(
           ORIGIN.x + corners[0]!.x,
           ORIGIN.y + corners[0]!.y,
         );
         for (const corner of corners.slice(1)) {
-          this.previewGraphics.lineTo(ORIGIN.x + corner.x, ORIGIN.y + corner.y);
+          graphics.lineTo(ORIGIN.x + corner.x, ORIGIN.y + corner.y);
         }
-        this.previewGraphics.closePath();
-        this.previewGraphics.fillPath();
-        this.previewGraphics.strokePath();
+        graphics.closePath();
+        if (fill) graphics.fillPath();
+        graphics.strokePath();
       }
     }
+  }
 
-    this.publishUi(
-      validation.ok
-        ? 'Placement preview is structurally valid.'
-        : 'Placement preview is structurally invalid.',
-      validation,
-    );
+  private publishInitializationError(error: unknown): void {
+    const sessionFailure =
+      error instanceof RestaurantAuthorityError && error.status === 401;
+    gameUiBridge.publish({
+      phase: 'error',
+      status: sessionFailure
+        ? 'ANEWON product session is unavailable or expired. Relaunch Restaurant City from the authenticated ANEWON product origin.'
+        : `Restaurant City initialization failed: ${this.describeError(error)}`,
+    });
+  }
+
+  private describeAuthorityError(error: RestaurantAuthorityError): string {
+    if (error.status === 409) {
+      return 'Authority rejected the placement because inventory or occupied state changed. The latest state remains authoritative.';
+    }
+    if (error.status === 422) {
+      return 'Authority rejected the placement under current Restaurant City placement rules.';
+    }
+    if (error.status === 401) {
+      return 'ANEWON product session is unavailable or expired.';
+    }
+    return this.describeError(error);
+  }
+
+  private describeError(error: unknown): string {
+    return error instanceof Error ? error.message : String(error);
   }
 }
