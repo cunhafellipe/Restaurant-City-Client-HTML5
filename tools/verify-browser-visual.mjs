@@ -9,6 +9,7 @@ import { PNG } from 'pngjs';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(HERE, '..');
 const DIST = path.join(REPO, 'dist');
+const PUBLIC = path.join(REPO, 'public');
 const WORK = path.join(REPO, 'tools', '.work', 'browser-visual');
 const SCREENSHOT = path.join(WORK, 'restaurant-editor.png');
 const WORLD_SCREENSHOT = path.join(WORK, 'restaurant-world.png');
@@ -21,7 +22,7 @@ const GOLDEN = path.join(
   'restaurant-editor-world.json',
 );
 
-const fixture = {
+const fixtureSeed = {
   room: { inside_x: 8, inside_y: 8, outside_x: 0, outside_y: 0 },
   next_instance_id: 2,
   items: [
@@ -43,6 +44,60 @@ const fixture = {
     },
   ],
 };
+let fixtureState = structuredClone(fixtureSeed);
+
+function integerAttribute(value, field) {
+  if (typeof value === 'number' && Number.isInteger(value)) return value;
+  if (typeof value === 'string' && /^-?\d+$/.test(value)) {
+    return Number.parseInt(value, 10);
+  }
+  throw new Error(`Visual fixture item has invalid ${field}: ${String(value)}`);
+}
+
+function loadFixtureFootprint(itemId) {
+  const manifestPath = path.join(PUBLIC, 'assets', 'generated', 'manifest.json');
+  const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+  const restaurant = manifest.data?.find((entry) => entry.id === 'restaurant');
+  if (!restaurant?.itemDatabase) {
+    throw new Error('Visual probe cannot locate generated restaurant ItemDatabase');
+  }
+
+  const databasePath = path.join(
+    PUBLIC,
+    'assets',
+    'generated',
+    String(restaurant.itemDatabase).replace(/^\/+/, ''),
+  );
+  const database = JSON.parse(fs.readFileSync(databasePath, 'utf8'));
+  const item = database.groups
+    ?.flatMap((group) => group.items ?? [])
+    .find((candidate) => integerAttribute(candidate.attributes?.id, 'id') === itemId);
+  if (!item) {
+    throw new Error(`Visual fixture item #${itemId} is absent from restaurant ItemDatabase`);
+  }
+
+  const sizeX = integerAttribute(item.attributes?.sizeX, 'sizeX');
+  const sizeY = integerAttribute(item.attributes?.sizeY, 'sizeY');
+  if (sizeX <= 0 || sizeY <= 0) {
+    throw new Error(`Visual fixture item #${itemId} has invalid footprint ${sizeX}x${sizeY}`);
+  }
+  return { sizeX, sizeY };
+}
+
+function rotatedFootprint(footprint, rotation) {
+  return rotation % 2 === 0
+    ? footprint
+    : { sizeX: footprint.sizeY, sizeY: footprint.sizeX };
+}
+
+function tileCenterInCanvas(tileX, tileY, footprint) {
+  const x = tileX + footprint.sizeX / 2;
+  const y = tileY + footprint.sizeY / 2;
+  return {
+    x: 380 + (x - y) * 40,
+    y: 105 + (x + y) * 20,
+  };
+}
 
 function contentType(file) {
   const ext = path.extname(file).toLowerCase();
@@ -114,6 +169,54 @@ function findBrowser() {
 
 function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function readJsonBody(req, maxBytes = 4096) {
+  const chunks = [];
+  let bytes = 0;
+  for await (const chunk of req) {
+    bytes += chunk.length;
+    if (bytes > maxBytes) throw new Error('Visual probe API body is too large');
+    chunks.push(chunk);
+  }
+  return JSON.parse(Buffer.concat(chunks).toString('utf8'));
+}
+
+async function waitForRuntime(cdp, expression, predicate, timeoutMs, label) {
+  const deadline = Date.now() + timeoutMs;
+  let last = null;
+  while (Date.now() < deadline) {
+    const evaluated = await cdp.send('Runtime.evaluate', {
+      expression,
+      returnByValue: true,
+    });
+    last = evaluated.result?.value ?? null;
+    if (predicate(last)) return last;
+    await delay(50);
+  }
+  throw new Error(`Timed out waiting for ${label}. Last value: ${JSON.stringify(last)}`);
+}
+
+async function dispatchMouseClick(cdp, x, y) {
+  await cdp.send('Input.dispatchMouseEvent', {
+    type: 'mouseMoved',
+    x,
+    y,
+  });
+  await cdp.send('Input.dispatchMouseEvent', {
+    type: 'mousePressed',
+    x,
+    y,
+    button: 'left',
+    clickCount: 1,
+  });
+  await cdp.send('Input.dispatchMouseEvent', {
+    type: 'mouseReleased',
+    x,
+    y,
+    button: 'left',
+    clickCount: 1,
+  });
 }
 
 async function waitForFile(file, timeoutMs, processState) {
@@ -264,21 +367,89 @@ if (!fs.existsSync(path.join(DIST, 'index.html'))) {
 fs.rmSync(WORK, { recursive: true, force: true });
 fs.mkdirSync(WORK, { recursive: true });
 
-const server = http.createServer((req, res) => {
+const server = http.createServer(async (req, res) => {
   const requestUrl = new URL(req.url ?? '/', 'http://127.0.0.1');
 
-  if (requestUrl.pathname === '/api/v1/restaurant') {
+  if (
+    requestUrl.pathname === '/api/v1/restaurant' &&
+    req.method === 'GET'
+  ) {
     res.writeHead(200, {
       'Content-Type': 'application/json; charset=utf-8',
       'Cache-Control': 'no-store',
     });
-    res.end(JSON.stringify(fixture));
+    res.end(JSON.stringify(fixtureState));
+    return;
+  }
+
+  const placementMatch = requestUrl.pathname.match(
+    /^\/api\/v1\/restaurant\/placements\/(\d+)$/,
+  );
+  if (placementMatch && req.method === 'PATCH') {
+    try {
+      if (!req.headers['idempotency-key']) {
+        throw new Error('missing idempotency key');
+      }
+      const instanceId = Number.parseInt(placementMatch[1], 10);
+      const body = await readJsonBody(req);
+      const item = fixtureState.items.find(
+        (candidate) => candidate.instance_id === instanceId,
+      );
+      if (!item) {
+        res.writeHead(422, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ error: { code: 'UNPROCESSABLE' } }));
+        return;
+      }
+      item.tile_x = integerAttribute(body.tile_x, 'tile_x');
+      item.tile_y = integerAttribute(body.tile_y, 'tile_y');
+      item.rotation = integerAttribute(body.rotation, 'rotation');
+      res.writeHead(200, {
+        'Content-Type': 'application/json; charset=utf-8',
+        'Cache-Control': 'no-store',
+      });
+      res.end(JSON.stringify({ outcome: 'applied', item }));
+      return;
+    } catch {
+      res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify({ error: { code: 'INVALID_REQUEST' } }));
+      return;
+    }
+  }
+
+  if (placementMatch && req.method === 'DELETE') {
+    if (!req.headers['idempotency-key']) {
+      res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify({ error: { code: 'INVALID_REQUEST' } }));
+      return;
+    }
+    const instanceId = Number.parseInt(placementMatch[1], 10);
+    const index = fixtureState.items.findIndex(
+      (candidate) => candidate.instance_id === instanceId,
+    );
+    if (index < 0) {
+      res.writeHead(422, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify({ error: { code: 'UNPROCESSABLE' } }));
+      return;
+    }
+    const [removed] = fixtureState.items.splice(index, 1);
+    const inventory = fixtureState.inventory.find(
+      (entry) => entry.item_id === removed.item_id,
+    );
+    if (inventory) {
+      inventory.placed = Math.max(0, inventory.placed - 1);
+      inventory.available = inventory.owned - inventory.placed;
+    }
+    res.writeHead(200, {
+      'Content-Type': 'application/json; charset=utf-8',
+      'Cache-Control': 'no-store',
+    });
+    res.end(JSON.stringify({ outcome: 'applied', item: removed }));
     return;
   }
 
   if (requestUrl.pathname.startsWith('/api/')) {
     res.writeHead(405, { 'Content-Type': 'application/json; charset=utf-8' });
-    res.end(JSON.stringify({ error: { code: 'VISUAL_PROBE_READ_ONLY' } }));
+    res.end(JSON.stringify({ error: { code: 'VISUAL_PROBE_UNSUPPORTED' } }));
     return;
   }
 
@@ -513,6 +684,147 @@ try {
     throw new Error(`Restaurant City screenshot is unexpectedly small: ${stat.size}`);
   }
 
+  const fixtureItem = fixtureSeed.items[0];
+  const baseFootprint = loadFixtureFootprint(fixtureItem.item_id);
+  const initialFootprint = rotatedFootprint(
+    baseFootprint,
+    fixtureItem.rotation,
+  );
+  const initialCenter = tileCenterInCanvas(
+    fixtureItem.tile_x,
+    fixtureItem.tile_y,
+    initialFootprint,
+  );
+  await dispatchMouseClick(
+    cdp,
+    state.canvas.x + initialCenter.x,
+    state.canvas.y + initialCenter.y,
+  );
+
+  const selectedState = await waitForRuntime(
+    cdp,
+    `(() => {
+      const selection = document.querySelector('.rc-hud-card');
+      const buttons = [...document.querySelectorAll('.rc-control-button')];
+      return {
+        selection: selection?.textContent ?? '',
+        removeDisabled:
+          buttons.find((button) => button.textContent === 'Remove placed')?.disabled ?? true,
+        cancelDisabled:
+          buttons.find((button) => button.textContent === 'Cancel edit')?.disabled ?? true,
+      };
+    })()`,
+    (value) =>
+      value?.selection?.includes('Editing placed #1') &&
+      value.removeDisabled === false &&
+      value.cancelDisabled === false,
+    5000,
+    'placed Cannon selection',
+  );
+
+  const beforeRotateSelection = selectedState.selection;
+  await cdp.send('Runtime.evaluate', {
+    expression: `(() => {
+      const button = [...document.querySelectorAll('.rc-control-button')]
+        .find((candidate) => candidate.textContent === 'Rotate preview');
+      if (!button) throw new Error('Rotate preview button is missing');
+      button.click();
+      return true;
+    })()`,
+    returnByValue: true,
+  });
+
+  const rotatedState = await waitForRuntime(
+    cdp,
+    `document.querySelector('.rc-hud-card')?.textContent ?? ''`,
+    (value) =>
+      typeof value === 'string' &&
+      value.includes('Editing placed #1') &&
+      value !== beforeRotateSelection,
+    5000,
+    'placed Cannon rotation preview',
+  );
+
+  const rotatedMatch = rotatedState.match(/rot\s+(\d+)/);
+  if (!rotatedMatch) {
+    throw new Error(`Rotated selection has no rotation: ${rotatedState}`);
+  }
+  const previewRotation = Number.parseInt(rotatedMatch[1], 10);
+  const movedFootprint = rotatedFootprint(baseFootprint, previewRotation);
+  const targetTile = { x: 4, y: 3 };
+  const targetCenter = tileCenterInCanvas(
+    targetTile.x,
+    targetTile.y,
+    movedFootprint,
+  );
+  await dispatchMouseClick(
+    cdp,
+    state.canvas.x + targetCenter.x,
+    state.canvas.y + targetCenter.y,
+  );
+
+  const transformedStatus = await waitForRuntime(
+    cdp,
+    `document.querySelector('.rc-status')?.textContent ?? ''`,
+    (value) =>
+      typeof value === 'string' &&
+      value.includes('Edit #1 saved and reloaded from authority.'),
+    8000,
+    'authoritative transform reload',
+  );
+
+  const persistedAfterTransform = fixtureState.items[0];
+  if (
+    !persistedAfterTransform ||
+    persistedAfterTransform.tile_x !== targetTile.x ||
+    persistedAfterTransform.tile_y !== targetTile.y ||
+    persistedAfterTransform.rotation !== previewRotation
+  ) {
+    throw new Error(
+      `Browser transform did not update the authoritative fixture: ${JSON.stringify(fixtureState.items)}`,
+    );
+  }
+
+  await cdp.send('Runtime.evaluate', {
+    expression: `(() => {
+      const button = [...document.querySelectorAll('.rc-control-button')]
+        .find((candidate) => candidate.textContent === 'Remove placed');
+      if (!button || button.disabled) throw new Error('Remove placed button is unavailable');
+      button.click();
+      return true;
+    })()`,
+    returnByValue: true,
+  });
+
+  const removedStatus = await waitForRuntime(
+    cdp,
+    `(() => ({
+      status: document.querySelector('.rc-status')?.textContent ?? '',
+      selection: document.querySelector('.rc-hud-card')?.textContent ?? '',
+    }))()`,
+    (value) =>
+      value?.status?.includes('Placed #1 removed and inventory reconciled.') &&
+      !value?.selection?.includes('Editing placed #1'),
+    8000,
+    'authoritative removal reload',
+  );
+
+  if (fixtureState.items.length !== 0) {
+    throw new Error(
+      `Browser removal left authoritative fixture items: ${JSON.stringify(fixtureState.items)}`,
+    );
+  }
+  const inventoryAfterRemove = fixtureState.inventory[0];
+  if (
+    inventoryAfterRemove?.owned !== 2 ||
+    inventoryAfterRemove?.placed !== 0 ||
+    inventoryAfterRemove?.available !== 2
+  ) {
+    throw new Error(
+      `Browser removal did not reconcile inventory: ${JSON.stringify(inventoryAfterRemove)}`,
+    );
+  }
+
   const metadata = {
     schemaVersion: 2,
     browser,
@@ -521,6 +833,16 @@ try {
     viewport: { width: 1052, height: 656, deviceScaleFactor: 1 },
     state,
     diagnostics: diagnostics.slice(-20),
+    interaction: {
+      selected: selectedState.selection,
+      rotated: rotatedState,
+      transformedStatus,
+      removedStatus,
+      targetTile,
+      previewRotation,
+      finalInventory: inventoryAfterRemove,
+      passed: true,
+    },
     screenshot: path.relative(REPO, SCREENSHOT).replaceAll('\\', '/'),
     bytes: stat.size,
     sha256: sha256(SCREENSHOT),
@@ -545,7 +867,7 @@ try {
   fs.writeFileSync(META, `${JSON.stringify(metadata, null, 2)}\n`);
 
   console.log(
-    `BROWSER VISUAL GOLDEN PASS | browser=${browser} | bytes=${stat.size} | sha256=${metadata.sha256} | worldPixel=${worldPixelSha256} | exactPixelMatch=${exactPixelMatch} | worldBlock=${worldQuantizedBlockSha256}`,
+    `BROWSER VISUAL GOLDEN + EDIT INTERACTION PASS | browser=${browser} | bytes=${stat.size} | sha256=${metadata.sha256} | worldPixel=${worldPixelSha256} | exactPixelMatch=${exactPixelMatch} | worldBlock=${worldQuantizedBlockSha256} | edit=select-transform-remove`,
   );
 } finally {
   try {
