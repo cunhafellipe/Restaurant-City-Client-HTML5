@@ -193,6 +193,7 @@ mod tests {
                 size_x: 2,
                 size_y: 1,
             },
+            rotation_count: 4,
             flags: PlacementFlags::default(),
         }])
         .unwrap()
