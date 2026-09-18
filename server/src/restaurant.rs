@@ -373,33 +373,26 @@ impl RestaurantState {
                 let mut stack = Vec::new();
 
                 for existing_id in &self.stack_order {
-                    let existing = self
-                        .items
-                        .get(existing_id)
-                        .ok_or(RestaurantAuthorityError::CorruptStackOrder {
+                    let existing = self.items.get(existing_id).ok_or(
+                        RestaurantAuthorityError::CorruptStackOrder {
                             instance_id: *existing_id,
-                        })?;
+                        },
+                    )?;
                     if existing.room_index != room_index {
                         continue;
                     }
 
-                    let existing_definition =
-                        *catalog
-                            .get(existing.item_id)
-                            .ok_or(RestaurantAuthorityError::UnknownItem {
-                                item_id: existing.item_id,
-                            })?;
+                    let existing_definition = *catalog.get(existing.item_id).ok_or(
+                        RestaurantAuthorityError::UnknownItem {
+                            item_id: existing.item_id,
+                        },
+                    )?;
                     let existing_footprint = rotate_footprint(
                         existing_definition.footprint,
                         i32::from(existing.rotation),
                     );
 
-                    if footprint_contains_tile(
-                        existing.tile,
-                        existing_footprint,
-                        tile_x,
-                        tile_y,
-                    ) {
+                    if footprint_contains_tile(existing.tile, existing_footprint, tile_x, tile_y) {
                         stack.push(HistoricalTileStackEntry {
                             instance_id: existing.instance_id,
                             surface: existing_definition.flags.surface,
