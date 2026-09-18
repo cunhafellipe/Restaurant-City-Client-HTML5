@@ -1,17 +1,26 @@
 import Phaser from 'phaser';
-import { BootScene } from './game/scenes/BootScene';
+import './app.css';
 import { RestaurantEditorScene } from './game/scenes/RestaurantEditorScene';
+import { BootScene } from './game/scenes/BootScene';
+import { createAppShell } from './shell/AppShell';
+
+const root = document.getElementById('app');
+if (!root) {
+  throw new Error('ANEWON application root #app is missing');
+}
+
+const shell = createAppShell(root);
 
 /**
- * Application entrypoint.
+ * Phaser is the world renderer/simulation presentation layer.
  *
- * The original Flash client ran at 760x600 @ 25fps (`game.swf` header). The
- * rebuild keeps that logical resolution and scales to fit the window; all game
- * layout coordinates are authored against 760x600.
+ * Platform chrome and non-world-space game UI live in the HTML/CSS shell.
+ * The recovered Flash logical resolution remains 760x600 for compatibility
+ * with historical layout/math while Phaser scales that world to the host.
  */
 const game = new Phaser.Game({
   type: Phaser.AUTO,
-  parent: 'app',
+  parent: shell.gameHost,
   width: 760,
   height: 600,
   backgroundColor: '#1c2b33',
