@@ -9,6 +9,7 @@
  * Outputs (all under tools/.work/<swf>/):
  *   symbolclass/symbols.csv   FFDec linkage tables (ExportAssets + SymbolClass)
  *   sprites/                  per-sprite frame PNGs from FFDec sprite export
+ *   images/                   linked BitmapData/image PNGs from FFDec image export
  *   extract.json              normalized symbol/frame manifest (input to atlas)
  */
 import fs from 'node:fs';
@@ -55,8 +56,12 @@ export function runExtract(swfName) {
   const swfPath = path.join(WORKSPACE_ROOT, cfg.source);
   const work = path.join(WORK, swfName);
   const spriteDir = path.join(work, 'sprites');
+  const imageDir = path.join(work, 'images');
   const csvDir = path.join(work, 'symbolclass');
   fs.mkdirSync(work, { recursive: true });
+  for (const dir of [spriteDir, imageDir, csvDir]) {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 
   // 1. Tag tree -> sprite frame labels.
   const dump = ffdec(['-dumpSWF', swfPath]);
@@ -76,6 +81,14 @@ export function runExtract(swfName) {
     throw new Error(`sprite export failed: ${spriteOut.stderr || spriteOut.stdout}`);
   }
 
+  // Linked BitmapData classes are not DefineSprite entries. Export raw images
+  // as a second source so 100% linkage coverage means sprites + bitmaps, not
+  // "all sprites we happened to understand".
+  const imageOut = ffdec(['-export', 'image', imageDir, swfPath]);
+  if (!/OK/.test(imageOut.stdout + imageOut.stderr)) {
+    throw new Error(`image export failed: ${imageOut.stderr || imageOut.stdout}`);
+  }
+
   // 4. Normalize into extract.json.
   const spriteDirs = new Map(
     fs
@@ -87,6 +100,24 @@ export function runExtract(swfName) {
       })
       .filter(Boolean),
   );
+
+  const imageFiles = new Map();
+  const visitImages = (dir) => {
+    if (!fs.existsSync(dir)) return;
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        visitImages(full);
+        continue;
+      }
+      if (!entry.isFile() || !/\.png$/i.test(entry.name)) continue;
+      const m = entry.name.match(/^(\d+)(?:_|\.|$)/);
+      if (!m) continue;
+      const chid = Number(m[1]);
+      if (!imageFiles.has(chid)) imageFiles.set(chid, full);
+    }
+  };
+  visitImages(imageDir);
 
   const symbols = [];
   const excluded = [];
@@ -100,31 +131,57 @@ export function runExtract(swfName) {
       continue;
     }
     const dirName = spriteDirs.get(chid);
-    if (!dirName) {
-      throw new Error(`no sprite export folder for chid ${chid} ("${name}")`);
+    if (dirName) {
+      const dir = path.join(spriteDir, dirName);
+      const files = fs
+        .readdirSync(dir)
+        .filter((file) => /^\d+\.png$/.test(file))
+        .sort((a, b) => Number.parseInt(a, 10) - Number.parseInt(b, 10));
+      const labels = spriteFrames.get(chid)?.frames ?? [];
+      const frames = files.map((file, i) => {
+        const label = labels[i]?.label ?? null;
+        const absolute = path.join(dir, file);
+        const { w, h } = readPngSize(absolute);
+        return {
+          file: path.relative(work, absolute),
+          key: frameKey(swfName, name, label, i + 1),
+          label,
+          index: i + 1,
+          w,
+          h,
+        };
+      });
+      if (frames.length === 0) {
+        throw new Error(`sprite "${name}" (chid ${chid}) exported no frames`);
+      }
+      symbols.push({ chid, name, kind: 'sprite', frames });
+      continue;
     }
-    const dir = path.join(spriteDir, dirName);
-    const files = fs
-      .readdirSync(dir)
-      .filter((f) => /^\d+\.png$/.test(f))
-      .sort((a, b) => Number.parseInt(a, 10) - Number.parseInt(b, 10));
-    const labels = spriteFrames.get(chid)?.frames ?? [];
-    const frames = files.map((file, i) => {
-      const label = labels[i]?.label ?? null;
-      const { w, h } = readPngSize(path.join(dir, file));
-      return {
-        file: path.relative(work, path.join(dir, file)),
-        key: frameKey(swfName, name, label, i + 1),
-        label,
-        index: i + 1,
-        w,
-        h,
-      };
-    });
-    if (frames.length === 0) {
-      throw new Error(`sprite "${name}" (chid ${chid}) exported no frames`);
+
+    const imageFile = imageFiles.get(chid);
+    if (imageFile) {
+      const { w, h } = readPngSize(imageFile);
+      symbols.push({
+        chid,
+        name,
+        kind: 'bitmap',
+        frames: [
+          {
+            file: path.relative(work, imageFile),
+            key: frameKey(swfName, name, null, 1),
+            label: null,
+            index: 1,
+            w,
+            h,
+          },
+        ],
+      });
+      continue;
     }
-    symbols.push({ chid, name, frames });
+
+    throw new Error(
+      `linked symbol chid ${chid} ("${name}") is neither an exported sprite nor image`,
+    );
   }
 
   const extract = {
@@ -141,8 +198,9 @@ export function runExtract(swfName) {
   };
   const extractFile = path.join(work, 'extract.json');
   fs.writeFileSync(extractFile, `${JSON.stringify(extract, null, 2)}\n`);
+  const bitmapCount = symbols.filter((symbol) => symbol.kind === 'bitmap').length;
   console.log(
-    `extract: ${swfName} -> ${extract.counts.symbols} symbols, ${extract.counts.frames} frames (${extractFile})`,
+    `extract: ${swfName} -> ${extract.counts.symbols} symbols, ${extract.counts.frames} frames, ${bitmapCount} bitmap linkage(s) (${extractFile})`,
   );
   return { extract, work };
 }
