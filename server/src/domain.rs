@@ -1,4 +1,5 @@
 use crate::platform::AnewSubject;
+use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
@@ -44,6 +45,10 @@ impl MutationId {
         }
         Ok(Self(value))
     }
+
+    pub(crate) fn as_str(&self) -> &str {
+        &self.0
+    }
 }
 
 impl fmt::Debug for MutationId {
@@ -72,6 +77,17 @@ pub enum Command {
 pub enum MutationOutcome {
     Applied { revision: u64 },
     Duplicate { revision: u64 },
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub(crate) struct PlayerPersistenceSnapshot {
+    pub subject: [u8; 16],
+    pub revision: u64,
+    pub coins: u64,
+    pub cash: u64,
+    pub gourmet_points: u64,
+    pub inventory: Vec<(u32, u32)>,
+    pub processed_mutations: Vec<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -108,6 +124,68 @@ impl PlayerState {
 
     pub fn inventory(&self) -> &Inventory {
         &self.inventory
+    }
+
+    pub(crate) fn persistence_snapshot(&self) -> PlayerPersistenceSnapshot {
+        PlayerPersistenceSnapshot {
+            subject: *self.subject.as_bytes(),
+            revision: self.revision,
+            coins: self.wallet.coins,
+            cash: self.wallet.cash,
+            gourmet_points: self.wallet.gourmet_points,
+            inventory: self
+                .inventory
+                .quantities
+                .iter()
+                .map(|(item_id, quantity)| (*item_id, *quantity))
+                .collect(),
+            processed_mutations: self
+                .processed_mutations
+                .iter()
+                .map(|mutation| mutation.as_str().to_owned())
+                .collect(),
+        }
+    }
+
+    pub(crate) fn from_persistence_snapshot(
+        snapshot: PlayerPersistenceSnapshot,
+    ) -> Result<Self, AuthorityError> {
+        let subject = AnewSubject::from_verified_platform_bytes(snapshot.subject)
+            .map_err(|_| AuthorityError::CorruptSnapshot)?;
+
+        let mut quantities = BTreeMap::new();
+        for (item_id, quantity) in snapshot.inventory {
+            if quantity == 0 || quantities.insert(item_id, quantity).is_some() {
+                return Err(AuthorityError::CorruptSnapshot);
+            }
+        }
+
+        let mut processed_mutations = BTreeSet::new();
+        for value in snapshot.processed_mutations {
+            let mutation =
+                MutationId::new(value).map_err(|_| AuthorityError::CorruptSnapshot)?;
+            if !processed_mutations.insert(mutation) {
+                return Err(AuthorityError::CorruptSnapshot);
+            }
+        }
+
+        let mutation_count =
+            u64::try_from(processed_mutations.len()).map_err(|_| AuthorityError::CorruptSnapshot)?;
+        if mutation_count != snapshot.revision {
+            return Err(AuthorityError::CorruptSnapshot);
+        }
+
+        Ok(Self {
+            subject,
+            revision: snapshot.revision,
+            wallet: Wallet {
+                coins: snapshot.coins,
+                cash: snapshot.cash,
+                gourmet_points: snapshot.gourmet_points,
+            },
+            inventory: Inventory { quantities },
+            processed_mutations,
+        })
     }
 
     /// Apply an authoritative mutation exactly once.
@@ -233,6 +311,7 @@ fn require_quantity(quantity: u32) -> Result<(), AuthorityError> {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum AuthorityError {
+    CorruptSnapshot,
     InvalidMutationId,
     InvalidQuantity,
     ArithmeticOverflow,
@@ -264,6 +343,38 @@ mod tests {
 
     fn id(value: &str) -> MutationId {
         MutationId::new(value.to_owned()).unwrap()
+    }
+
+    #[test]
+    fn persistence_snapshot_round_trip_preserves_authoritative_state() {
+        let mut state = player();
+        state
+            .apply(id("coins-1"), Command::CreditCoins { amount: 25 })
+            .unwrap();
+        state
+            .apply(
+                id("inventory-1"),
+                Command::GrantInventory {
+                    item_id: 42,
+                    quantity: 3,
+                },
+            )
+            .unwrap();
+
+        let restored =
+            PlayerState::from_persistence_snapshot(state.persistence_snapshot()).unwrap();
+        assert_eq!(restored, state);
+    }
+
+    #[test]
+    fn corrupt_persistence_snapshot_is_rejected() {
+        let mut snapshot = player().persistence_snapshot();
+        snapshot.revision = 1;
+
+        assert_eq!(
+            PlayerState::from_persistence_snapshot(snapshot),
+            Err(AuthorityError::CorruptSnapshot)
+        );
     }
 
     #[test]
