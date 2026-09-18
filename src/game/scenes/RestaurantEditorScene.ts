@@ -1,9 +1,9 @@
 import Phaser from 'phaser';
 import {
-  footprintsOverlap,
   projectTile,
   rotateFootprint,
   screenToTileIndex,
+  validateHistoricalTileStack,
   validateStructuralPlacement,
   type Footprint,
   type PlacementShape,
@@ -491,6 +491,7 @@ export class RestaurantEditorScene extends Phaser.Scene {
 
     if (
       this.overlapsCommittedItem(
+        item,
         tile,
         shape,
         structural.roomIndex,
@@ -504,33 +505,57 @@ export class RestaurantEditorScene extends Phaser.Scene {
   }
 
   private overlapsCommittedItem(
+    candidate: RestaurantItemDefinition,
     tile: TilePoint,
     shape: PlacementShape,
     roomIndex: number,
-    excludeInstanceId: number | null = null,
+    selfInstanceId: number | null = null,
   ): boolean {
-    return this.authoritativeItems.some((placed) => {
-      if (
-        placed.instanceId === excludeInstanceId ||
-        placed.roomIndex !== roomIndex
-      ) {
-        return false;
+    // WorldRestaurant.itemMap is bottom -> top. The authority returns its
+    // snapshot in that same order, so preserve it while filtering each tile.
+    for (let dx = 0; dx < shape.sizeX; dx += 1) {
+      for (let dy = 0; dy < shape.sizeY; dy += 1) {
+        const tileX = tile.x + dx;
+        const tileY = tile.y + dy;
+        const stack = this.authoritativeItems.flatMap((placed) => {
+          if (placed.roomIndex !== roomIndex) return [];
+
+          const definition = this.catalogById.get(placed.itemId);
+          if (!definition?.explicitFootprint) {
+            // Fail closed if authority somehow references geometry the client
+            // cannot reproduce.
+            return [{ instanceId: placed.instanceId, surface: false }];
+          }
+
+          const footprint = rotateFootprint(
+            definition.explicitFootprint,
+            placed.rotation,
+          );
+          const contains =
+            tileX >= placed.tileX &&
+            tileX < placed.tileX + footprint.sizeX &&
+            tileY >= placed.tileY &&
+            tileY < placed.tileY + footprint.sizeY;
+          return contains
+            ? [
+                {
+                  instanceId: placed.instanceId,
+                  surface: definition.placement.surface,
+                },
+              ]
+            : [];
+        });
+
+        const result = validateHistoricalTileStack(
+          { stackable: candidate.placement.stackable },
+          stack,
+          selfInstanceId ?? undefined,
+        );
+        if (!result.ok) return true;
       }
+    }
 
-      const definition = this.catalogById.get(placed.itemId);
-      if (!definition?.explicitFootprint) return true;
-
-      const footprint = rotateFootprint(
-        definition.explicitFootprint,
-        placed.rotation,
-      );
-      return footprintsOverlap(
-        tile,
-        { sizeX: shape.sizeX, sizeY: shape.sizeY },
-        { x: placed.tileX, y: placed.tileY },
-        footprint,
-      );
-    });
+    return false;
   }
 
   private async commitCurrentMutation(): Promise<void> {
