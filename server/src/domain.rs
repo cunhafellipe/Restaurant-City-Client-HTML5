@@ -162,15 +162,14 @@ impl PlayerState {
 
         let mut processed_mutations = BTreeSet::new();
         for value in snapshot.processed_mutations {
-            let mutation =
-                MutationId::new(value).map_err(|_| AuthorityError::CorruptSnapshot)?;
+            let mutation = MutationId::new(value).map_err(|_| AuthorityError::CorruptSnapshot)?;
             if !processed_mutations.insert(mutation) {
                 return Err(AuthorityError::CorruptSnapshot);
             }
         }
 
-        let mutation_count =
-            u64::try_from(processed_mutations.len()).map_err(|_| AuthorityError::CorruptSnapshot)?;
+        let mutation_count = u64::try_from(processed_mutations.len())
+            .map_err(|_| AuthorityError::CorruptSnapshot)?;
         if mutation_count != snapshot.revision {
             return Err(AuthorityError::CorruptSnapshot);
         }
