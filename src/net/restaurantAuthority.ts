@@ -67,6 +67,11 @@ type Fetcher = (
 
 const DEFAULT_BASE_PATH = '/api/v1';
 const MAX_MUTATION_ID_BYTES = 128;
+// Trusted placement catalog V2 derives per-item rotation_count from recovered
+// RoomItem MovieClip frames and caps it at 16. The transport therefore accepts
+// the full historical index range; item-specific validity remains authoritative
+// in the renderer/catalog and Rust service.
+const MAX_HISTORICAL_ROTATION_INDEX = 15;
 
 export class HttpRestaurantAuthority implements RestaurantAuthority {
   private readonly basePath: string;
@@ -167,7 +172,7 @@ function validatePlacementCommand(command: PlacementCommand): void {
     !Number.isSafeInteger(command.tileY) ||
     !Number.isInteger(command.rotation) ||
     command.rotation < 0 ||
-    command.rotation > 3
+    command.rotation > MAX_HISTORICAL_ROTATION_INDEX
   ) {
     throw new Error('Invalid Restaurant City placement command');
   }
@@ -303,7 +308,7 @@ function parsePlacedItem(value: unknown): AuthoritativePlacedItem {
   }
 
   const rotation = requireUInt(value.rotation, 'item.rotation');
-  if (rotation > 3) {
+  if (rotation > MAX_HISTORICAL_ROTATION_INDEX) {
     throw new Error('Malformed authoritative item rotation');
   }
 
