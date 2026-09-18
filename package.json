@@ -13,7 +13,8 @@
     "test:watch": "vitest",
     "pipeline": "node tools/pipeline.mjs",
     "pipeline:verify": "node tools/verify-pipeline.mjs",
-    "content:extract": "node tools/extract-content.mjs"
+    "content:extract": "node tools/extract-content.mjs",
+    "audio:extract": "node tools/build-audio.mjs"
   },
   "dependencies": {
     "phaser": "^3.90.0"
