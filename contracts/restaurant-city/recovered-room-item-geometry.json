@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "baseline": "0.9.143a",
   "source": {
     "canonicalArchiveSha256": "4493be9bc4c2f87ef80ca7afa5321e12bb94a7ec6ed2f0a673b4d48b19170ef4",
@@ -18,6 +18,12 @@
       "artifactId": 10564392963,
       "artifactSha256": "8d97f990eab306c556377a8395b90cbbaffd0af31a731ba7193cd45236730736",
       "conclusion": "SENTINEL_ROOMITEM_BOUNDS_RECOVERED"
+    },
+    "r24": {
+      "runId": 35388369276,
+      "artifactId": 10564628002,
+      "artifactSha256": "5e752a45f0a168184f9f7e8a22f0ee115d0f80a6045f254161c386d747158d11",
+      "conclusion": "VIOLINCASE_FRAME1_GEOMETRY_RECOVERED"
     }
   },
   "constructor": {
@@ -44,7 +50,8 @@
         "sizeX": 1,
         "sizeY": 1
       },
-      "itemHeightTwips": 510
+      "itemHeightTwips": 510,
+      "placementFootprintEnabled": true
     },
     "WhiteTable1x1": {
       "itemIds": [
@@ -62,7 +69,29 @@
         "sizeX": 1,
         "sizeY": 1
       },
-      "itemHeightTwips": 524
+      "itemHeightTwips": 524,
+      "placementFootprintEnabled": true
+    },
+    "ViolinCase": {
+      "itemIds": [
+        3020179
+      ],
+      "spriteId": 1694,
+      "rotationCount": 4,
+      "constructorFrame": 1,
+      "frame1BoundsTwips": {
+        "xmin": -790,
+        "xmax": 650,
+        "ymin": -394,
+        "ymax": 755
+      },
+      "footprint": {
+        "sizeX": 1,
+        "sizeY": 1
+      },
+      "itemHeightTwips": 439,
+      "placementFootprintEnabled": false,
+      "note": "RoomItem constructor computes itemHeight once on frame 1; later rotation frames do not recompute it."
     }
   },
   "composites": {
@@ -97,5 +126,5 @@
       ]
     }
   },
-  "releasePolicy": "Evidence only until authoritative curHeight/itemHeight rendering is implemented; do not enable stacked placement from geometry alone."
+  "releasePolicy": "Recovered Table and WhiteTable1x1 footprints may be promoted only together with deterministic historical curHeight rendering; all other implicit-footprint surfaces remain fail-closed."
 }
