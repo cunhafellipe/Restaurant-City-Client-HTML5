@@ -3,6 +3,8 @@ import {
   HttpRestaurantAuthority,
   RestaurantAuthorityError,
   createPlacementMutationId,
+  createRemoveMutationId,
+  createTransformMutationId,
 } from '../../src/net/restaurantAuthority';
 
 function okJson(value: unknown): Response {
@@ -140,6 +142,100 @@ describe('HttpRestaurantAuthority', () => {
       tile_y: 3,
       rotation: 2,
     });
+  });
+
+  it('patches and deletes existing instances with same-origin idempotent mutations', async () => {
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(
+        okJson({
+          outcome: 'applied',
+          item: {
+            instance_id: 7,
+            item_id: 10,
+            tile_x: 4,
+            tile_y: 3,
+            rotation: 1,
+            room_index: 0,
+          },
+        }),
+      )
+      .mockResolvedValueOnce(
+        okJson({
+          outcome: 'applied',
+          item: {
+            instance_id: 7,
+            item_id: 10,
+            tile_x: 4,
+            tile_y: 3,
+            rotation: 1,
+            room_index: 0,
+          },
+        }),
+      );
+
+    const authority = new HttpRestaurantAuthority('/api/v1', fetcher);
+
+    const transformed = await authority.transformItem(
+      7,
+      { tileX: 4, tileY: 3, rotation: 1 },
+      'rc-transform-test-1',
+    );
+    expect(transformed.item.instanceId).toBe(7);
+
+    const [transformUrl, transformInit] = fetcher.mock.calls[0]!;
+    expect(transformUrl).toBe('/api/v1/restaurant/placements/7');
+    expect(transformInit?.method).toBe('PATCH');
+    expect(transformInit?.credentials).toBe('same-origin');
+    expect(new Headers(transformInit?.headers).get('Idempotency-Key')).toBe(
+      'rc-transform-test-1',
+    );
+    expect(new Headers(transformInit?.headers).has('Authorization')).toBe(false);
+    expect(JSON.parse(String(transformInit?.body))).toEqual({
+      tile_x: 4,
+      tile_y: 3,
+      rotation: 1,
+    });
+
+    const removed = await authority.removeItem(7, 'rc-remove-test-1');
+    expect(removed.item.instanceId).toBe(7);
+
+    const [removeUrl, removeInit] = fetcher.mock.calls[1]!;
+    expect(removeUrl).toBe('/api/v1/restaurant/placements/7');
+    expect(removeInit?.method).toBe('DELETE');
+    expect(removeInit?.credentials).toBe('same-origin');
+    expect(new Headers(removeInit?.headers).get('Idempotency-Key')).toBe(
+      'rc-remove-test-1',
+    );
+    expect(new Headers(removeInit?.headers).has('Authorization')).toBe(false);
+    expect(removeInit?.body).toBeUndefined();
+  });
+
+  it('rejects invalid instance ids and transform payloads locally', async () => {
+    const fetcher = vi.fn(async () => okJson({}));
+    const authority = new HttpRestaurantAuthority('/api/v1', fetcher);
+
+    await expect(
+      authority.transformItem(
+        0,
+        { tileX: 2, tileY: 2, rotation: 0 },
+        'rc-transform-invalid',
+      ),
+    ).rejects.toThrow('Invalid Restaurant City instance id');
+
+    await expect(
+      authority.transformItem(
+        1,
+        { tileX: 2, tileY: 2, rotation: 16 },
+        'rc-transform-invalid-rotation',
+      ),
+    ).rejects.toThrow('Invalid Restaurant City transform command');
+
+    await expect(
+      authority.removeItem(0, 'rc-remove-invalid'),
+    ).rejects.toThrow('Invalid Restaurant City instance id');
+
+    expect(fetcher).not.toHaveBeenCalled();
   });
 
   it('keeps transport compatible with recovered 16-frame RoomItems', async () => {
@@ -348,9 +444,18 @@ describe('HttpRestaurantAuthority', () => {
   });
 });
 
-describe('createPlacementMutationId', () => {
-  it('creates a bounded mutation id from the injected UUID source', () => {
-    expect(createPlacementMutationId(() => '00000000-0000-4000-8000-000000000001'))
-      .toBe('rc-placement-00000000-0000-4000-8000-000000000001');
+describe('restaurant mutation ids', () => {
+  const uuid = () => '00000000-0000-4000-8000-000000000001';
+
+  it('keeps operation-specific bounded idempotency namespaces', () => {
+    expect(createPlacementMutationId(uuid)).toBe(
+      'rc-placement-00000000-0000-4000-8000-000000000001',
+    );
+    expect(createTransformMutationId(uuid)).toBe(
+      'rc-transform-00000000-0000-4000-8000-000000000001',
+    );
+    expect(createRemoveMutationId(uuid)).toBe(
+      'rc-remove-00000000-0000-4000-8000-000000000001',
+    );
   });
 });
