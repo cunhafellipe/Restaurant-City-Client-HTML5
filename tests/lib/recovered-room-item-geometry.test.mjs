@@ -27,12 +27,24 @@ function derive(bounds) {
 
 describe('recovered RoomItem geometry contract', () => {
   it('reproduces Table and WhiteTable1x1 using the original constructor math', () => {
-    for (const entry of Object.values(contract.classes)) {
+    for (const key of ['Table', 'WhiteTable1x1']) {
+      const entry = contract.classes[key];
       expect(derive(entry.boundsTwips)).toEqual({
         ...entry.footprint,
         itemHeightTwips: entry.itemHeightTwips,
       });
+      expect(entry.placementFootprintEnabled).toBe(true);
     }
+  });
+
+  it('keeps ViolinCase itemHeight pinned to constructor frame 1 across rotations', () => {
+    const violin = contract.classes.ViolinCase;
+    expect(derive(violin.frame1BoundsTwips)).toEqual({
+      ...violin.footprint,
+      itemHeightTwips: 439,
+    });
+    expect(violin.constructorFrame).toBe(1);
+    expect(violin.rotationCount).toBe(4);
   });
 
   it('reproduces WhiteTable1x2 sub1 tile offset from its timeline translation', () => {
@@ -45,7 +57,13 @@ describe('recovered RoomItem geometry contract', () => {
     }).toEqual(sub1.tileOffset);
   });
 
-  it('keeps implicit surfaces gated until vertical stack rendering is authoritative', () => {
-    expect(contract.releasePolicy).toMatch(/do not enable stacked placement/i);
+  it('promotes only the proven surfaces while keeping all other implicit footprints fail-closed', () => {
+    expect(contract.releasePolicy).toMatch(/all other implicit-footprint surfaces remain fail-closed/i);
+    expect(
+      Object.values(contract.classes)
+        .filter((entry) => entry.placementFootprintEnabled === true)
+        .flatMap((entry) => entry.itemIds)
+        .sort((a, b) => a - b),
+    ).toEqual([3030000, 3030002]);
   });
 });
