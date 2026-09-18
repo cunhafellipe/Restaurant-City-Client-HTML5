@@ -114,7 +114,7 @@ where
 }
 
 pub fn handle_place_item<V, S>(
-    service: &mut RestaurantProductService<V, S>,
+    service: &RestaurantProductService<V, S>,
     context: ProductHttpContext<'_>,
     body: &[u8],
 ) -> Result<Vec<u8>, PublicProductError>
@@ -342,11 +342,11 @@ mod tests {
 
     #[test]
     fn placement_rejects_unknown_json_fields_and_missing_mutation_id() {
-        let mut service = service();
+        let service = service();
 
         assert_eq!(
             handle_place_item(
-                &mut service,
+                &service,
                 context(Some("Bearer session"), Some("p-1")),
                 br#"{"item_id":10,"tile_x":2,"tile_y":2,"rotation":0,"extra":true}"#,
             ),
@@ -355,7 +355,7 @@ mod tests {
 
         assert_eq!(
             handle_place_item(
-                &mut service,
+                &service,
                 context(Some("Bearer session"), None),
                 br#"{"item_id":10,"tile_x":2,"tile_y":2,"rotation":0}"#,
             ),
@@ -365,7 +365,7 @@ mod tests {
 
     #[test]
     fn placement_requires_owned_item_then_returns_json() {
-        let mut service = service();
+        let service = service();
         service
             .apply_player_command(
                 "session",
@@ -378,7 +378,7 @@ mod tests {
             .unwrap();
 
         let body = handle_place_item(
-            &mut service,
+            &service,
             context(Some("Bearer session"), Some("place-1")),
             br#"{"item_id":10,"tile_x":2,"tile_y":2,"rotation":0}"#,
         )
@@ -392,7 +392,7 @@ mod tests {
 
     #[test]
     fn duplicate_http_mutation_is_projected_as_duplicate() {
-        let mut service = service();
+        let service = service();
         service
             .apply_player_command(
                 "session",
@@ -406,13 +406,13 @@ mod tests {
 
         let request = br#"{"item_id":10,"tile_x":2,"tile_y":2,"rotation":0}"#;
         handle_place_item(
-            &mut service,
+            &service,
             context(Some("Bearer session"), Some("place-1")),
             request,
         )
         .unwrap();
         let duplicate = handle_place_item(
-            &mut service,
+            &service,
             context(Some("Bearer session"), Some("place-1")),
             request,
         )
