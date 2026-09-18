@@ -39,6 +39,8 @@ pub struct PlacementFlags {
     pub wallpaper_item: bool,
     pub outdoor: bool,
     pub floor_tile_item: bool,
+    pub surface: bool,
+    pub stackable: bool,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
