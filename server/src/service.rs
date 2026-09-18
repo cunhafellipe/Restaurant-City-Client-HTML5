@@ -223,9 +223,9 @@ impl ProductAggregate {
                 .count();
             let placed = u32::try_from(placed)
                 .map_err(|_| ProductServiceError::Store(ProductStateStoreError::Corrupt))?;
-            let available = owned.checked_sub(placed).ok_or(ProductServiceError::Store(
-                ProductStateStoreError::Corrupt,
-            ))?;
+            let available = owned
+                .checked_sub(placed)
+                .ok_or(ProductServiceError::Store(ProductStateStoreError::Corrupt))?;
             if *quantity > available {
                 return Err(ProductServiceError::ItemUnavailable {
                     item_id: *item_id,
@@ -287,17 +287,17 @@ impl ProductAggregate {
         let mut placed_counts = BTreeMap::<u32, u32>::new();
         for item in &restaurant.items {
             let count = placed_counts.entry(item.item_id).or_default();
-            *count = count.checked_add(1).ok_or(ProductServiceError::Store(
-                ProductStateStoreError::Corrupt,
-            ))?;
+            *count = count
+                .checked_add(1)
+                .ok_or(ProductServiceError::Store(ProductStateStoreError::Corrupt))?;
         }
 
         let mut inventory = Vec::new();
         for (item_id, owned) in self.player.inventory().entries() {
             let placed = placed_counts.get(&item_id).copied().unwrap_or(0);
-            let available = owned.checked_sub(placed).ok_or(ProductServiceError::Store(
-                ProductStateStoreError::Corrupt,
-            ))?;
+            let available = owned
+                .checked_sub(placed)
+                .ok_or(ProductServiceError::Store(ProductStateStoreError::Corrupt))?;
             inventory.push(InventoryAvailability {
                 item_id,
                 owned,
