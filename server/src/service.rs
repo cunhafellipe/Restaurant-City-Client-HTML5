@@ -1,8 +1,8 @@
 use crate::domain::{AuthorityError, Command, MutationId, MutationOutcome, PlayerState};
+use crate::placement::RoomDimensions;
 use crate::platform::{
     AnewSubject, PlatformSessionError, PlatformSessionVerifier, VerifiedProductSession,
 };
-use crate::placement::RoomDimensions;
 use crate::restaurant::{
     PlacedItem, PlacementCatalog, PlacementIntent, RestaurantAuthorityError, RestaurantSnapshot,
     RestaurantState,
@@ -100,10 +100,7 @@ impl ProductAggregate {
         Ok(self.restaurant.snapshot())
     }
 
-    fn require_subject(
-        &self,
-        session: VerifiedProductSession,
-    ) -> Result<(), ProductServiceError> {
+    fn require_subject(&self, session: VerifiedProductSession) -> Result<(), ProductServiceError> {
         if session.subject != self.subject() {
             return Err(ProductServiceError::SubjectMismatch);
         }
@@ -174,9 +171,7 @@ where
         let session = self.verify(bearer_token)?;
         let mut state = self.load_or_initialize(session.subject)?;
         let outcome = state.apply_player_command(session, mutation_id, command)?;
-        self.store
-            .save(state)
-            .map_err(ProductServiceError::Store)?;
+        self.store.save(state).map_err(ProductServiceError::Store)?;
         Ok(outcome)
     }
 
@@ -188,8 +183,7 @@ where
     ) -> Result<PlacementMutationOutcome, ProductServiceError> {
         let session = self.verify(bearer_token)?;
         let mut state = self.load_or_initialize(session.subject)?;
-        let outcome =
-            state.place_owned_item(session, &self.catalog, mutation_id, intent)?;
+        let outcome = state.place_owned_item(session, &self.catalog, mutation_id, intent)?;
         self.store
             .save(state)
             .map_err(ProductServiceError::Store)?;
@@ -213,10 +207,7 @@ where
         self.store
     }
 
-    fn verify(
-        &self,
-        bearer_token: &str,
-    ) -> Result<VerifiedProductSession, ProductServiceError> {
+    fn verify(&self, bearer_token: &str) -> Result<VerifiedProductSession, ProductServiceError> {
         self.verifier
             .verify_product_session(bearer_token)
             .map_err(ProductServiceError::Session)
@@ -258,7 +249,7 @@ pub enum ProductServiceError {
 mod tests {
     use super::*;
     use crate::domain::Command;
-    use crate::platform::{ProductSessionId, PRODUCT_ID};
+    use crate::platform::{PRODUCT_ID, ProductSessionId};
     use crate::placement::{Footprint, PlacementFlags, TilePoint};
     use crate::restaurant::ItemPlacementDefinition;
 
@@ -396,9 +387,7 @@ mod tests {
         };
         assert_eq!(second, PlacementMutationOutcome::Duplicate(placed));
 
-        let snapshot = service
-            .load_restaurant("valid-product-session")
-            .unwrap();
+        let snapshot = service.load_restaurant("valid-product-session").unwrap();
         assert_eq!(snapshot.items, vec![placed]);
     }
 
@@ -451,9 +440,7 @@ mod tests {
     #[test]
     fn load_without_existing_state_is_safe_and_empty() {
         let service = service();
-        let snapshot = service
-            .load_restaurant("valid-product-session")
-            .unwrap();
+        let snapshot = service.load_restaurant("valid-product-session").unwrap();
 
         assert!(snapshot.items.is_empty());
         assert_eq!(snapshot.room.inside_x, 8);
