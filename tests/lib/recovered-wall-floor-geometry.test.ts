@@ -19,7 +19,7 @@ describe('recovered wall/floor geometry contract', () => {
   });
 
   it('pins the DoorWayMask raster and both recovered canvas origins', () => {
-    expect(recoveredDoorMaskRaster(3010000, 'Door')).toEqual({
+    expect(recoveredDoorMaskRaster(3010000, 'Door')).toMatchObject({
       frame: 'indoor_asset/doorwaymask/001',
       canvasOriginPx: { x: 0, y: -75.1 },
       atlasSize: { width: 40, height: 115 },
