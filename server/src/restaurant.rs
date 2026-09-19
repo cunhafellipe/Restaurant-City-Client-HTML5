@@ -16,13 +16,23 @@ pub struct ItemPlacementDefinition {
     pub flags: PlacementFlags,
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct ServiceItemFlags {
+    pub chair_item: bool,
+    pub table_item: bool,
+    pub kitchen: bool,
+    pub drink: bool,
+    pub toilet: bool,
+}
+
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct PlacementCatalog {
     definitions: BTreeMap<u32, ItemPlacementDefinition>,
+    service_roles: BTreeMap<u32, ServiceItemFlags>,
 }
 
-pub const PLACEMENT_CATALOG_MAGIC: &str = "ANEWON_RC_PLACEMENT_CATALOG_V3";
-const PLACEMENT_CATALOG_COLUMNS: &str = "item_id\tsize_x\tsize_y\trotation_count\twall_item\twall_decoration_item\twallpaper_item\toutdoor\tfloor_tile_item\tsurface\tstackable";
+pub const PLACEMENT_CATALOG_MAGIC: &str = "ANEWON_RC_PLACEMENT_CATALOG_V4";
+const PLACEMENT_CATALOG_COLUMNS: &str = "item_id\tsize_x\tsize_y\trotation_count\twall_item\twall_decoration_item\twallpaper_item\toutdoor\tfloor_tile_item\tsurface\tstackable\tchair_item\ttable_item\tkitchen\tdrink\ttoilet";
 
 impl PlacementCatalog {
     pub fn new(
@@ -56,6 +66,10 @@ impl PlacementCatalog {
         self.definitions.get(&item_id)
     }
 
+    pub fn service_flags(&self, item_id: u32) -> ServiceItemFlags {
+        self.service_roles.get(&item_id).copied().unwrap_or_default()
+    }
+
     pub fn from_trusted_tsv(input: &str) -> Result<Self, PlacementCatalogLoadError> {
         let mut lines = input.lines().enumerate();
         let Some((_, magic)) = lines.next() else {
@@ -67,6 +81,7 @@ impl PlacementCatalog {
 
         let mut saw_columns = false;
         let mut definitions = Vec::new();
+        let mut service_roles = BTreeMap::new();
 
         for (index, raw) in lines {
             let line_number = index + 1;
@@ -84,7 +99,7 @@ impl PlacementCatalog {
             }
 
             let fields: Vec<_> = line.split('\t').collect();
-            if fields.len() != 11 {
+            if fields.len() != 16 {
                 return Err(PlacementCatalogLoadError::InvalidRow { line: line_number });
             }
 
@@ -104,7 +119,7 @@ impl PlacementCatalog {
                 _ => Err(PlacementCatalogLoadError::InvalidRow { line: line_number }),
             };
 
-            definitions.push(ItemPlacementDefinition {
+            let definition = ItemPlacementDefinition {
                 item_id: parse_u32(fields[0])?,
                 footprint: Footprint {
                     size_x: parse_u32(fields[1])?,
@@ -120,14 +135,26 @@ impl PlacementCatalog {
                     surface: parse_bool(fields[9])?,
                     stackable: parse_bool(fields[10])?,
                 },
-            });
+            };
+            let service = ServiceItemFlags {
+                chair_item: parse_bool(fields[11])?,
+                table_item: parse_bool(fields[12])?,
+                kitchen: parse_bool(fields[13])?,
+                drink: parse_bool(fields[14])?,
+                toilet: parse_bool(fields[15])?,
+            };
+            service_roles.insert(definition.item_id, service);
+            definitions.push(definition);
         }
 
         if !saw_columns {
             return Err(PlacementCatalogLoadError::InvalidColumns { line: 1 });
         }
 
-        Self::new(definitions).map_err(PlacementCatalogLoadError::Definition)
+        let mut catalog =
+            Self::new(definitions).map_err(PlacementCatalogLoadError::Definition)?;
+        catalog.service_roles = service_roles;
+        Ok(catalog)
     }
 }
 
@@ -1036,9 +1063,9 @@ mod tests {
     #[test]
     fn trusted_catalog_loader_accepts_generated_contract() {
         let input = concat!(
-            "ANEWON_RC_PLACEMENT_CATALOG_V3\n",
+            "ANEWON_RC_PLACEMENT_CATALOG_V4\n",
             "# baseline=0.9.143a\n",
-            "item_id\tsize_x\tsize_y\trotation_count\twall_item\twall_decoration_item\twallpaper_item\toutdoor\tfloor_tile_item\tsurface\tstackable\n",
+            "item_id\tsize_x\tsize_y\trotation_count\twall_item\twall_decoration_item\twallpaper_item\toutdoor\tfloor_tile_item\tsurface\tstackable\tchair_item\ttable_item\tkitchen\tdrink\ttoilet\n",
             "10\t2\t1\t4\t0\t0\t0\t0\t0\t1\t0\n",
             "20\t1\t1\t1\t0\t0\t0\t0\t0\t0\t1\n",
         );
@@ -1050,8 +1077,8 @@ mod tests {
     #[test]
     fn trusted_catalog_loader_rejects_duplicate_ids() {
         let input = concat!(
-            "ANEWON_RC_PLACEMENT_CATALOG_V3\n",
-            "item_id\tsize_x\tsize_y\trotation_count\twall_item\twall_decoration_item\twallpaper_item\toutdoor\tfloor_tile_item\tsurface\tstackable\n",
+            "ANEWON_RC_PLACEMENT_CATALOG_V4\n",
+            "item_id\tsize_x\tsize_y\trotation_count\twall_item\twall_decoration_item\twallpaper_item\toutdoor\tfloor_tile_item\tsurface\tstackable\tchair_item\ttable_item\tkitchen\tdrink\ttoilet\n",
             "10\t2\t1\t4\t0\t0\t0\t0\t0\t1\t0\n",
             "10\t1\t1\t4\t0\t0\t0\t0\t0\t0\t1\n",
         );
