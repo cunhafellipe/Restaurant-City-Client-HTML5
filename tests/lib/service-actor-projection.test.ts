@@ -23,6 +23,11 @@ const activeBase: RestaurantActiveService = {
   orderState: 'cooking',
   customerTimerMs: 1000,
   orderTimerMs: 1000,
+  serverNowMs: 10_000,
+  customerDeadlineAtMs: 11_000,
+  orderDeadlineAtMs: 11_000,
+  customerRemainingMs: 1_000,
+  orderRemainingMs: 1_000,
 };
 
 const topology: RestaurantServiceTopology = {
