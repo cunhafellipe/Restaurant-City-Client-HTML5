@@ -9,10 +9,10 @@ use crate::gameplay::{
     transition_service_loop,
 };
 use crate::placement::TilePoint;
+use crate::restaurant::{PlacementCatalog, RestaurantSnapshot};
 use crate::service_clock::{
     ServiceDeadlines, ServiceTimingError, anchor_service_deadlines, transition_timed_service,
 };
-use crate::restaurant::{PlacementCatalog, RestaurantSnapshot};
 use crate::topology::{
     ServiceChef, ServiceWaiter, calculate_food_service_topology, derive_service_layout,
     is_meal_seat, is_table_free, table_for_chair,
