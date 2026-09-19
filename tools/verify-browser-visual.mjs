@@ -22,6 +22,13 @@ const WALL_SCREENSHOT = path.join(WORK, 'restaurant-window.png');
 const WALL_META = path.join(WORK, 'restaurant-window.json');
 const DOOR_PROBE_SCREENSHOT = path.join(WORK, 'restaurant-door-probe.png');
 const DOOR_PROBE_META = path.join(WORK, 'restaurant-door-probe.json');
+const DOOR_PROBE_GOLDEN = path.join(
+  REPO,
+  'tests',
+  'golden',
+  'm2',
+  'restaurant-door-probe.json',
+);
 const STACK_GOLDEN = path.join(
   REPO,
   'tests',
@@ -1309,6 +1316,31 @@ try {
   const doorPng = PNG.sync.read(fs.readFileSync(DOOR_PROBE_SCREENSHOT));
   const doorPixelSha256 = bufferSha256(doorPng.data);
   const doorQuantizedBlockSha256 = quantizedBlockSignature(doorPng, 8);
+  const doorPngSha256 = sha256(DOOR_PROBE_SCREENSHOT);
+  const doorGolden = fs.existsSync(DOOR_PROBE_GOLDEN)
+    ? JSON.parse(fs.readFileSync(DOOR_PROBE_GOLDEN, 'utf8'))
+    : null;
+  if (doorGolden) {
+    if (
+      doorGolden.schemaVersion !== 1 ||
+      doorGolden.fixture !== 'simple-door-3010000-erase-probe-at-2-0' ||
+      doorGolden.canvas?.width !== doorPng.width ||
+      doorGolden.canvas?.height !== doorPng.height ||
+      doorGolden.blockSize !== 8 ||
+      doorGolden.expectedQuantizedBlockSha256 !== doorQuantizedBlockSha256
+    ) {
+      goldenFailures.push(
+        `door expected=${doorGolden.expectedQuantizedBlockSha256} actual=${doorQuantizedBlockSha256}`,
+      );
+      console.log(
+        `DOOR GOLDEN CANDIDATE | fixture=simple-door-3010000-erase-probe-at-2-0 | pixel=${doorPixelSha256} | png=${doorPngSha256} | block=${doorQuantizedBlockSha256} | maskLocal=${JSON.stringify(doorProbeState.probe.maskLocal)}`,
+      );
+    }
+  } else {
+    console.log(
+      `DOOR GOLDEN CANDIDATE | fixture=simple-door-3010000-erase-probe-at-2-0 | pixel=${doorPixelSha256} | png=${doorPngSha256} | block=${doorQuantizedBlockSha256} | maskLocal=${JSON.stringify(doorProbeState.probe.maskLocal)}`,
+    );
+  }
   const doorProbeMetadata = {
     schemaVersion: 1,
     fixture: 'simple-door-3010000-erase-probe-at-2-0',
@@ -1316,18 +1348,27 @@ try {
     screenshot: path
       .relative(REPO, DOOR_PROBE_SCREENSHOT)
       .replaceAll('\\\\', '/'),
-    pngSha256: sha256(DOOR_PROBE_SCREENSHOT),
+    pngSha256: doorPngSha256,
     pixelSha256: doorPixelSha256,
     blockSize: 8,
     quantizedBlockSha256: doorQuantizedBlockSha256,
-    goldenFrozen: false,
+    goldenFrozen: Boolean(doorGolden),
+    golden: doorGolden
+      ? {
+          path: path.relative(REPO, DOOR_PROBE_GOLDEN).replaceAll('\\\\', '/'),
+          expectedQuantizedBlockSha256:
+            doorGolden.expectedQuantizedBlockSha256,
+          quantizedBlockMatch:
+            doorGolden.expectedQuantizedBlockSha256 === doorQuantizedBlockSha256,
+          referencePixelSha256: doorGolden.referencePixelSha256 ?? null,
+          exactPixelMatch:
+            doorGolden.referencePixelSha256 === doorPixelSha256,
+        }
+      : null,
   };
   fs.writeFileSync(
     DOOR_PROBE_META,
     `${JSON.stringify(doorProbeMetadata, null, 2)}\n`,
-  );
-  console.log(
-    `DOOR ERASE PROBE CANDIDATE | fixture=simple-door-3010000-erase-probe-at-2-0 | pixel=${doorPixelSha256} | png=${doorProbeMetadata.pngSha256} | block=${doorQuantizedBlockSha256} | maskLocal=${JSON.stringify(doorProbeState.probe.maskLocal)}`,
   );
 
   const metadata = {
@@ -1383,7 +1424,7 @@ try {
   }
 
   console.log(
-    `BROWSER VISUAL GOLDEN + EDIT INTERACTION PASS | browser=${browser} | bytes=${stat.size} | sha256=${metadata.sha256} | worldPixel=${worldPixelSha256} | exactPixelMatch=${exactPixelMatch} | worldBlock=${worldQuantizedBlockSha256} | edit=select-transform-remove | floor=WoodPanel block=${floorQuantizedBlockSha256} frozen=${Boolean(floorGolden)} | window=SimpleWindow block=${wallQuantizedBlockSha256} frozen=${Boolean(wallGolden)} | stack=Table+Violin curHeight=25 block=${stackQuantizedBlockSha256} frozen=${Boolean(stackGolden)}`,
+    `BROWSER VISUAL GOLDEN + EDIT INTERACTION PASS | browser=${browser} | bytes=${stat.size} | sha256=${metadata.sha256} | worldPixel=${worldPixelSha256} | exactPixelMatch=${exactPixelMatch} | worldBlock=${worldQuantizedBlockSha256} | edit=select-transform-remove | floor=WoodPanel block=${floorQuantizedBlockSha256} frozen=${Boolean(floorGolden)} | window=SimpleWindow block=${wallQuantizedBlockSha256} frozen=${Boolean(wallGolden)} | stack=Table+Violin curHeight=25 block=${stackQuantizedBlockSha256} frozen=${Boolean(stackGolden)} | door=SimpleDoor block=${doorQuantizedBlockSha256} frozen=${Boolean(doorGolden)}`,
   );
 } finally {
   try {
