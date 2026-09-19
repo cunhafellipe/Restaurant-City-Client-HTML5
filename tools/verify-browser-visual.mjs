@@ -592,7 +592,7 @@ try {
   }
 
   const browser = findBrowser();
-  const url = `http://127.0.0.1:${address.port}/`;
+  const url = `http://127.0.0.1:${address.port}/?visualProbe=1`;
   browserProfile = path.join(
     WORK,
     `profile-cdp-${process.pid}-${Date.now()}`,
@@ -720,6 +720,32 @@ try {
   if (state.canvas?.width !== 760 || state.canvas?.height !== 600) {
     throw new Error(`Unexpected historical canvas size: ${JSON.stringify(state.canvas)}`);
   }
+
+  const wallDiagnosticsEval = await cdp.send('Runtime.evaluate', {
+    expression: `globalThis.__ANEWON_RC_VISUAL_DIAGNOSTICS__ ?? null`,
+    returnByValue: true,
+  });
+  const wallDiagnostics = wallDiagnosticsEval.result?.value ?? null;
+  if (!wallDiagnostics || !Array.isArray(wallDiagnostics.walls)) {
+    throw new Error(
+      `Restaurant City visual probe did not expose wall diagnostics: ${JSON.stringify(wallDiagnostics)}`,
+    );
+  }
+  if (wallDiagnostics.walls.length !== 15) {
+    throw new Error(
+      `Expected 15 derived default wall sprites, got ${wallDiagnostics.walls.length}: ${JSON.stringify(wallDiagnostics.walls)}`,
+    );
+  }
+  if (
+    wallDiagnostics.walls.some(
+      (wall) => wall.visible !== true || wall.alpha !== 1,
+    )
+  ) {
+    throw new Error(
+      `Default wall sprite visibility contract failed: ${JSON.stringify(wallDiagnostics.walls)}`,
+    );
+  }
+  console.log(`WALL RUNTIME DIAGNOSTICS | ${JSON.stringify(wallDiagnostics.walls)}`);
 
   await delay(250);
 
@@ -1220,6 +1246,7 @@ try {
     viewport: { width: 1052, height: 656, deviceScaleFactor: 1 },
     state,
     diagnostics: diagnostics.slice(-20),
+    wallRuntimeDiagnostics: wallDiagnostics,
     stackVisual: stackMetadata,
     floorVisual: floorMetadata,
     wallVisual: wallMetadata,
