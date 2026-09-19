@@ -161,13 +161,56 @@ mod tests {
     use crate::domain::{Command, MutationId};
     use crate::gameplay::ServiceLoopEvent;
     use crate::placement::{Footprint, PlacementFlags, RoomDimensions, TilePoint};
-    use crate::platform::{ProductSessionId, VerifiedProductSession};
+    use crate::platform::{
+        PlatformSessionError, PlatformSessionVerifier, ProductSessionId, VerifiedProductSession,
+    };
     use crate::restaurant::{ItemPlacementDefinition, PlacementIntent};
+    use crate::service::RestaurantProductService;
+    use crate::service_clock::{ServiceTimeSource, ServiceTimingError};
     use std::fs;
     use std::path::PathBuf;
+    use std::sync::Arc;
     use std::sync::atomic::{AtomicU64, Ordering};
 
     static NEXT_DB_ID: AtomicU64 = AtomicU64::new(1);
+
+    #[derive(Clone, Copy)]
+    struct FakeVerifier;
+
+    impl PlatformSessionVerifier for FakeVerifier {
+        fn verify_product_session(
+            &self,
+            session_token: &str,
+        ) -> Result<VerifiedProductSession, PlatformSessionError> {
+            if session_token != "valid-product-session" {
+                return Err(PlatformSessionError::Invalid);
+            }
+            Ok(session())
+        }
+    }
+
+    #[derive(Clone)]
+    struct FakeServiceClock {
+        now_ms: Arc<AtomicU64>,
+    }
+
+    impl FakeServiceClock {
+        fn new(now_ms: u64) -> Self {
+            Self {
+                now_ms: Arc::new(AtomicU64::new(now_ms)),
+            }
+        }
+
+        fn set(&self, now_ms: u64) {
+            self.now_ms.store(now_ms, Ordering::SeqCst);
+        }
+    }
+
+    impl ServiceTimeSource for FakeServiceClock {
+        fn now_ms(&self) -> Result<u64, ServiceTimingError> {
+            Ok(self.now_ms.load(Ordering::SeqCst))
+        }
+    }
 
     fn temp_database() -> PathBuf {
         let id = NEXT_DB_ID.fetch_add(1, Ordering::Relaxed);
@@ -413,6 +456,171 @@ mod tests {
                 loaded.state.active_service().unwrap().state.customer,
                 crate::gameplay::CustomerServiceState::Waiting
             );
+        }
+
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn server_clock_catch_up_survives_physical_redb_reopen_without_duplicate_write() {
+        let path = temp_database();
+        let catalog = active_service_catalog();
+        let clock = FakeServiceClock::new(10_000);
+        let room = RoomDimensions {
+            inside_x: 8,
+            inside_y: 8,
+            outside_x: 0,
+            outside_y: 0,
+        };
+
+        {
+            let store = RedbProductStateStore::open(&path, catalog.clone()).unwrap();
+            let service = RestaurantProductService::new_with_clock(
+                FakeVerifier,
+                store,
+                catalog.clone(),
+                room,
+                Arc::new(clock.clone()),
+            );
+
+            for (item_id, grant_id, place_id, tile) in [
+                (
+                    11_u32,
+                    "redb-clock-grant-chair",
+                    "redb-clock-place-chair",
+                    TilePoint { x: 2, y: 2 },
+                ),
+                (
+                    12_u32,
+                    "redb-clock-grant-table",
+                    "redb-clock-place-table",
+                    TilePoint { x: 3, y: 2 },
+                ),
+                (
+                    13_u32,
+                    "redb-clock-grant-kitchen",
+                    "redb-clock-place-kitchen",
+                    TilePoint { x: 6, y: 4 },
+                ),
+            ] {
+                service
+                    .apply_player_command(
+                        "valid-product-session",
+                        MutationId::new(grant_id.to_owned()).unwrap(),
+                        Command::GrantInventory {
+                            item_id,
+                            quantity: 1,
+                        },
+                    )
+                    .unwrap();
+                service
+                    .place_item(
+                        "valid-product-session",
+                        MutationId::new(place_id.to_owned()).unwrap(),
+                        PlacementIntent {
+                            item_id,
+                            tile,
+                            rotation: 0,
+                        },
+                    )
+                    .unwrap();
+            }
+
+            service
+                .start_active_service(
+                    "valid-product-session",
+                    MutationId::new("redb-clock-service-start".to_owned()).unwrap(),
+                    ActiveServiceAssignment {
+                        chair_instance_id: 1,
+                        table_instance_id: 2,
+                        chef_employee_id: 101,
+                        kitchen_instance_id: 3,
+                        waiter_employee_id: 201,
+                        waiter_tile: TilePoint { x: 4, y: 4 },
+                    },
+                )
+                .unwrap();
+            service
+                .transition_active_service(
+                    "valid-product-session",
+                    MutationId::new("redb-clock-start-walk".to_owned()).unwrap(),
+                    1,
+                    ServiceLoopEvent::StartChairWalk,
+                )
+                .unwrap();
+            service
+                .transition_active_service(
+                    "valid-product-session",
+                    MutationId::new("redb-clock-reach-chair".to_owned()).unwrap(),
+                    1,
+                    ServiceLoopEvent::ReachChair,
+                )
+                .unwrap();
+
+            let read = service
+                .load_active_service_read("valid-product-session")
+                .unwrap();
+            assert_eq!(read.server_now_ms, 10_000);
+            let active = read.active.unwrap();
+            assert_eq!(
+                active.state.customer,
+                crate::gameplay::CustomerServiceState::Deciding
+            );
+            assert_eq!(active.deadlines.customer_deadline_at_ms, Some(11_000));
+            drop(service.into_store());
+        }
+
+        clock.set(11_000);
+        let revision_after_catch_up;
+        {
+            let store = RedbProductStateStore::open(&path, catalog.clone()).unwrap();
+            let service = RestaurantProductService::new_with_clock(
+                FakeVerifier,
+                store,
+                catalog.clone(),
+                room,
+                Arc::new(clock.clone()),
+            );
+            let read = service
+                .load_active_service_read("valid-product-session")
+                .unwrap();
+            assert_eq!(read.server_now_ms, 11_000);
+            let active = read.active.unwrap();
+            assert_eq!(
+                active.state.customer,
+                crate::gameplay::CustomerServiceState::Waiting
+            );
+            assert_eq!(
+                active.state.order,
+                crate::gameplay::OrderServiceState::Queued
+            );
+            assert_eq!(active.deadlines.customer_deadline_at_ms, Some(21_000));
+
+            let store = service.into_store();
+            revision_after_catch_up = store.load(subject()).unwrap().unwrap().store_revision;
+            drop(store);
+        }
+
+        {
+            let store = RedbProductStateStore::open(&path, catalog).unwrap();
+            let service = RestaurantProductService::new_with_clock(
+                FakeVerifier,
+                store,
+                active_service_catalog(),
+                room,
+                Arc::new(clock),
+            );
+            let read = service
+                .load_active_service_read("valid-product-session")
+                .unwrap();
+            assert_eq!(
+                read.active.unwrap().state.customer,
+                crate::gameplay::CustomerServiceState::Waiting
+            );
+            let store = service.into_store();
+            let reopened_revision = store.load(subject()).unwrap().unwrap().store_revision;
+            assert_eq!(reopened_revision, revision_after_catch_up);
+            drop(store);
         }
 
         let _ = fs::remove_file(path);
