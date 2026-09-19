@@ -1243,6 +1243,179 @@ try {
     );
   }
 
+  // Wallpaper editor proof: browse the only available wallpaper, target a
+  // concrete default-wall segment, persist/reload the orientation slot, select
+  // the rendered authoritative wall layer, then remove/reload it.
+  fixtureState = structuredClone(wallpaperEditorFixtureSeed);
+  await cdp.send('Page.reload', { ignoreCache: true });
+  const wallpaperEditorState = await waitForRuntime(
+    cdp,
+    `(() => {
+      const status = document.querySelector('.rc-status');
+      const selection = document.querySelector('.rc-hud-card');
+      const canvas = document.querySelector('#game-canvas-host canvas');
+      return {
+        phase: status?.dataset.phase ?? null,
+        status: status?.textContent ?? '',
+        selection: selection?.textContent ?? '',
+        canvas: canvas ? (() => {
+          const rect = canvas.getBoundingClientRect();
+          return {
+            width: canvas.width,
+            height: canvas.height,
+            x: rect.x,
+            y: rect.y,
+            cssWidth: rect.width,
+            cssHeight: rect.height,
+          };
+        })() : null,
+      };
+    })()`,
+    (value) =>
+      value?.phase === 'editing' &&
+      value?.status?.includes(
+        'Loaded baseline 0.9.143a, 0 persisted object(s), 0 floor tile(s), and 0 wallpaper slot(s).',
+      ) &&
+      value?.selection?.includes('#3060000') &&
+      value?.canvas?.width === 760 &&
+      value?.canvas?.height === 600,
+    8000,
+    'Green Wallpaper editor selection',
+  );
+
+  const wallpaperTarget = { x: 0, y: 2 };
+  const wallpaperTargetCenter = tileCenterInCanvas(
+    wallpaperTarget.x,
+    wallpaperTarget.y,
+    { sizeX: 1, sizeY: 1 },
+  );
+  await dispatchMouseClick(
+    cdp,
+    wallpaperEditorState.canvas.x + wallpaperTargetCenter.x,
+    wallpaperEditorState.canvas.y + wallpaperTargetCenter.y,
+  );
+
+  const wallpaperAppliedStatus = await waitForRuntime(
+    cdp,
+    `document.querySelector('.rc-status')?.textContent ?? ''`,
+    (value) =>
+      typeof value === 'string' &&
+      value.includes(
+        'Left wallpaper saved and applied to every matching wall segment.',
+      ),
+    8000,
+    'authoritative wallpaper apply reload',
+  );
+
+  if (
+    fixtureState.wallpapers.length !== 1 ||
+    fixtureState.wallpapers[0]?.item_id !== 3060000 ||
+    fixtureState.wallpapers[0]?.rotation !== 0
+  ) {
+    throw new Error(
+      `Browser wallpaper apply did not persist left slot: ${JSON.stringify(fixtureState.wallpapers)}`,
+    );
+  }
+  const wallpaperInventoryAfterApply = fixtureState.inventory[0];
+  if (
+    wallpaperInventoryAfterApply?.owned !== 1 ||
+    wallpaperInventoryAfterApply?.placed !== 1 ||
+    wallpaperInventoryAfterApply?.available !== 0
+  ) {
+    throw new Error(
+      `Browser wallpaper apply did not reconcile inventory: ${JSON.stringify(wallpaperInventoryAfterApply)}`,
+    );
+  }
+
+  const wallpaperRenderedState = await waitForRuntime(
+    cdp,
+    `(() => {
+      const wallpaper =
+        globalThis.__ANEWON_RC_WALLPAPER_DIAGNOSTICS__ ?? [];
+      const target = Array.isArray(wallpaper)
+        ? wallpaper.find(
+            (entry) =>
+              entry?.rotation === 0 &&
+              entry?.tile?.x === 0 &&
+              entry?.tile?.y === 4,
+          )
+        : null;
+      return { target };
+    })()`,
+    (value) =>
+      value?.target?.wallWorld &&
+      Number.isFinite(value.target.wallWorld.x) &&
+      Number.isFinite(value.target.wallWorld.y),
+    5000,
+    'rendered authoritative wallpaper layer',
+  );
+
+  await dispatchMouseClick(
+    cdp,
+    wallpaperEditorState.canvas.x + wallpaperRenderedState.target.wallWorld.x + 40,
+    wallpaperEditorState.canvas.y + wallpaperRenderedState.target.wallWorld.y + 70,
+  );
+
+  const wallpaperSelectedState = await waitForRuntime(
+    cdp,
+    `(() => {
+      const selection = document.querySelector('.rc-hud-card');
+      const buttons = [...document.querySelectorAll('.rc-control-button')];
+      const remove = buttons.find(
+        (button) => button.textContent === 'Remove wallpaper',
+      );
+      return {
+        selection: selection?.textContent ?? '',
+        removeDisabled: remove?.disabled ?? true,
+      };
+    })()`,
+    (value) =>
+      value?.selection?.includes('Editing wallpaper') &&
+      value?.selection?.includes('left wall') &&
+      value?.removeDisabled === false,
+    5000,
+    'authoritative wallpaper slot selection',
+  );
+
+  await cdp.send('Runtime.evaluate', {
+    expression: `(() => {
+      const button = [...document.querySelectorAll('.rc-control-button')]
+        .find((candidate) => candidate.textContent === 'Remove wallpaper');
+      if (!button || button.disabled) {
+        throw new Error('Remove wallpaper button is unavailable');
+      }
+      button.click();
+      return true;
+    })()`,
+    returnByValue: true,
+  });
+
+  const wallpaperRemovedStatus = await waitForRuntime(
+    cdp,
+    `document.querySelector('.rc-status')?.textContent ?? ''`,
+    (value) =>
+      typeof value === 'string' &&
+      value.includes('Left wallpaper removed and inventory reconciled.'),
+    8000,
+    'authoritative wallpaper removal reload',
+  );
+
+  if (fixtureState.wallpapers.length !== 0) {
+    throw new Error(
+      `Browser wallpaper removal left authoritative slots: ${JSON.stringify(fixtureState.wallpapers)}`,
+    );
+  }
+  const wallpaperInventoryAfterRemove = fixtureState.inventory[0];
+  if (
+    wallpaperInventoryAfterRemove?.owned !== 1 ||
+    wallpaperInventoryAfterRemove?.placed !== 0 ||
+    wallpaperInventoryAfterRemove?.available !== 1
+  ) {
+    throw new Error(
+      `Browser wallpaper removal did not reconcile inventory: ${JSON.stringify(wallpaperInventoryAfterRemove)}`,
+    );
+  }
+
   fixtureState = structuredClone(floorFixtureSeed);
   await cdp.send('Page.reload', { ignoreCache: true });
   const floorState = await waitForRuntime(
@@ -2013,6 +2186,15 @@ try {
       targetTile,
       previewRotation,
       finalInventory: inventoryAfterRemove,
+      wallpaper: {
+        initialSelection: wallpaperEditorState.selection,
+        targetTile: wallpaperTarget,
+        appliedStatus: wallpaperAppliedStatus,
+        selected: wallpaperSelectedState.selection,
+        removedStatus: wallpaperRemovedStatus,
+        finalInventory: wallpaperInventoryAfterRemove,
+        passed: true,
+      },
       passed: true,
     },
     screenshot: path.relative(REPO, SCREENSHOT).replaceAll('\\', '/'),
