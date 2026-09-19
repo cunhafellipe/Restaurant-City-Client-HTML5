@@ -771,9 +771,14 @@ try {
   ) {
     throw new Error('Restaurant City M2 visual golden contract is malformed');
   }
-  if (worldQuantizedBlockSha256 !== golden.expectedQuantizedBlockSha256) {
-    throw new Error(
-      `Restaurant City M2 visual golden mismatch expected=${golden.expectedQuantizedBlockSha256} actual=${worldQuantizedBlockSha256} pixel=${worldPixelSha256}`,
+  const worldBlockMatch =
+    worldQuantizedBlockSha256 === golden.expectedQuantizedBlockSha256;
+  if (!worldBlockMatch) {
+    goldenFailures.push(
+      `world expected=${golden.expectedQuantizedBlockSha256} actual=${worldQuantizedBlockSha256}`,
+    );
+    console.log(
+      `WORLD GOLDEN CANDIDATE | fixture=cannon-3020163-rotation-3-at-2-2 | pixel=${worldPixelSha256} | png=${sha256(WORLD_SCREENSHOT)} | block=${worldQuantizedBlockSha256}`,
     );
   }
   const exactPixelMatch = worldPixelSha256 === golden.referencePixelSha256;
@@ -1003,8 +1008,11 @@ try {
       floorGolden.blockSize !== 8 ||
       floorGolden.expectedQuantizedBlockSha256 !== floorQuantizedBlockSha256
     ) {
-      throw new Error(
-        `Restaurant City floor visual golden mismatch expected=${floorGolden.expectedQuantizedBlockSha256} actual=${floorQuantizedBlockSha256} pixel=${floorPixelSha256}`,
+      goldenFailures.push(
+        `floor expected=${floorGolden.expectedQuantizedBlockSha256} actual=${floorQuantizedBlockSha256}`,
+      );
+      console.log(
+        `FLOOR GOLDEN CANDIDATE | fixture=wood-panel-3050000-at-2-3 | pixel=${floorPixelSha256} | png=${sha256(FLOOR_SCREENSHOT)} | block=${floorQuantizedBlockSha256}`,
       );
     }
   } else {
@@ -1024,6 +1032,97 @@ try {
     goldenFrozen: Boolean(floorGolden),
   };
   fs.writeFileSync(FLOOR_META, `${JSON.stringify(floorMetadata, null, 2)}\n`);
+
+  fixtureState = structuredClone(wallFixtureSeed);
+  await cdp.send('Page.reload', { ignoreCache: true });
+  const wallState = await waitForRuntime(
+    cdp,
+    `(() => {
+      const status = document.querySelector('.rc-status');
+      const canvas = document.querySelector('#game-canvas-host canvas');
+      return {
+        phase: status?.dataset.phase ?? null,
+        status: status?.textContent ?? '',
+        canvas: canvas ? (() => {
+          const rect = canvas.getBoundingClientRect();
+          return {
+            width: canvas.width,
+            height: canvas.height,
+            x: rect.x,
+            y: rect.y,
+            cssWidth: rect.width,
+            cssHeight: rect.height,
+          };
+        })() : null,
+      };
+    })()`,
+    (value) =>
+      value?.phase === 'editing' &&
+      value?.status?.includes(
+        'Loaded baseline 0.9.143a, 1 persisted object(s), and 0 authoritative floor tile(s).',
+      ) &&
+      value?.canvas?.width === 760 &&
+      value?.canvas?.height === 600,
+    8000,
+    'Simple Window authoritative wall attachment',
+  );
+  await delay(300);
+
+  const wallShot = await cdp.send('Page.captureScreenshot', {
+    format: 'png',
+    fromSurface: true,
+    captureBeyondViewport: false,
+    clip: {
+      x: wallState.canvas.x,
+      y: wallState.canvas.y,
+      width: wallState.canvas.cssWidth,
+      height: wallState.canvas.cssHeight,
+      scale: 1,
+    },
+  });
+  if (typeof wallShot.data !== 'string' || wallShot.data.length === 0) {
+    throw new Error('CDP did not return Simple Window screenshot bytes');
+  }
+  fs.writeFileSync(WALL_SCREENSHOT, Buffer.from(wallShot.data, 'base64'));
+  const wallPng = PNG.sync.read(fs.readFileSync(WALL_SCREENSHOT));
+  const wallPixelSha256 = bufferSha256(wallPng.data);
+  const wallQuantizedBlockSha256 = quantizedBlockSignature(wallPng, 8);
+  const wallGolden = fs.existsSync(WALL_GOLDEN)
+    ? JSON.parse(fs.readFileSync(WALL_GOLDEN, 'utf8'))
+    : null;
+  if (wallGolden) {
+    if (
+      wallGolden.schemaVersion !== 1 ||
+      wallGolden.fixture !== 'simple-window-3000001-at-2-0' ||
+      wallGolden.canvas?.width !== wallPng.width ||
+      wallGolden.canvas?.height !== wallPng.height ||
+      wallGolden.blockSize !== 8 ||
+      wallGolden.expectedQuantizedBlockSha256 !== wallQuantizedBlockSha256
+    ) {
+      goldenFailures.push(
+        `window expected=${wallGolden.expectedQuantizedBlockSha256} actual=${wallQuantizedBlockSha256}`,
+      );
+      console.log(
+        `WINDOW GOLDEN CANDIDATE | fixture=simple-window-3000001-at-2-0 | pixel=${wallPixelSha256} | png=${sha256(WALL_SCREENSHOT)} | block=${wallQuantizedBlockSha256}`,
+      );
+    }
+  } else {
+    console.log(
+      `WINDOW GOLDEN CANDIDATE | fixture=simple-window-3000001-at-2-0 | pixel=${wallPixelSha256} | png=${sha256(WALL_SCREENSHOT)} | block=${wallQuantizedBlockSha256}`,
+    );
+  }
+  const wallMetadata = {
+    schemaVersion: 1,
+    fixture: 'simple-window-3000001-at-2-0',
+    state: wallState,
+    screenshot: path.relative(REPO, WALL_SCREENSHOT).replaceAll('\\\\', '/'),
+    pngSha256: sha256(WALL_SCREENSHOT),
+    pixelSha256: wallPixelSha256,
+    blockSize: 8,
+    quantizedBlockSha256: wallQuantizedBlockSha256,
+    goldenFrozen: Boolean(wallGolden),
+  };
+  fs.writeFileSync(WALL_META, `${JSON.stringify(wallMetadata, null, 2)}\n`);
 
   fixtureState = structuredClone(stackFixtureSeed);
   await cdp.send('Page.reload', { ignoreCache: true });
@@ -1091,8 +1190,11 @@ try {
       stackGolden.blockSize !== 8 ||
       stackGolden.expectedQuantizedBlockSha256 !== stackQuantizedBlockSha256
     ) {
-      throw new Error(
-        `Restaurant City stack visual golden mismatch expected=${stackGolden.expectedQuantizedBlockSha256} actual=${stackQuantizedBlockSha256} pixel=${stackPixelSha256}`,
+      goldenFailures.push(
+        `stack expected=${stackGolden.expectedQuantizedBlockSha256} actual=${stackQuantizedBlockSha256}`,
+      );
+      console.log(
+        `STACK GOLDEN CANDIDATE | fixture=table-3030000-plus-violin-3020179-at-3-3 | pixel=${stackPixelSha256} | png=${sha256(STACK_SCREENSHOT)} | block=${stackQuantizedBlockSha256}`,
       );
     }
   }
@@ -1120,6 +1222,7 @@ try {
     diagnostics: diagnostics.slice(-20),
     stackVisual: stackMetadata,
     floorVisual: floorMetadata,
+    wallVisual: wallMetadata,
     interaction: {
       selected: selectedState.selection,
       rotated: rotatedState,
@@ -1145,7 +1248,7 @@ try {
       golden: {
         path: path.relative(REPO, GOLDEN).replaceAll('\\', '/'),
         expectedQuantizedBlockSha256: golden.expectedQuantizedBlockSha256,
-        quantizedBlockMatch: true,
+        quantizedBlockMatch: worldBlockMatch,
         referencePixelSha256: golden.referencePixelSha256,
         exactPixelMatch,
       },
@@ -1153,8 +1256,14 @@ try {
   };
   fs.writeFileSync(META, `${JSON.stringify(metadata, null, 2)}\n`);
 
+  if (goldenFailures.length > 0) {
+    throw new Error(
+      `Restaurant City visual golden migration required: ${goldenFailures.join(' | ')}`,
+    );
+  }
+
   console.log(
-    `BROWSER VISUAL GOLDEN + EDIT INTERACTION PASS | browser=${browser} | bytes=${stat.size} | sha256=${metadata.sha256} | worldPixel=${worldPixelSha256} | exactPixelMatch=${exactPixelMatch} | worldBlock=${worldQuantizedBlockSha256} | edit=select-transform-remove | floor=WoodPanel block=${floorQuantizedBlockSha256} frozen=${Boolean(floorGolden)} | stack=Table+Violin curHeight=25 block=${stackQuantizedBlockSha256} frozen=${Boolean(stackGolden)}`,
+    `BROWSER VISUAL GOLDEN + EDIT INTERACTION PASS | browser=${browser} | bytes=${stat.size} | sha256=${metadata.sha256} | worldPixel=${worldPixelSha256} | exactPixelMatch=${exactPixelMatch} | worldBlock=${worldQuantizedBlockSha256} | edit=select-transform-remove | floor=WoodPanel block=${floorQuantizedBlockSha256} frozen=${Boolean(floorGolden)} | window=SimpleWindow block=${wallQuantizedBlockSha256} frozen=${Boolean(wallGolden)} | stack=Table+Violin curHeight=25 block=${stackQuantizedBlockSha256} frozen=${Boolean(stackGolden)}`,
   );
 } finally {
   try {
