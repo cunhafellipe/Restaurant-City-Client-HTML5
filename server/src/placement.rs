@@ -7,6 +7,56 @@ pub const ROOM_INDEX_MAIN: u8 = 0;
 pub const ROOM_INDEX_OUTSIDE_AREA: u8 = 1;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DefaultWallKind {
+    Corner,
+    Segment,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct DefaultWallSegment {
+    pub kind: DefaultWallKind,
+    /// Historical RoomItem rotation index copied by WorldRestaurantEditor
+    /// when a wall decoration is dragged over this wall.
+    pub rotation: u8,
+}
+
+pub fn default_wall_at(tile: TilePoint, room: RoomDimensions) -> Option<DefaultWallSegment> {
+    if tile.x < 0 || tile.y < 0 {
+        return None;
+    }
+    let x = u32::try_from(tile.x).ok()?;
+    let y = u32::try_from(tile.y).ok()?;
+
+    if x == 0 && y == 0 {
+        return Some(DefaultWallSegment {
+            kind: DefaultWallKind::Corner,
+            rotation: 0,
+        });
+    }
+    if y == 0 && x > 0 && x < room.inside_x {
+        return Some(DefaultWallSegment {
+            kind: DefaultWallKind::Segment,
+            rotation: 1,
+        });
+    }
+    if x == 0 && y > 0 && y < room.inside_y {
+        return Some(DefaultWallSegment {
+            kind: DefaultWallKind::Segment,
+            rotation: 0,
+        });
+    }
+    None
+}
+
+pub fn default_wall_attachment_rotation(
+    tile: TilePoint,
+    room: RoomDimensions,
+) -> Option<u8> {
+    let wall = default_wall_at(tile, room)?;
+    (wall.kind == DefaultWallKind::Segment).then_some(wall.rotation)
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct TilePoint {
     pub x: i32,
     pub y: i32,
@@ -219,6 +269,26 @@ mod tests {
             outside_x: 8,
             outside_y: 4,
         }
+    }
+
+    #[test]
+    fn default_walls_match_recovered_add_default_walls() {
+        let room = room();
+        assert_eq!(
+            default_wall_at(TilePoint { x: 0, y: 0 }, room),
+            Some(DefaultWallSegment {
+                kind: DefaultWallKind::Corner,
+                rotation: 0,
+            })
+        );
+        assert_eq!(default_wall_attachment_rotation(TilePoint { x: 1, y: 0 }, room), Some(1));
+        assert_eq!(default_wall_attachment_rotation(TilePoint { x: 9, y: 0 }, room), Some(1));
+        assert_eq!(default_wall_attachment_rotation(TilePoint { x: 0, y: 1 }, room), Some(0));
+        assert_eq!(default_wall_attachment_rotation(TilePoint { x: 0, y: 9 }, room), Some(0));
+        assert_eq!(default_wall_attachment_rotation(TilePoint { x: 0, y: 0 }, room), None);
+        assert_eq!(default_wall_attachment_rotation(TilePoint { x: 2, y: 2 }, room), None);
+        assert_eq!(default_wall_attachment_rotation(TilePoint { x: 10, y: 0 }, room), None);
+        assert_eq!(default_wall_attachment_rotation(TilePoint { x: 0, y: 10 }, room), None);
     }
 
     #[test]
