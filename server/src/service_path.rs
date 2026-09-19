@@ -239,7 +239,6 @@ pub fn path_duration_ms(
     Ok(total_ms)
 }
 
-
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ServicePathKind {
@@ -532,7 +531,10 @@ mod tests {
         assert!(plan.completes_at_ms > plan.started_at_ms);
         assert!(!plan.is_complete_at(plan.completes_at_ms - 1));
         assert!(plan.is_complete_at(plan.completes_at_ms));
-        assert_eq!(plan.remaining_ms(plan.started_at_ms), plan.completes_at_ms - 50_000);
+        assert_eq!(
+            plan.remaining_ms(plan.started_at_ms),
+            plan.completes_at_ms - 50_000
+        );
         validate_customer_path_to_chair_plan(&layout, 11, plan).unwrap();
     }
 
@@ -548,7 +550,6 @@ mod tests {
             Err(ServicePathError::PathPlanMismatch)
         );
     }
-
 
     #[test]
     fn source_grounded_customer_entrance_accepts_only_valid_door_or_outside_lane() {
@@ -577,37 +578,26 @@ mod tests {
         let restaurant = state.snapshot();
         let layout = crate::topology::derive_service_layout(&restaurant, &catalog).unwrap();
 
-        assert!(is_valid_customer_entrance(
-            &restaurant,
-            &catalog,
-            &layout,
-            TilePoint { x: 0, y: 3 }
-        )
-        .unwrap());
-        assert!(is_valid_customer_entrance(
-            &restaurant,
-            &catalog,
-            &layout,
-            TilePoint { x: 0, y: 8 }
-        )
-        .unwrap());
-        assert!(!is_valid_customer_entrance(
-            &restaurant,
-            &catalog,
-            &layout,
-            TilePoint { x: 0, y: 7 }
-        )
-        .unwrap());
+        assert!(
+            is_valid_customer_entrance(&restaurant, &catalog, &layout, TilePoint { x: 0, y: 3 })
+                .unwrap()
+        );
+        assert!(
+            is_valid_customer_entrance(&restaurant, &catalog, &layout, TilePoint { x: 0, y: 8 })
+                .unwrap()
+        );
+        assert!(
+            !is_valid_customer_entrance(&restaurant, &catalog, &layout, TilePoint { x: 0, y: 7 })
+                .unwrap()
+        );
     }
-
 
     #[test]
     fn customer_segment_projection_advances_without_browser_path_authority() {
         let layout = layout();
         let plan =
             plan_customer_path_to_chair(&layout, TilePoint { x: 1, y: 4 }, 11, 50_000).unwrap();
-        let first =
-            project_customer_path_to_chair_segment(&layout, 11, plan, 50_000).unwrap();
+        let first = project_customer_path_to_chair_segment(&layout, 11, plan, 50_000).unwrap();
         assert_eq!(first.step_index, 0);
         assert_eq!(first.from, TilePoint { x: 1, y: 4 });
         assert!(first.segment_completes_at_ms > first.segment_started_at_ms);
@@ -627,15 +617,8 @@ mod tests {
         let plan =
             plan_customer_path_to_chair(&layout, TilePoint { x: 1, y: 4 }, 11, 50_000).unwrap();
         assert_eq!(
-            project_customer_path_to_chair_segment(
-                &layout,
-                11,
-                plan,
-                plan.completes_at_ms
-            ),
+            project_customer_path_to_chair_segment(&layout, 11, plan, plan.completes_at_ms),
             Err(ServicePathError::PathCompletionTimeMismatch)
         );
     }
-
-
 }
