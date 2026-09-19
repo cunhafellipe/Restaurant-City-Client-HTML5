@@ -2,6 +2,7 @@ import contract from '../../contracts/restaurant-city/recovered-room-item-geomet
 
 export interface RecoveredRoomItemFrame {
   readonly rotation: number;
+  readonly visualFrameIndex?: number;
   readonly frame: string;
   readonly canvasOriginPx: {
     readonly x: number;
@@ -9,9 +10,21 @@ export interface RecoveredRoomItemFrame {
   };
 }
 
+export interface RecoveredOccupiedCellRotation {
+  readonly rotation: number;
+  readonly cells: readonly {
+    readonly x: number;
+    readonly y: number;
+  }[];
+}
+
 export interface RecoveredRoomItemGeometry {
   readonly className: string;
   readonly itemIds: readonly number[];
+  readonly runtimeClassName: string | null;
+  readonly rotationCount: number | null;
+  readonly visualFrameCount: number | null;
+  readonly occupiedCellsByRotation: readonly RecoveredOccupiedCellRotation[];
   readonly footprint: {
     readonly sizeX: number;
     readonly sizeY: number;
@@ -23,6 +36,10 @@ export interface RecoveredRoomItemGeometry {
 
 interface ContractEntry {
   readonly itemIds: readonly number[];
+  readonly runtimeClassName?: string;
+  readonly rotationCount?: number;
+  readonly visualFrameCount?: number;
+  readonly occupiedCellsByRotation?: readonly RecoveredOccupiedCellRotation[];
   readonly footprint: {
     readonly sizeX: number;
     readonly sizeY: number;
@@ -59,6 +76,10 @@ export function recoveredRoomItemGeometry(
   return {
     className: matchedClass,
     itemIds: entry.itemIds,
+    runtimeClassName: entry.runtimeClassName ?? null,
+    rotationCount: entry.rotationCount ?? null,
+    visualFrameCount: entry.visualFrameCount ?? null,
+    occupiedCellsByRotation: entry.occupiedCellsByRotation ?? [],
     footprint: entry.footprint,
     itemHeightTwips: entry.itemHeightTwips,
     placementFootprintEnabled: entry.placementFootprintEnabled === true,
@@ -93,4 +114,18 @@ export function recoveredRoomItemFrameOffset(
   rotation: number,
 ): RecoveredRoomItemFrame['canvasOriginPx'] | null {
   return recoveredRoomItemFrame(itemId, className, rotation)?.canvasOriginPx ?? null;
+}
+
+export function recoveredRoomItemRuntimeClassName(
+  itemId: number,
+  className: string | null,
+): string | null {
+  return recoveredRoomItemGeometry(itemId, className)?.runtimeClassName ?? null;
+}
+
+export function recoveredRoomItemLogicalRotationCount(
+  itemId: number,
+  className: string | null,
+): number | null {
+  return recoveredRoomItemGeometry(itemId, className)?.rotationCount ?? null;
 }
