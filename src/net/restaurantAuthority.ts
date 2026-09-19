@@ -117,6 +117,21 @@ export type AuthoritativeOrderServiceState =
   | 'empty-plate'
   | 'settled';
 
+export interface AuthoritativeServicePath {
+  readonly kind: 'customer-to-chair';
+  readonly fromTileX: number;
+  readonly fromTileY: number;
+  readonly toTileX: number;
+  readonly toTileY: number;
+  readonly stepIndex: number;
+  readonly stepCount: number;
+  readonly segmentStartedAtMs: number;
+  readonly segmentCompletesAtMs: number;
+  readonly pathStartedAtMs: number;
+  readonly pathCompletesAtMs: number;
+  readonly pathRemainingMs: number;
+}
+
 export interface RestaurantActiveService {
   readonly serviceId: number;
   readonly restaurantMutationSequence: number;
@@ -138,6 +153,7 @@ export interface RestaurantActiveService {
   readonly orderDeadlineAtMs: number | null;
   readonly customerRemainingMs: number | null;
   readonly orderRemainingMs: number | null;
+  readonly path: AuthoritativeServicePath | null;
 }
 
 export interface RestaurantAuthoritativeSnapshot {
@@ -848,6 +864,11 @@ function parseActiveServiceEnvelope(value: unknown): RestaurantActiveService | n
       value.active.order_remaining_ms,
       'active_service.order_remaining_ms',
     ),
+    path: parseActiveServicePath(
+      value.active.path,
+      serverNowMs,
+      customerState as AuthoritativeCustomerServiceState,
+    ),
   };
 
   const expectedCustomerRemaining =
@@ -869,6 +890,69 @@ function parseActiveServiceEnvelope(value: unknown): RestaurantActiveService | n
   }
 
   return active;
+}
+
+function parseActiveServicePath(
+  value: unknown,
+  serverNowMs: number,
+  customerState: AuthoritativeCustomerServiceState,
+): AuthoritativeServicePath | null {
+  if (value === null) {
+    if (customerState === 'walking-to-chair') {
+      throw new Error('Malformed authoritative active service path');
+    }
+    return null;
+  }
+  if (!isObject(value) || value.kind !== 'customer-to-chair') {
+    throw new Error('Malformed authoritative active service path');
+  }
+  if (customerState !== 'walking-to-chair') {
+    throw new Error('Malformed authoritative active service path state');
+  }
+
+  const path: AuthoritativeServicePath = {
+    kind: 'customer-to-chair',
+    fromTileX: requireSafeInt(value.from_tile_x, 'active_service.path.from_tile_x'),
+    fromTileY: requireSafeInt(value.from_tile_y, 'active_service.path.from_tile_y'),
+    toTileX: requireSafeInt(value.to_tile_x, 'active_service.path.to_tile_x'),
+    toTileY: requireSafeInt(value.to_tile_y, 'active_service.path.to_tile_y'),
+    stepIndex: requireSafeUInt(value.step_index, 'active_service.path.step_index'),
+    stepCount: requireSafeUInt(value.step_count, 'active_service.path.step_count'),
+    segmentStartedAtMs: requireSafeUInt(
+      value.segment_started_at_ms,
+      'active_service.path.segment_started_at_ms',
+    ),
+    segmentCompletesAtMs: requireSafeUInt(
+      value.segment_completes_at_ms,
+      'active_service.path.segment_completes_at_ms',
+    ),
+    pathStartedAtMs: requireSafeUInt(
+      value.path_started_at_ms,
+      'active_service.path.path_started_at_ms',
+    ),
+    pathCompletesAtMs: requireSafeUInt(
+      value.path_completes_at_ms,
+      'active_service.path.path_completes_at_ms',
+    ),
+    pathRemainingMs: requireSafeUInt(
+      value.path_remaining_ms,
+      'active_service.path.path_remaining_ms',
+    ),
+  };
+
+  if (
+    path.stepCount === 0 ||
+    path.stepIndex >= path.stepCount ||
+    path.pathStartedAtMs > path.segmentStartedAtMs ||
+    path.segmentStartedAtMs > serverNowMs ||
+    serverNowMs >= path.segmentCompletesAtMs ||
+    path.segmentCompletesAtMs > path.pathCompletesAtMs ||
+    path.pathRemainingMs !== path.pathCompletesAtMs - serverNowMs
+  ) {
+    throw new Error('Malformed authoritative active service path timing');
+  }
+
+  return path;
 }
 
 function parseServiceTopology(value: unknown): RestaurantServiceTopology {
