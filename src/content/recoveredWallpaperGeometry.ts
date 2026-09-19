@@ -65,3 +65,17 @@ export function recoveredWallpaperFrameOffset(
 export function recoveredWallpaperItemIds(): readonly number[] {
   return items.map((item) => item.itemId);
 }
+
+export function wallpaperServerCatalogEnabled(): boolean {
+  return contract.serverCatalogEnabled === true;
+}
+
+export function recoveredEnabledWallpaperFootprint(
+  itemId: number,
+  className: string | null,
+): { readonly sizeX: 1; readonly sizeY: 1 } | null {
+  return wallpaperServerCatalogEnabled() &&
+    recoveredWallpaperGeometry(itemId, className) !== null
+    ? { sizeX: 1, sizeY: 1 }
+    : null;
+}
