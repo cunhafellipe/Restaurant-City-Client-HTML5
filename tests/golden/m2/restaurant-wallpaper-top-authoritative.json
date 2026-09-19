@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "fixture": "green-wallpaper-3060000-authoritative-top",
+  "baseline": "0.9.143a",
+  "canvas": {
+    "width": 760,
+    "height": 600
+  },
+  "blockSize": 8,
+  "expectedQuantizedBlockSha256": "b28c10ab42522c31d9f00cb94a59ef226b9b194dca4700d676c519714d234a14",
+  "referencePixelSha256": "eeadf11d4c36e522ae370aa6636946bb108ec2674f571c8a98a10920c0a3a865",
+  "referencePngSha256": "b5ad092e8438e728bef5d98ae3b21b15faecbe083f1a17fc3a11b328f22d9997",
+  "provenance": {
+    "productSha": "9c65e1cea5e0c3e82a4af329565bdde29f030c7d",
+    "verificationRunId": 35423314122,
+    "itemId": 3060000,
+    "className": "Wall1",
+    "rotation": 1,
+    "segments": 7,
+    "frame": "indoor_asset/wall1/002",
+    "wallFrame": "indoor_asset/wall2/002",
+    "wallpaperLocal": {
+      "x": 0,
+      "y": 4
+    }
+  }
+}
