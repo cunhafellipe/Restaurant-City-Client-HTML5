@@ -77,6 +77,7 @@ export class RestaurantEditorScene extends Phaser.Scene {
   private committedSprites: Phaser.GameObjects.Sprite[] = [];
   private floorSprites: Phaser.GameObjects.Sprite[] = [];
   private wallSprites: Phaser.GameObjects.Sprite[] = [];
+  private visualProbeControl: Phaser.GameObjects.Image | null = null;
   private previewSprite: Phaser.GameObjects.Sprite | null = null;
   private visualIndex: RestaurantItemVisualIndex | null = null;
   private authority!: RestaurantAuthority;
@@ -978,6 +979,25 @@ export class RestaurantEditorScene extends Phaser.Scene {
         1,
       ),
     );
+
+    if (
+      typeof window !== 'undefined' &&
+      new URLSearchParams(window.location.search).has('visualProbe')
+    ) {
+      this.visualProbeControl?.destroy();
+      this.visualProbeControl = this.add
+        .image(
+          650,
+          390,
+          'indoor_asset',
+          frameForRestaurantItemRotation(wallVisual, 1),
+        )
+        .setOrigin(0, 0)
+        .setDepth(1_000_000)
+        .setAlpha(1)
+        .setVisible(true);
+    }
+
     this.publishVisualProbeDiagnostics();
   }
 
@@ -989,7 +1009,9 @@ export class RestaurantEditorScene extends Phaser.Scene {
       return;
     }
 
-    const describe = (sprite: Phaser.GameObjects.Sprite) => {
+    const describe = (
+      sprite: Phaser.GameObjects.Sprite | Phaser.GameObjects.Image,
+    ) => {
       const bounds = sprite.getBounds();
       const frame = sprite.frame as Phaser.Textures.Frame & {
         glTexture?: unknown;
@@ -1026,6 +1048,15 @@ export class RestaurantEditorScene extends Phaser.Scene {
         cameraFilter: sprite.cameraFilter,
         willRender: sprite.willRender(this.cameras.main),
         blendMode: sprite.blendMode,
+        pipeline: sprite.pipeline?.name ?? null,
+        tintTopLeft: sprite.tintTopLeft,
+        tintTopRight: sprite.tintTopRight,
+        tintBottomLeft: sprite.tintBottomLeft,
+        tintBottomRight: sprite.tintBottomRight,
+        alphaTopLeft: sprite.alphaTopLeft,
+        alphaTopRight: sprite.alphaTopRight,
+        alphaBottomLeft: sprite.alphaBottomLeft,
+        alphaBottomRight: sprite.alphaBottomRight,
         width: sprite.displayWidth,
         height: sprite.displayHeight,
         bounds: {
@@ -1044,6 +1075,9 @@ export class RestaurantEditorScene extends Phaser.Scene {
       walls: this.wallSprites.map(describe),
       committed: this.committedSprites.map(describe),
       floor: this.floorSprites.map(describe),
+      control: this.visualProbeControl
+        ? describe(this.visualProbeControl)
+        : null,
     };
   }
 
