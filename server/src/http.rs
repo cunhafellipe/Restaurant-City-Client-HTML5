@@ -834,9 +834,11 @@ fn map_service_error(error: ProductServiceError) -> PublicProductError {
         | ProductServiceError::ActiveServiceNotFound
         | ProductServiceError::ActiveServiceIdMismatch
         | ProductServiceError::ActiveServiceNotComplete
+        | ProductServiceError::ServiceTimingAlreadyAnchored
         | ProductServiceError::MutationIdConflict
         | ProductServiceError::WallpaperNotApplied { .. } => PublicProductError::Conflict,
-        ProductServiceError::MealSettlementNotConnected
+        ProductServiceError::ServiceTimingAuthority(_)
+        | ProductServiceError::MealSettlementNotConnected
         | ProductServiceError::RestaurantMutationSequenceExhausted
         | ProductServiceError::FloorMutationSequenceExhausted
         | ProductServiceError::WallpaperMutationSequenceExhausted
