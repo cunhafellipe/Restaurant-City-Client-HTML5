@@ -21,7 +21,8 @@ use crate::service_clock::{
     due_service_event, validate_service_deadlines,
 };
 use crate::service_path::{
-    ServicePathError, ServicePathKind, ServicePathPlan, plan_customer_path_to_chair,
+    ServicePathError, ServicePathKind, ServicePathPlan, ServicePathSegmentProjection,
+    plan_customer_path_to_chair, project_customer_path_to_chair_segment,
     validate_customer_path_to_chair_plan,
 };
 use crate::topology::{ServiceLayoutSnapshot, derive_service_layout};
@@ -215,6 +216,7 @@ pub struct RestaurantProductSnapshot {
 pub struct ActiveServiceReadSnapshot {
     pub server_now_ms: u64,
     pub active: Option<ActiveServiceRecord>,
+    pub path_segment: Option<ServicePathSegmentProjection>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -2678,6 +2680,30 @@ impl ProductAggregate {
             .map_err(|_| ProductServiceError::Store(ProductStateStoreError::Corrupt))
     }
 
+    fn active_service_path_segment(
+        &self,
+        catalog: &PlacementCatalog,
+        active: ActiveServiceRecord,
+        server_now_ms: u64,
+    ) -> Result<Option<ServicePathSegmentProjection>, ProductServiceError> {
+        let Some(plan) = active.active_path else {
+            return Ok(None);
+        };
+        let layout = derive_service_layout(&self.restaurant.snapshot(), catalog).map_err(|_| {
+            ProductServiceError::ServicePathAuthority(ServicePathError::PathUnavailable)
+        })?;
+        match plan.kind {
+            ServicePathKind::CustomerToChair => project_customer_path_to_chair_segment(
+                &layout,
+                active.identity.chair_instance_id,
+                plan,
+                server_now_ms,
+            )
+            .map(Some)
+            .map_err(ProductServiceError::ServicePathAuthority),
+        }
+    }
+
     pub fn restaurant_product_snapshot(
         &self,
         session: VerifiedProductSession,
@@ -3366,6 +3392,7 @@ where
                 return Ok(ActiveServiceReadSnapshot {
                     server_now_ms: now_ms,
                     active: None,
+                    path_segment: None,
                 });
             };
             let expected_revision = Some(loaded.store_revision);
@@ -3376,6 +3403,7 @@ where
                 return Ok(ActiveServiceReadSnapshot {
                     server_now_ms: now_ms,
                     active: None,
+                    path_segment: None,
                 });
             };
             let mut changed = false;
@@ -3466,9 +3494,12 @@ where
             }
 
             if !changed {
+                let path_segment =
+                    state.active_service_path_segment(&self.catalog, active, now_ms)?;
                 return Ok(ActiveServiceReadSnapshot {
                     server_now_ms: now_ms,
                     active: Some(active),
+                    path_segment,
                 });
             }
 
@@ -3477,9 +3508,12 @@ where
                 .compare_and_swap(session.subject, expected_revision, state)
             {
                 Ok(_) => {
+                    let path_segment =
+                        state.active_service_path_segment(&self.catalog, active, now_ms)?;
                     return Ok(ActiveServiceReadSnapshot {
                         server_now_ms: now_ms,
                         active: Some(active),
+                        path_segment,
                     });
                 }
                 Err(ProductStateStoreError::Conflict) => continue,
