@@ -114,6 +114,92 @@ describe('HttpRestaurantAuthority', () => {
     expect(new Headers(init?.headers).has('Authorization')).toBe(false);
   });
 
+  it('loads read-only service topology and retries a stale source snapshot', async () => {
+    const room = {
+      inside_x: 8,
+      inside_y: 8,
+      outside_x: 0,
+      outside_y: 0,
+    };
+    const placed = {
+      instance_id: 1,
+      item_id: 3070008,
+      tile_x: 4,
+      tile_y: 4,
+      rotation: 2,
+      room_index: 0,
+    };
+    const layout = {
+      room,
+      next_instance_id: 2,
+      items: [placed],
+      floor_tiles: [],
+      wallpapers: [],
+      inventory: [
+        {
+          item_id: 3070008,
+          owned: 1,
+          placed: 1,
+          available: 0,
+        },
+      ],
+    };
+    const topology = {
+      source: { room, items: [placed] },
+      cells: [
+        {
+          tile_x: 4,
+          tile_y: 4,
+          wall: false,
+          item_count: 1,
+          has_door: false,
+          walkable: false,
+        },
+        {
+          tile_x: 3,
+          tile_y: 4,
+          wall: false,
+          item_count: 1,
+          has_door: false,
+          walkable: false,
+        },
+      ],
+      chairs: [],
+      tables: [],
+      kitchens: [{ instance_id: 1, tile_x: 4, tile_y: 4 }],
+      drinks: [],
+    };
+    const staleTopology = {
+      ...topology,
+      source: {
+        room,
+        items: [{ ...placed, tile_x: 5 }],
+      },
+    };
+
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(okJson(layout))
+      .mockResolvedValueOnce(okJson(staleTopology))
+      .mockResolvedValueOnce(okJson(layout))
+      .mockResolvedValueOnce(okJson(topology));
+
+    const authority = new HttpRestaurantAuthority('/api/v1', fetcher);
+    const snapshot = await authority.loadRestaurantSnapshot();
+
+    expect(snapshot.layout.items[0]?.tileX).toBe(4);
+    expect(snapshot.topology.kitchens[0]).toEqual({
+      instanceId: 1,
+      tileX: 4,
+      tileY: 4,
+    });
+    expect(snapshot.topology.cells).toHaveLength(2);
+    expect(fetcher).toHaveBeenCalledTimes(4);
+    expect(fetcher.mock.calls[1]?.[0]).toBe('/api/v1/restaurant/topology');
+    expect(fetcher.mock.calls[1]?.[1]?.credentials).toBe('same-origin');
+    expect(new Headers(fetcher.mock.calls[1]?.[1]?.headers).has('Authorization')).toBe(false);
+  });
+
   it('loads floor cells and counts them in the authoritative inventory invariant', async () => {
     const authority = new HttpRestaurantAuthority(
       '/api/v1',
@@ -454,6 +540,45 @@ describe('HttpRestaurantAuthority', () => {
 
     expect(commit.item.rotation).toBe(15);
     expect(JSON.parse(String(fetcher.mock.calls[0]?.[1]?.body)).rotation).toBe(15);
+  });
+
+  it('fails closed on malformed topology cells', async () => {
+    const authority = new HttpRestaurantAuthority(
+      '/api/v1',
+      async () =>
+        okJson({
+          source: {
+            room: { inside_x: 8, inside_y: 8, outside_x: 0, outside_y: 0 },
+            items: [],
+          },
+          cells: [
+            {
+              tile_x: 1,
+              tile_y: 1,
+              wall: false,
+              item_count: 0,
+              has_door: false,
+              walkable: true,
+            },
+            {
+              tile_x: 1,
+              tile_y: 1,
+              wall: false,
+              item_count: 0,
+              has_door: false,
+              walkable: true,
+            },
+          ],
+          chairs: [],
+          tables: [],
+          kitchens: [],
+          drinks: [],
+        }),
+    );
+
+    await expect(authority.loadServiceTopology()).rejects.toThrow(
+      'duplicate service topology cell',
+    );
   });
 
   it('fails closed on malformed success payloads and bounded public errors', async () => {
