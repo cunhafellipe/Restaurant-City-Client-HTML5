@@ -32,10 +32,10 @@ pub use platform::{
     VerifiedProductSession,
 };
 pub use topology::{
-    HistoricalPath, ServiceChair, ServiceChef, ServiceKitchen, ServiceTable, ServiceTopologyGrid,
-    ServiceTopologySnapshot, ServiceWaiter, TopologyCell, TopologyError,
-    calculate_food_service_topology, facing_tile, historical_path, is_table_free,
-    path_to_customer_chair, table_for_chair,
+    HistoricalPath, ServiceChair, ServiceChef, ServiceDrink, ServiceKitchen, ServiceLayoutSnapshot,
+    ServiceTable, ServiceTopologyGrid, ServiceTopologySnapshot, ServiceWaiter, TopologyBuildError,
+    TopologyCell, TopologyError, calculate_food_service_topology, derive_service_layout,
+    facing_tile, historical_path, is_table_free, path_to_customer_chair, table_for_chair,
 };
 
 pub use placement::{
