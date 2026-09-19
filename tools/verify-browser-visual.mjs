@@ -888,6 +888,18 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (
+    requestUrl.pathname === '/api/v1/restaurant/service' &&
+    req.method === 'GET'
+  ) {
+    res.writeHead(200, {
+      'Content-Type': 'application/json; charset=utf-8',
+      'Cache-Control': 'no-store',
+    });
+    res.end(JSON.stringify({ active: null }));
+    return;
+  }
+
+  if (
     requestUrl.pathname === '/api/v1/restaurant/placements' &&
     req.method === 'POST'
   ) {
