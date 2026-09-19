@@ -3101,6 +3101,30 @@ mod tests {
     use crate::placement::{Footprint, PlacementFlags, TilePoint};
     use crate::platform::{PRODUCT_ID, ProductSessionId};
     use crate::restaurant::ItemPlacementDefinition;
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    #[derive(Clone)]
+    struct FakeServiceClock {
+        now_ms: Arc<AtomicU64>,
+    }
+
+    impl FakeServiceClock {
+        fn new(now_ms: u64) -> Self {
+            Self {
+                now_ms: Arc::new(AtomicU64::new(now_ms)),
+            }
+        }
+
+        fn set(&self, now_ms: u64) {
+            self.now_ms.store(now_ms, Ordering::SeqCst);
+        }
+    }
+
+    impl ServiceTimeSource for FakeServiceClock {
+        fn now_ms(&self) -> Result<u64, ServiceTimingError> {
+            Ok(self.now_ms.load(Ordering::SeqCst))
+        }
+    }
 
     #[derive(Clone, Copy)]
     struct FakeVerifier {
@@ -3513,6 +3537,186 @@ mod tests {
         assert_eq!(reopened, aggregate);
         assert_eq!(reopened.active_service(), Some(final_record));
         assert_eq!(reopened.next_service_id, 2);
+    }
+
+    #[test]
+    fn server_clock_catches_up_due_timer_once_and_persists_it() {
+        let verifier = FakeVerifier {
+            subject: subject(7),
+            session_id: ProductSessionId::from_verified_platform_bytes([9; 16]).unwrap(),
+        };
+        let clock = FakeServiceClock::new(10_000);
+        let store = InMemoryProductStateStore::default();
+        let service = RestaurantProductService::new_with_clock(
+            verifier,
+            store,
+            active_service_catalog(),
+            room(),
+            Arc::new(clock.clone()),
+        );
+
+        for (item_id, grant_id, place_id, tile) in [
+            (11_u32, "clock-grant-chair", "clock-place-chair", TilePoint { x: 2, y: 2 }),
+            (12_u32, "clock-grant-table", "clock-place-table", TilePoint { x: 3, y: 2 }),
+            (13_u32, "clock-grant-kitchen", "clock-place-kitchen", TilePoint { x: 6, y: 4 }),
+        ] {
+            service
+                .apply_player_command(
+                    "valid-product-session",
+                    mutation(grant_id),
+                    Command::GrantInventory {
+                        item_id,
+                        quantity: 1,
+                    },
+                )
+                .unwrap();
+            service
+                .place_item(
+                    "valid-product-session",
+                    mutation(place_id),
+                    PlacementIntent {
+                        item_id,
+                        tile,
+                        rotation: 0,
+                    },
+                )
+                .unwrap();
+        }
+
+        let started = service
+            .start_active_service(
+                "valid-product-session",
+                mutation("clock-service-start"),
+                active_service_assignment(),
+            )
+            .unwrap()
+            .record()
+            .unwrap();
+        assert!(started.timing_anchored);
+        assert_eq!(started.deadlines, ServiceDeadlines::default());
+
+        service
+            .transition_active_service(
+                "valid-product-session",
+                mutation("clock-start-walk"),
+                1,
+                ServiceLoopEvent::StartChairWalk,
+            )
+            .unwrap();
+        service
+            .transition_active_service(
+                "valid-product-session",
+                mutation("clock-reach-chair"),
+                1,
+                ServiceLoopEvent::ReachChair,
+            )
+            .unwrap();
+
+        let deciding = service.load_active_service("valid-product-session").unwrap().unwrap();
+        assert_eq!(deciding.state.customer, CustomerServiceState::Deciding);
+        assert_eq!(deciding.deadlines.customer_deadline_at_ms, Some(11_000));
+
+        clock.set(11_000);
+        let waiting = service.load_active_service("valid-product-session").unwrap().unwrap();
+        assert_eq!(waiting.state.customer, CustomerServiceState::Waiting);
+        assert_eq!(waiting.state.order, OrderServiceState::Queued);
+        assert_eq!(waiting.deadlines.customer_deadline_at_ms, Some(21_000));
+
+        let subject = subject(7);
+        let first = service.store.load(subject).unwrap().unwrap();
+        let first_sequence = first.state.next_service_mutation_sequence;
+        assert_eq!(
+            service.load_active_service("valid-product-session").unwrap(),
+            Some(waiting)
+        );
+        let second = service.store.load(subject).unwrap().unwrap();
+        assert_eq!(second.state.next_service_mutation_sequence, first_sequence);
+
+        let encoded = second.state.encode_persisted().unwrap();
+        let reopened =
+            ProductAggregate::decode_persisted(&active_service_catalog(), &encoded).unwrap();
+        assert_eq!(reopened.active_service(), Some(waiting));
+    }
+
+    #[test]
+    fn v5_active_service_migrates_unanchored_then_gets_explicit_server_anchor() {
+        let session = VerifiedProductSession {
+            subject: subject(7),
+            session_id: ProductSessionId::from_verified_platform_bytes([9; 16]).unwrap(),
+        };
+        let catalog = active_service_catalog();
+        let mut aggregate = aggregate_with_service_layout(session, &catalog);
+        aggregate
+            .start_active_service(
+                session,
+                &catalog,
+                mutation("legacy-v5-start"),
+                active_service_assignment(),
+            )
+            .unwrap();
+        aggregate
+            .transition_active_service(
+                session,
+                mutation("legacy-v5-walk"),
+                1,
+                ServiceLoopEvent::StartChairWalk,
+            )
+            .unwrap();
+        aggregate
+            .transition_active_service(
+                session,
+                mutation("legacy-v5-chair"),
+                1,
+                ServiceLoopEvent::ReachChair,
+            )
+            .unwrap();
+
+        let encoded = aggregate.encode_persisted().unwrap();
+        let mut value: serde_json::Value = serde_json::from_slice(&encoded).unwrap();
+        value["schema_version"] = serde_json::json!(5);
+        if let Some(active) = value["active_service"].as_object_mut() {
+            active.remove("timing_anchored");
+            active.remove("customer_deadline_at_ms");
+            active.remove("order_deadline_at_ms");
+        }
+        for mutation in value["service_mutations"].as_array_mut().unwrap() {
+            if let Some(operation) = mutation["operation"].as_object_mut() {
+                for payload in operation.values_mut() {
+                    if let Some(payload) = payload.as_object_mut() {
+                        payload.remove("effective_at_ms");
+                    }
+                }
+            }
+            if let Some(result) = mutation["result"].as_object_mut() {
+                result.remove("timing_anchored");
+                result.remove("customer_deadline_at_ms");
+                result.remove("order_deadline_at_ms");
+            }
+        }
+
+        let legacy_v5 = serde_json::to_vec(&value).unwrap();
+        let mut restored = ProductAggregate::decode_persisted(&catalog, &legacy_v5).unwrap();
+        let legacy = restored.active_service().unwrap();
+        assert!(!legacy.timing_anchored);
+        assert_eq!(legacy.deadlines, ServiceDeadlines::default());
+        assert_eq!(legacy.state.customer, CustomerServiceState::Deciding);
+
+        let anchored = restored
+            .anchor_active_service_timing(
+                session,
+                mutation("v6-explicit-anchor"),
+                1,
+                50_000,
+            )
+            .unwrap()
+            .record()
+            .unwrap();
+        assert!(anchored.timing_anchored);
+        assert_eq!(anchored.deadlines.customer_deadline_at_ms, Some(51_000));
+
+        let encoded_v6 = restored.encode_persisted().unwrap();
+        let reopened = ProductAggregate::decode_persisted(&catalog, &encoded_v6).unwrap();
+        assert_eq!(reopened.active_service(), Some(anchored));
     }
 
     #[test]
