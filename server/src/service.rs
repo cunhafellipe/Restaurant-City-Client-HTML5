@@ -1702,6 +1702,70 @@ where
         Err(ProductServiceError::StoreConflict)
     }
 
+    pub fn apply_wallpaper(
+        &self,
+        session_token: &str,
+        mutation_id: MutationId,
+        intent: WallpaperIntent,
+    ) -> Result<WallpaperMutationOutcome, ProductServiceError> {
+        let session = self.verify(session_token)?;
+
+        for _ in 0..MAX_STORE_RETRIES {
+            let (expected_revision, mut state) = self.load_or_initialize(session.subject)?;
+            let outcome = state.apply_owned_wallpaper(
+                session,
+                &self.catalog,
+                mutation_id.clone(),
+                intent,
+            )?;
+
+            if matches!(outcome, WallpaperMutationOutcome::Duplicate(_)) {
+                return Ok(outcome);
+            }
+
+            match self
+                .store
+                .compare_and_swap(session.subject, expected_revision, state)
+            {
+                Ok(_) => return Ok(outcome),
+                Err(ProductStateStoreError::Conflict) => continue,
+                Err(error) => return Err(ProductServiceError::Store(error)),
+            }
+        }
+
+        Err(ProductServiceError::StoreConflict)
+    }
+
+    pub fn remove_wallpaper(
+        &self,
+        session_token: &str,
+        mutation_id: MutationId,
+        orientation: WallpaperOrientation,
+    ) -> Result<WallpaperMutationOutcome, ProductServiceError> {
+        let session = self.verify(session_token)?;
+
+        for _ in 0..MAX_STORE_RETRIES {
+            let (expected_revision, mut state) = self.load_or_initialize(session.subject)?;
+            let outcome =
+                state.remove_owned_wallpaper(session, mutation_id.clone(), orientation)?;
+
+            if matches!(outcome, WallpaperMutationOutcome::Duplicate(_)) {
+                return Ok(outcome);
+            }
+
+            match self
+                .store
+                .compare_and_swap(session.subject, expected_revision, state)
+            {
+                Ok(_) => return Ok(outcome),
+                Err(ProductStateStoreError::Conflict) => continue,
+                Err(error) => return Err(ProductServiceError::Store(error)),
+            }
+        }
+
+        Err(ProductServiceError::StoreConflict)
+    }
+
     pub fn transform_item(
         &self,
         session_token: &str,
