@@ -27,7 +27,7 @@ describe('recovered RoomItem geometry lookup', () => {
     expect(recoveredPlacementFootprint(3020179, 'ViolinCase')).toBeNull();
   });
 
-  it('pins all five canonical wallDivider families while keeping placement fail-closed', () => {
+  it('promotes all five canonical wallDivider families only after frozen physical validation', () => {
     const expected = [
       [3020049, 'WhiteWall', 2, 2328],
       [3020050, 'WhiteWallCorner', 4, 2334],
@@ -42,8 +42,11 @@ describe('recovered RoomItem geometry lookup', () => {
       expect(geometry?.footprint).toEqual({ sizeX: 1, sizeY: 1 });
       expect(geometry?.itemHeightTwips).toBe(itemHeightTwips);
       expect(geometry?.frames).toHaveLength(rotations);
-      expect(geometry?.placementFootprintEnabled).toBe(false);
-      expect(recoveredPlacementFootprint(itemId, className)).toBeNull();
+      expect(geometry?.placementFootprintEnabled).toBe(true);
+      expect(recoveredPlacementFootprint(itemId, className)).toEqual({
+        sizeX: 1,
+        sizeY: 1,
+      });
       for (let rotation = 0; rotation < rotations; rotation += 1) {
         expect(recoveredRoomItemFrame(itemId, className, rotation)?.rotation).toBe(
           rotation,
