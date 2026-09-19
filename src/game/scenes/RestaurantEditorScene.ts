@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import {
+  defaultWallAttachmentRotation,
   projectTile,
   rotateFootprint,
   screenToTileIndex,
@@ -30,6 +31,7 @@ import {
 } from '../../content/recoveredWallFloorGeometry';
 import {
   recoveredWallpaperFrame,
+  recoveredWallpaperFrameOffset,
   recoveredWallpaperGeometry,
 } from '../../content/recoveredWallpaperGeometry';
 import {
@@ -40,6 +42,7 @@ import {
   createPlacementMutationId,
   createRemoveMutationId,
   createTransformMutationId,
+  createWallpaperMutationId,
   RestaurantAuthorityError,
   type AuthoritativeFloorTile,
   type AuthoritativeInventoryAvailability,
@@ -76,7 +79,11 @@ type EditorPlacementValidation =
   | ReturnType<typeof validateStructuralPlacement>
   | {
       readonly ok: false;
-      readonly reason: 'occupied' | 'unavailable' | 'authority-desynced';
+      readonly reason:
+        | 'occupied'
+        | 'unavailable'
+        | 'authority-desynced'
+        | 'wall-required';
     };
 
 export class RestaurantEditorScene extends Phaser.Scene {
@@ -102,6 +109,7 @@ export class RestaurantEditorScene extends Phaser.Scene {
   private doorProbeWall: Phaser.GameObjects.RenderTexture | null = null;
   private doorProbeDoor: Phaser.GameObjects.Sprite | null = null;
   private previewSprite: Phaser.GameObjects.Sprite | null = null;
+  private wallpaperPreviewSprites: Phaser.GameObjects.Sprite[] = [];
   private visualIndex: RestaurantItemVisualIndex | null = null;
   private authority!: RestaurantAuthority;
   private unsubscribeCommands: (() => void) | null = null;
@@ -124,6 +132,7 @@ export class RestaurantEditorScene extends Phaser.Scene {
   private authoritySynchronized = false;
   private placementInFlight = false;
   private selectedPlacedInstanceId: number | null = null;
+  private selectedWallpaperRotation: 0 | 1 | null = null;
 
   constructor() {
     super('RestaurantEditor');
