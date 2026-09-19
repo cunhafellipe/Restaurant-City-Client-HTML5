@@ -17,6 +17,10 @@ use crate::service::{
     ProductStateStore, RestaurantProductService, RestaurantProductSnapshot,
     WallpaperMutationOutcome,
 };
+use crate::topology::{
+    MAX_NUM_TILES_X, MAX_NUM_TILES_Y, ServiceLayoutSnapshot, facing_tile, is_meal_seat,
+    is_table_free, table_for_chair,
+};
 use serde::{Deserialize, Serialize};
 
 const MAX_BODY_BYTES: usize = 4 * 1024;
@@ -154,6 +158,69 @@ pub struct RestaurantLayoutResponse {
 }
 
 #[derive(Clone, Debug, Serialize, Eq, PartialEq)]
+pub struct ServiceTopologySourceResponse {
+    pub room: RoomResponse,
+    pub items: Vec<PlacedItemResponse>,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Eq, PartialEq)]
+pub struct ServiceTopologyCellResponse {
+    pub tile_x: i32,
+    pub tile_y: i32,
+    pub wall: bool,
+    pub item_count: u8,
+    pub has_door: bool,
+    pub walkable: bool,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Eq, PartialEq)]
+pub struct ServiceChairResponse {
+    pub instance_id: u64,
+    pub tile_x: i32,
+    pub tile_y: i32,
+    pub rotation: u8,
+    pub toilet: bool,
+    pub meal_seat: bool,
+    pub facing_tile_x: i32,
+    pub facing_tile_y: i32,
+    pub table_instance_id: Option<u64>,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Eq, PartialEq)]
+pub struct ServiceTableResponse {
+    pub instance_id: u64,
+    pub tile_x: i32,
+    pub tile_y: i32,
+    pub item_count_on_tile: u8,
+    pub has_table_top_order: bool,
+    pub free: bool,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Eq, PartialEq)]
+pub struct ServiceKitchenResponse {
+    pub instance_id: u64,
+    pub tile_x: i32,
+    pub tile_y: i32,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Eq, PartialEq)]
+pub struct ServiceDrinkResponse {
+    pub instance_id: u64,
+    pub tile_x: i32,
+    pub tile_y: i32,
+}
+
+#[derive(Clone, Debug, Serialize, Eq, PartialEq)]
+pub struct ServiceTopologyResponse {
+    pub source: ServiceTopologySourceResponse,
+    pub cells: Vec<ServiceTopologyCellResponse>,
+    pub chairs: Vec<ServiceChairResponse>,
+    pub tables: Vec<ServiceTableResponse>,
+    pub kitchens: Vec<ServiceKitchenResponse>,
+    pub drinks: Vec<ServiceDrinkResponse>,
+}
+
+#[derive(Clone, Debug, Serialize, Eq, PartialEq)]
 pub struct PlacementResponse {
     pub outcome: &'static str,
     pub item: PlacedItemResponse,
@@ -184,6 +251,21 @@ where
         .load_restaurant(session_token)
         .map_err(map_service_error)?;
     json_bytes(&layout_response(snapshot))
+}
+
+pub fn handle_load_service_topology<V, S>(
+    service: &RestaurantProductService<V, S>,
+    context: ProductHttpContext<'_>,
+) -> Result<Vec<u8>, PublicProductError>
+where
+    V: PlatformSessionVerifier,
+    S: ProductStateStore,
+{
+    let session_token = session_token(context.session_token)?;
+    let (snapshot, topology) = service
+        .load_restaurant_with_topology(session_token)
+        .map_err(map_service_error)?;
+    json_bytes(&service_topology_response(snapshot, topology))
 }
 
 pub fn handle_place_item<V, S>(
@@ -475,6 +557,114 @@ fn layout_response(snapshot: RestaurantProductSnapshot) -> RestaurantLayoutRespo
             .into_iter()
             .map(inventory_availability_response)
             .collect(),
+    }
+}
+
+fn service_topology_response(
+    snapshot: RestaurantProductSnapshot,
+    topology: ServiceLayoutSnapshot,
+) -> ServiceTopologyResponse {
+    let source = ServiceTopologySourceResponse {
+        room: RoomResponse {
+            inside_x: snapshot.restaurant.room.inside_x,
+            inside_y: snapshot.restaurant.room.inside_y,
+            outside_x: snapshot.restaurant.room.outside_x,
+            outside_y: snapshot.restaurant.room.outside_y,
+        },
+        items: snapshot
+            .restaurant
+            .items
+            .iter()
+            .copied()
+            .map(placed_item_response)
+            .collect(),
+    };
+
+    let mut cells = Vec::new();
+    for y in 0..MAX_NUM_TILES_Y {
+        for x in 0..MAX_NUM_TILES_X {
+            let tile = TilePoint { x, y };
+            if topology.grid.is_tile_out_of_bound(tile) {
+                continue;
+            }
+            let Some(cell) = topology.grid.cell(tile) else {
+                continue;
+            };
+            cells.push(ServiceTopologyCellResponse {
+                tile_x: x,
+                tile_y: y,
+                wall: cell.wall,
+                item_count: cell.item_count,
+                has_door: cell.has_door,
+                walkable: topology.grid.is_walkable(tile),
+            });
+        }
+    }
+
+    let chairs = topology
+        .chairs
+        .iter()
+        .copied()
+        .map(|chair| {
+            let facing = facing_tile(chair.tile, chair.rotation);
+            ServiceChairResponse {
+                instance_id: chair.instance_id,
+                tile_x: chair.tile.x,
+                tile_y: chair.tile.y,
+                rotation: chair.rotation,
+                toilet: chair.toilet,
+                meal_seat: is_meal_seat(chair),
+                facing_tile_x: facing.x,
+                facing_tile_y: facing.y,
+                table_instance_id: table_for_chair(chair, &topology.tables)
+                    .map(|table| table.instance_id),
+            }
+        })
+        .collect();
+
+    let tables = topology
+        .tables
+        .iter()
+        .copied()
+        .map(|table| ServiceTableResponse {
+            instance_id: table.instance_id,
+            tile_x: table.tile.x,
+            tile_y: table.tile.y,
+            item_count_on_tile: table.item_count_on_tile,
+            has_table_top_order: table.has_table_top_order,
+            free: is_table_free(table),
+        })
+        .collect();
+
+    let kitchens = topology
+        .kitchens
+        .iter()
+        .copied()
+        .map(|kitchen| ServiceKitchenResponse {
+            instance_id: kitchen.instance_id,
+            tile_x: kitchen.tile.x,
+            tile_y: kitchen.tile.y,
+        })
+        .collect();
+
+    let drinks = topology
+        .drinks
+        .iter()
+        .copied()
+        .map(|drink| ServiceDrinkResponse {
+            instance_id: drink.instance_id,
+            tile_x: drink.tile.x,
+            tile_y: drink.tile.y,
+        })
+        .collect();
+
+    ServiceTopologyResponse {
+        source,
+        cells,
+        chairs,
+        tables,
+        kitchens,
+        drinks,
     }
 }
 
