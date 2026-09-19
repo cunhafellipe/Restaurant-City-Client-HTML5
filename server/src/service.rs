@@ -53,6 +53,7 @@ pub enum ActiveServiceMutationOutcome {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum ServiceMutationOperation {
     Start {
+        restaurant_mutation_sequence: u64,
         assignment: ActiveServiceAssignment,
     },
     Transition {
@@ -211,6 +212,7 @@ struct PersistedActiveServiceAssignment {
 #[serde(deny_unknown_fields)]
 struct PersistedActiveService {
     service_id: u64,
+    restaurant_mutation_sequence: u64,
     customer_id: u64,
     order_id: u64,
     chair_instance_id: u64,
@@ -227,6 +229,7 @@ struct PersistedActiveService {
 #[serde(rename_all = "snake_case")]
 enum PersistedServiceMutationOperation {
     Start {
+        restaurant_mutation_sequence: u64,
         assignment: PersistedActiveServiceAssignment,
     },
     Transition {
@@ -415,6 +418,7 @@ impl From<ActiveServiceRecord> for PersistedActiveService {
     fn from(value: ActiveServiceRecord) -> Self {
         Self {
             service_id: value.identity.service_id,
+            restaurant_mutation_sequence: value.identity.restaurant_mutation_sequence,
             customer_id: value.identity.customer_id,
             order_id: value.identity.order_id,
             chair_instance_id: value.identity.chair_instance_id,
@@ -447,6 +451,7 @@ impl TryFrom<PersistedActiveService> for ActiveServiceRecord {
         Ok(Self {
             identity: ActiveServiceIdentity {
                 service_id: value.service_id,
+                restaurant_mutation_sequence: value.restaurant_mutation_sequence,
                 customer_id: value.customer_id,
                 order_id: value.order_id,
                 chair_instance_id: value.chair_instance_id,
@@ -467,7 +472,11 @@ impl TryFrom<PersistedActiveService> for ActiveServiceRecord {
 impl From<ServiceMutationOperation> for PersistedServiceMutationOperation {
     fn from(value: ServiceMutationOperation) -> Self {
         match value {
-            ServiceMutationOperation::Start { assignment } => Self::Start {
+            ServiceMutationOperation::Start {
+                restaurant_mutation_sequence,
+                assignment,
+            } => Self::Start {
+                restaurant_mutation_sequence,
                 assignment: assignment.into(),
             },
             ServiceMutationOperation::Transition { service_id, event } => {
@@ -481,7 +490,11 @@ impl From<ServiceMutationOperation> for PersistedServiceMutationOperation {
 impl From<PersistedServiceMutationOperation> for ServiceMutationOperation {
     fn from(value: PersistedServiceMutationOperation) -> Self {
         match value {
-            PersistedServiceMutationOperation::Start { assignment } => Self::Start {
+            PersistedServiceMutationOperation::Start {
+                restaurant_mutation_sequence,
+                assignment,
+            } => Self::Start {
+                restaurant_mutation_sequence,
                 assignment: assignment.into(),
             },
             PersistedServiceMutationOperation::Transition { service_id, event } => {
