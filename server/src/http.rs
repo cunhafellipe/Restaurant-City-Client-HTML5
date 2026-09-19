@@ -8,10 +8,14 @@
 use crate::domain::MutationId;
 use crate::placement::TilePoint;
 use crate::platform::{PlatformSessionError, PlatformSessionVerifier};
-use crate::restaurant::{FloorTileIntent, PaintedFloorTile, PlacedItem, PlacementIntent};
+use crate::restaurant::{
+    AppliedWallpaper, FloorTileIntent, PaintedFloorTile, PlacedItem, PlacementIntent,
+    WallpaperIntent, WallpaperOrientation,
+};
 use crate::service::{
     FloorTileMutationOutcome, InventoryAvailability, PlacementMutationOutcome, ProductServiceError,
     ProductStateStore, RestaurantProductService, RestaurantProductSnapshot,
+    WallpaperMutationOutcome,
 };
 use serde::{Deserialize, Serialize};
 
@@ -91,6 +95,14 @@ struct FloorTileRequestDto {
     tile_y: i32,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct WallpaperRequestDto {
+    item_id: u32,
+    tile_x: i32,
+    tile_y: i32,
+}
+
 #[derive(Clone, Copy, Debug, Serialize, Eq, PartialEq)]
 pub struct RoomResponse {
     pub inside_x: u32,
@@ -118,6 +130,12 @@ pub struct FloorTileResponse {
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Eq, PartialEq)]
+pub struct WallpaperResponse {
+    pub item_id: u32,
+    pub rotation: u8,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Eq, PartialEq)]
 pub struct InventoryAvailabilityResponse {
     pub item_id: u32,
     pub owned: u32,
@@ -131,6 +149,7 @@ pub struct RestaurantLayoutResponse {
     pub next_instance_id: u64,
     pub items: Vec<PlacedItemResponse>,
     pub floor_tiles: Vec<FloorTileResponse>,
+    pub wallpapers: Vec<WallpaperResponse>,
     pub inventory: Vec<InventoryAvailabilityResponse>,
 }
 
@@ -144,6 +163,12 @@ pub struct PlacementResponse {
 pub struct FloorTilePaintResponse {
     pub outcome: &'static str,
     pub tile: FloorTileResponse,
+}
+
+#[derive(Clone, Debug, Serialize, Eq, PartialEq)]
+pub struct WallpaperMutationResponse {
+    pub outcome: &'static str,
+    pub wallpaper: WallpaperResponse,
 }
 
 pub fn handle_load_restaurant<V, S>(
@@ -236,6 +261,61 @@ where
     floor_tile_mutation_response(outcome)
 }
 
+pub fn handle_apply_wallpaper<V, S>(
+    service: &RestaurantProductService<V, S>,
+    context: ProductHttpContext<'_>,
+    body: &[u8],
+) -> Result<Vec<u8>, PublicProductError>
+where
+    V: PlatformSessionVerifier,
+    S: ProductStateStore,
+{
+    let session_token = session_token(context.session_token)?;
+    let mutation_id = mutation_id(context.mutation_id)?;
+    if body.is_empty() || body.len() > MAX_BODY_BYTES {
+        return Err(PublicProductError::InvalidRequest);
+    }
+
+    let dto: WallpaperRequestDto =
+        serde_json::from_slice(body).map_err(|_| PublicProductError::InvalidRequest)?;
+    let outcome = service
+        .apply_wallpaper(
+            session_token,
+            mutation_id,
+            WallpaperIntent {
+                item_id: dto.item_id,
+                wall_tile: TilePoint {
+                    x: dto.tile_x,
+                    y: dto.tile_y,
+                },
+            },
+        )
+        .map_err(map_service_error)?;
+
+    wallpaper_mutation_response(outcome)
+}
+
+pub fn handle_remove_wallpaper<V, S>(
+    service: &RestaurantProductService<V, S>,
+    context: ProductHttpContext<'_>,
+    rotation: u8,
+) -> Result<Vec<u8>, PublicProductError>
+where
+    V: PlatformSessionVerifier,
+    S: ProductStateStore,
+{
+    let session_token = session_token(context.session_token)?;
+    let mutation_id = mutation_id(context.mutation_id)?;
+    let orientation =
+        WallpaperOrientation::from_rotation(rotation).ok_or(PublicProductError::Unprocessable)?;
+
+    let outcome = service
+        .remove_wallpaper(session_token, mutation_id, orientation)
+        .map_err(map_service_error)?;
+
+    wallpaper_mutation_response(outcome)
+}
+
 pub fn handle_transform_item<V, S>(
     service: &RestaurantProductService<V, S>,
     context: ProductHttpContext<'_>,
@@ -326,6 +406,22 @@ fn floor_tile_mutation_response(
     json_bytes(&response)
 }
 
+fn wallpaper_mutation_response(
+    outcome: WallpaperMutationOutcome,
+) -> Result<Vec<u8>, PublicProductError> {
+    let response = match outcome {
+        WallpaperMutationOutcome::Applied(wallpaper) => WallpaperMutationResponse {
+            outcome: "applied",
+            wallpaper: wallpaper_response(wallpaper),
+        },
+        WallpaperMutationOutcome::Duplicate(wallpaper) => WallpaperMutationResponse {
+            outcome: "duplicate",
+            wallpaper: wallpaper_response(wallpaper),
+        },
+    };
+    json_bytes(&response)
+}
+
 fn session_token(value: Option<&str>) -> Result<&str, PublicProductError> {
     let token = value.ok_or(PublicProductError::Unauthenticated)?;
     if token.is_empty()
@@ -369,6 +465,11 @@ fn layout_response(snapshot: RestaurantProductSnapshot) -> RestaurantLayoutRespo
             .into_iter()
             .map(floor_tile_response)
             .collect(),
+        wallpapers: snapshot
+            .wallpapers
+            .into_iter()
+            .map(wallpaper_response)
+            .collect(),
         inventory: snapshot
             .inventory
             .into_iter()
@@ -392,6 +493,13 @@ fn floor_tile_response(tile: PaintedFloorTile) -> FloorTileResponse {
         tile_x: tile.tile.x,
         tile_y: tile.tile.y,
         room_index: tile.room_index,
+    }
+}
+
+fn wallpaper_response(wallpaper: AppliedWallpaper) -> WallpaperResponse {
+    WallpaperResponse {
+        item_id: wallpaper.item_id,
+        rotation: wallpaper.orientation.rotation(),
     }
 }
 
