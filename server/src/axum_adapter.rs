@@ -1,8 +1,7 @@
 use crate::http::{
     ProductHttpContext, PublicProductError,
     handle_apply_wallpaper as handle_apply_wallpaper_contract, handle_load_restaurant,
-    handle_load_service_topology,
-    handle_paint_floor_tile as handle_paint_floor_tile_contract,
+    handle_load_service_topology, handle_paint_floor_tile as handle_paint_floor_tile_contract,
     handle_place_item as handle_place_item_contract,
     handle_remove_item as handle_remove_item_contract,
     handle_remove_wallpaper as handle_remove_wallpaper_contract,
