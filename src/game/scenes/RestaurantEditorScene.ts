@@ -995,13 +995,25 @@ export class RestaurantEditorScene extends Phaser.Scene {
     target.__ANEWON_RC_VISUAL_DIAGNOSTICS__ = {
       walls: this.wallSprites.map((sprite) => {
         const bounds = sprite.getBounds();
+        const source = sprite.texture.source[sprite.frame.sourceIndex];
         return {
           frame: sprite.frame.name,
+          textureKey: sprite.texture.key,
+          sourceIndex: sprite.frame.sourceIndex,
+          sourceLoaded: Boolean(source?.image),
+          sourceWidth: source?.width ?? null,
+          sourceHeight: source?.height ?? null,
+          glTexturePresent: Boolean(source?.glTexture),
           x: sprite.x,
           y: sprite.y,
           depth: sprite.depth,
           visible: sprite.visible,
           alpha: sprite.alpha,
+          active: sprite.active,
+          renderFlags: sprite.renderFlags,
+          cameraFilter: sprite.cameraFilter,
+          willRender: sprite.willRender(this.cameras.main),
+          blendMode: sprite.blendMode,
           width: sprite.displayWidth,
           height: sprite.displayHeight,
           bounds: {
