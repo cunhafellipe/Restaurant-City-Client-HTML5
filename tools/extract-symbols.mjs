@@ -23,11 +23,11 @@ import { SWFS } from './lib/swf-config.mjs';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const WORKSPACE_ROOT = path.resolve(HERE, '..');
 const WORK = path.join(HERE, '.work');
-const INTERNAL_SPRITES_CONTRACT = path.join(
+const RUNTIME_SYMBOL_ALIASES_CONTRACT = path.join(
   WORKSPACE_ROOT,
   'contracts',
   'restaurant-city',
-  'recovered-internal-sprites.json',
+  'recovered-runtime-symbol-aliases.json',
 );
 
 function readPngSize(file) {
@@ -38,43 +38,47 @@ function readPngSize(file) {
   return { w: buf.readUInt32BE(16), h: buf.readUInt32BE(20) };
 }
 
-function recoveredInternalSpritesFor(swfName) {
-  if (!fs.existsSync(INTERNAL_SPRITES_CONTRACT)) {
-    throw new Error(`recovered internal sprite contract missing: ${INTERNAL_SPRITES_CONTRACT}`);
+function runtimeSymbolAliasesFor(swfName) {
+  if (!fs.existsSync(RUNTIME_SYMBOL_ALIASES_CONTRACT)) {
+    throw new Error(
+      `runtime symbol alias contract missing: ${RUNTIME_SYMBOL_ALIASES_CONTRACT}`,
+    );
   }
-  const parsed = JSON.parse(fs.readFileSync(INTERNAL_SPRITES_CONTRACT, 'utf8'));
+  const parsed = JSON.parse(fs.readFileSync(RUNTIME_SYMBOL_ALIASES_CONTRACT, 'utf8'));
   if (
     parsed.schemaVersion !== 1 ||
     parsed.baseline !== '0.9.143a' ||
     typeof parsed.swfs !== 'object' ||
     parsed.swfs === null
   ) {
-    throw new Error('invalid recovered internal sprite contract header');
+    throw new Error('invalid runtime symbol alias contract header');
   }
 
   const entries = parsed.swfs[swfName] ?? [];
   if (!Array.isArray(entries)) {
-    throw new Error(`invalid recovered internal sprite list for ${swfName}`);
+    throw new Error(`invalid runtime symbol alias list for ${swfName}`);
   }
 
   const chids = new Set();
-  const names = new Set();
+  const runtimeNames = new Set();
   for (const entry of entries) {
     if (
       !Number.isInteger(entry?.chid) ||
       entry.chid <= 0 ||
-      typeof entry?.name !== 'string' ||
-      entry.name.trim() === ''
+      typeof entry?.sourceName !== 'string' ||
+      entry.sourceName.trim() === '' ||
+      typeof entry?.runtimeName !== 'string' ||
+      entry.runtimeName.trim() === ''
     ) {
-      throw new Error(`invalid recovered internal sprite entry for ${swfName}`);
+      throw new Error(`invalid runtime symbol alias entry for ${swfName}`);
     }
-    if (chids.has(entry.chid) || names.has(entry.name)) {
+    if (chids.has(entry.chid) || runtimeNames.has(entry.runtimeName)) {
       throw new Error(
-        `duplicate recovered internal sprite entry for ${swfName}: chid=${entry.chid} name=${entry.name}`,
+        `duplicate runtime symbol alias for ${swfName}: chid=${entry.chid} runtime=${entry.runtimeName}`,
       );
     }
     chids.add(entry.chid);
-    names.add(entry.name);
+    runtimeNames.add(entry.runtimeName);
   }
   return entries;
 }
@@ -100,7 +104,8 @@ export function runExtract(swfName) {
   if (!cfg) {
     throw new Error(`unknown SWF "${swfName}" — see tools/lib/swf-config.mjs`);
   }
-  const recoveredInternal = recoveredInternalSpritesFor(swfName);
+  const runtimeAliases = runtimeSymbolAliasesFor(swfName);
+  const runtimeAliasByChid = new Map(runtimeAliases.map((entry) => [entry.chid, entry]));
   const swfPath = path.join(WORKSPACE_ROOT, cfg.source);
   const work = path.join(WORK, swfName);
   const spriteDir = path.join(work, 'sprites');
@@ -167,9 +172,32 @@ export function runExtract(swfName) {
   };
   visitImages(imageDir);
 
+  for (const alias of runtimeAliases) {
+    const linkedName = symbolsByName.get(alias.chid);
+    if (linkedName === undefined) {
+      throw new Error(
+        `runtime symbol alias chid ${alias.chid} expected linkage "${alias.sourceName}" but no linkage exists`,
+      );
+    }
+    if (linkedName !== alias.sourceName) {
+      throw new Error(
+        `runtime symbol alias chid ${alias.chid} expected linkage "${alias.sourceName}" but found "${linkedName}"`,
+      );
+    }
+    for (const [otherChid, otherName] of symbolsByName.entries()) {
+      if (otherChid !== alias.chid && otherName === alias.runtimeName) {
+        throw new Error(
+          `runtime symbol alias "${alias.runtimeName}" collides with linked chid ${otherChid}`,
+        );
+      }
+    }
+  }
+
   const symbols = [];
   const excluded = [];
-  for (const [chid, name] of [...symbolsByName.entries()].sort((a, b) => a[0] - b[0])) {
+  for (const [chid, sourceName] of [...symbolsByName.entries()].sort((a, b) => a[0] - b[0])) {
+    const alias = runtimeAliasByChid.get(chid);
+    const name = alias?.runtimeName ?? sourceName;
     if (chid === 0) {
       excluded.push({ chid, name, reason: 'main timeline root (empty single frame, linkage marker)' });
       continue;
@@ -202,7 +230,18 @@ export function runExtract(swfName) {
       if (frames.length === 0) {
         throw new Error(`sprite "${name}" (chid ${chid}) exported no frames`);
       }
-      symbols.push({ chid, name, kind: 'sprite', frames });
+      symbols.push({
+        chid,
+        name,
+        ...(alias
+          ? {
+              sourceName,
+              provenance: 'recovered-runtime-alias',
+            }
+          : {}),
+        kind: 'sprite',
+        frames,
+      });
       continue;
     }
 
@@ -212,6 +251,12 @@ export function runExtract(swfName) {
       symbols.push({
         chid,
         name,
+        ...(alias
+          ? {
+              sourceName,
+              provenance: 'recovered-runtime-alias',
+            }
+          : {}),
         kind: 'bitmap',
         frames: [
           {
@@ -232,62 +277,6 @@ export function runExtract(swfName) {
     );
   }
 
-  const recoveredInternalSymbols = [];
-  for (const entry of recoveredInternal) {
-    const linkedName = symbolsByName.get(entry.chid);
-    if (linkedName !== undefined) {
-      if (linkedName !== entry.name) {
-        throw new Error(
-          `recovered internal sprite chid ${entry.chid} expected "${entry.name}" but linkage table declares "${linkedName}"`,
-        );
-      }
-      continue;
-    }
-    if (symbols.some((symbol) => symbol.chid === entry.chid || symbol.name === entry.name)) {
-      throw new Error(
-        `recovered internal sprite conflicts with normalized symbols: chid=${entry.chid} name=${entry.name}`,
-      );
-    }
-    const dirName = spriteDirs.get(entry.chid);
-    if (!dirName) {
-      throw new Error(
-        `recovered internal sprite "${entry.name}" (chid ${entry.chid}) was not exported by FFDec`,
-      );
-    }
-    const dir = path.join(spriteDir, dirName);
-    const files = fs
-      .readdirSync(dir)
-      .filter((file) => /^\d+\.png$/.test(file))
-      .sort((a, b) => Number.parseInt(a, 10) - Number.parseInt(b, 10));
-    const labels = spriteFrames.get(entry.chid)?.frames ?? [];
-    const frames = files.map((file, i) => {
-      const label = labels[i]?.label ?? null;
-      const absolute = path.join(dir, file);
-      const { w, h } = readPngSize(absolute);
-      return {
-        file: path.relative(work, absolute),
-        key: frameKey(swfName, entry.name, label, i + 1),
-        label,
-        index: i + 1,
-        w,
-        h,
-      };
-    });
-    if (frames.length === 0) {
-      throw new Error(
-        `recovered internal sprite "${entry.name}" (chid ${entry.chid}) exported no frames`,
-      );
-    }
-    const symbol = {
-      chid: entry.chid,
-      name: entry.name,
-      kind: 'sprite',
-      provenance: 'recovered-internal',
-      frames,
-    };
-    symbols.push(symbol);
-    recoveredInternalSymbols.push(symbol);
-  }
   symbols.sort((a, b) => a.chid - b.chid);
 
   const extract = {
@@ -298,7 +287,7 @@ export function runExtract(swfName) {
     counts: {
       symbols: symbols.length,
       frames: symbols.reduce((n, s) => n + s.frames.length, 0),
-      recoveredInternalSymbols: recoveredInternalSymbols.length,
+      runtimeSymbolAliases: runtimeAliases.length,
     },
     excluded,
     symbols,
@@ -307,7 +296,7 @@ export function runExtract(swfName) {
   fs.writeFileSync(extractFile, `${JSON.stringify(extract, null, 2)}\n`);
   const bitmapCount = symbols.filter((symbol) => symbol.kind === 'bitmap').length;
   console.log(
-    `extract: ${swfName} -> ${extract.counts.symbols} symbols, ${extract.counts.frames} frames, ${bitmapCount} bitmap linkage(s), ${extract.counts.recoveredInternalSymbols} recovered internal sprite(s) (${extractFile})`,
+    `extract: ${swfName} -> ${extract.counts.symbols} symbols, ${extract.counts.frames} frames, ${bitmapCount} bitmap linkage(s), ${extract.counts.runtimeSymbolAliases} proven runtime alias(es) (${extractFile})`,
   );
   return { extract, work };
 }
