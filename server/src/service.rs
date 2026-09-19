@@ -1134,9 +1134,7 @@ impl ProductAggregate {
                 || floor_mutations.contains_key(&mutation_id)
                 || wallpaper_mutations.contains_key(&mutation_id)
                 || entry.sequence == 0
-                || seen_service_sequences
-                    .insert(entry.sequence, ())
-                    .is_some()
+                || seen_service_sequences.insert(entry.sequence, ()).is_some()
             {
                 return Err(ProductStateStoreError::Corrupt);
             }
@@ -2475,12 +2473,8 @@ where
 
         for _ in 0..MAX_STORE_RETRIES {
             let (expected_revision, mut state) = self.load_or_initialize(session.subject)?;
-            let outcome = state.transition_active_service(
-                session,
-                mutation_id.clone(),
-                service_id,
-                event,
-            )?;
+            let outcome =
+                state.transition_active_service(session, mutation_id.clone(), service_id, event)?;
 
             if matches!(outcome, ActiveServiceMutationOutcome::Duplicate(_)) {
                 return Ok(outcome);
