@@ -355,6 +355,81 @@ impl From<PersistedWallpaperMutationOperation> for WallpaperMutationOperation {
     }
 }
 
+impl From<ActiveServiceRecord> for PersistedActiveService {
+    fn from(value: ActiveServiceRecord) -> Self {
+        Self {
+            service_id: value.identity.service_id,
+            customer_id: value.identity.customer_id,
+            order_id: value.identity.order_id,
+            chair_instance_id: value.identity.chair_instance_id,
+            table_instance_id: value.identity.table_instance_id,
+            chef_employee_id: value.identity.chef_employee_id,
+            kitchen_instance_id: value.identity.kitchen_instance_id,
+            waiter_employee_id: value.identity.waiter_employee_id,
+            waiter_tile_x: value.identity.waiter_tile.x,
+            waiter_tile_y: value.identity.waiter_tile.y,
+            state: value.state,
+        }
+    }
+}
+
+impl TryFrom<PersistedActiveService> for ActiveServiceRecord {
+    type Error = ProductStateStoreError;
+
+    fn try_from(value: PersistedActiveService) -> Result<Self, Self::Error> {
+        if value.service_id == 0
+            || value.customer_id != value.service_id
+            || value.order_id != value.service_id
+            || value.chair_instance_id == 0
+            || value.table_instance_id == 0
+            || value.chef_employee_id == 0
+            || value.kitchen_instance_id == 0
+            || value.waiter_employee_id == 0
+        {
+            return Err(ProductStateStoreError::Corrupt);
+        }
+        Ok(Self {
+            identity: ActiveServiceIdentity {
+                service_id: value.service_id,
+                customer_id: value.customer_id,
+                order_id: value.order_id,
+                chair_instance_id: value.chair_instance_id,
+                table_instance_id: value.table_instance_id,
+                chef_employee_id: value.chef_employee_id,
+                kitchen_instance_id: value.kitchen_instance_id,
+                waiter_employee_id: value.waiter_employee_id,
+                waiter_tile: TilePoint {
+                    x: value.waiter_tile_x,
+                    y: value.waiter_tile_y,
+                },
+            },
+            state: value.state,
+        })
+    }
+}
+
+impl From<ServiceMutationOperation> for PersistedServiceMutationOperation {
+    fn from(value: ServiceMutationOperation) -> Self {
+        match value {
+            ServiceMutationOperation::Start => Self::Start,
+            ServiceMutationOperation::Transition(event) => Self::Transition { event },
+            ServiceMutationOperation::Complete { service_id } => Self::Complete { service_id },
+        }
+    }
+}
+
+impl From<PersistedServiceMutationOperation> for ServiceMutationOperation {
+    fn from(value: PersistedServiceMutationOperation) -> Self {
+        match value {
+            PersistedServiceMutationOperation::Start => Self::Start,
+            PersistedServiceMutationOperation::Transition { event } => Self::Transition(event),
+            PersistedServiceMutationOperation::Complete { service_id } => {
+                Self::Complete { service_id }
+            }
+        }
+    }
+}
+
 impl ProductAggregate {
     pub fn new(subject: AnewSubject, room: RoomDimensions) -> Self {
         Self {
