@@ -1982,6 +1982,7 @@ try {
       return {
         phase: status?.dataset.phase ?? null,
         status: status?.textContent ?? '',
+        topology: globalThis.__ANEWON_RC_SERVICE_TOPOLOGY__ ?? null,
         canvas: canvas ? (() => {
           const rect = canvas.getBoundingClientRect();
           return {
@@ -1994,16 +1995,32 @@ try {
           };
         })() : null,
       };
-    })()`,
+    })()` ,
     (value) =>
       value?.phase === 'editing' &&
       value?.status?.includes(
         'Loaded baseline 0.9.143a, 2 persisted object(s), 0 floor tile(s), and 0 wallpaper slot(s).',
       ) &&
+      Array.isArray(value?.topology?.sourceItems) &&
+      value.topology.sourceItems.length === 2 &&
+      value.topology.sourceItems[0]?.instanceId === 1 &&
+      value.topology.sourceItems[1]?.instanceId === 2 &&
+      Array.isArray(value?.topology?.tables) &&
+      value.topology.tables.length === 1 &&
+      value.topology.tables[0]?.instanceId === 1 &&
+      value.topology.tables[0]?.itemCountOnTile === 2 &&
+      value.topology.tables[0]?.free === false &&
+      value.topology.cells?.some(
+        (cell) =>
+          cell?.tileX === 3 &&
+          cell?.tileY === 3 &&
+          cell?.itemCount === 2 &&
+          cell?.walkable === false,
+      ) &&
       value?.canvas?.width === 760 &&
       value?.canvas?.height === 600,
     8000,
-    'Table + Violin authoritative stack',
+    'Table + Violin authoritative stack + service topology',
   );
   await delay(300);
 
