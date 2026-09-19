@@ -1230,6 +1230,36 @@ where
         Err(ProductServiceError::StoreConflict)
     }
 
+    pub fn paint_floor_tile(
+        &self,
+        session_token: &str,
+        mutation_id: MutationId,
+        intent: FloorTileIntent,
+    ) -> Result<FloorTileMutationOutcome, ProductServiceError> {
+        let session = self.verify(session_token)?;
+
+        for _ in 0..MAX_STORE_RETRIES {
+            let (expected_revision, mut state) = self.load_or_initialize(session.subject)?;
+            let outcome =
+                state.paint_owned_floor_tile(session, &self.catalog, mutation_id.clone(), intent)?;
+
+            if matches!(outcome, FloorTileMutationOutcome::Duplicate(_)) {
+                return Ok(outcome);
+            }
+
+            match self
+                .store
+                .compare_and_swap(session.subject, expected_revision, state)
+            {
+                Ok(_) => return Ok(outcome),
+                Err(ProductStateStoreError::Conflict) => continue,
+                Err(error) => return Err(ProductServiceError::Store(error)),
+            }
+        }
+
+        Err(ProductServiceError::StoreConflict)
+    }
+
     pub fn transform_item(
         &self,
         session_token: &str,
