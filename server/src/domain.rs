@@ -76,19 +76,35 @@ impl fmt::Debug for MutationId {
 /// invents balance constants.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Command {
-    CreditCoins { amount: u64 },
-    DebitCoins { amount: u64 },
-    CreditCash { amount: u64 },
-    DebitCash { amount: u64 },
-    AwardGourmetPoints { amount: u64 },
+    CreditCoins {
+        amount: u64,
+    },
+    DebitCoins {
+        amount: u64,
+    },
+    CreditCash {
+        amount: u64,
+    },
+    DebitCash {
+        amount: u64,
+    },
+    AwardGourmetPoints {
+        amount: u64,
+    },
     /// Atomically settle one verified meal. Gourmet points use the historical
     /// raw storage unit of tenths (GameWorld.addGourmetPoints multiplies by 10).
     SettleMeal {
         coins: u64,
         gourmet_point_tenths: u64,
     },
-    GrantInventory { item_id: u32, quantity: u32 },
-    ConsumeInventory { item_id: u32, quantity: u32 },
+    GrantInventory {
+        item_id: u32,
+        quantity: u32,
+    },
+    ConsumeInventory {
+        item_id: u32,
+        quantity: u32,
+    },
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -567,5 +583,4 @@ mod tests {
         assert_eq!(state.wallet().coins(), 0);
         assert_eq!(state.wallet().gourmet_point_tenths(), u64::MAX);
     }
-
 }
