@@ -13,12 +13,27 @@ Living tracker. Facts only; update when implementation evidence changes.
 
 ## Current objective
 
-Complete a deterministic, locally generated representation of every usable
-0.9.143a visual/data resource while building the product on permanent ANEWON
-Platform/Runtime boundaries.
+Advance the M2 world/editor vertical slice from authoritative ordinary objects,
+floor tiles, windows/doors and wallpapers toward the next historical content
+domain, while keeping every promoted family fail-closed behind recovered
+geometry, browser goldens and server-authoritative persistence.
 
-The legacy client/server remain golden compatibility harnesses. They are not
-the production identity/security root.
+### Latest checkpoint — wallpaper domain
+
+- **48/48 canonical wallpapers promoted** (3060000..3060047).
+- Trusted placement catalog: **87 definitions**.
+- Item → atlas authority mapping: **87 unique / 0 ambiguous / 0 missing**.
+- Wallpaper persistence: **V4 orientation slots** (left=0, top=1), independent
+  of historical itemMap, with idempotent apply/replace/remove and inventory
+  reconciliation.
+- Browser editor: browse → full-orientation preview → apply/reload → select
+  rendered slot → remove/reload.
+- Historical renderer parity: wallpaper is composed **inside the default wall**
+  before Door BlendMode.ERASE; corner wall is excluded.
+- Physical evidence: product gate run **35424279934**; frozen left/top wallpaper
+  goldens remain green together with both Door wall-orientation goldens.
+- Regression guard: trusted-catalog generation now fails unless all **48**
+  promoted wallpaper IDs enter the catalog as recovered wallpaperItems.
 
 ## Verified foundation
 
@@ -65,6 +80,7 @@ RPC may be used for parity/replay, but must not become the native domain API.
 
 | Date | What |
 |---|---|
+| 2026-09-19 | Wallpaper domain closed as playable vertical slice: R34 48/48 exports + R35 96/96 frame origins, V4 authority/persistence, 87/87 trusted item-atlas mapping, frozen left/top browser goldens, and real Edge apply/select/remove flow green in run 35424279934. |
 | 2026-09-18 | ADR-0009 merged: Restaurant City formally routed as ANEWON SOCIAL_WEB Product; Platform/Runtime/product boundaries fixed. |
 | 2026-09-18 | Product authority Rust foundation added with opaque ANEWON subject and idempotent checked state mutations. |
 | 2026-09-18 | Visual pipeline upgraded from one unbounded PNG to deterministic bounded multi-atlas pages for the full corpus. |
