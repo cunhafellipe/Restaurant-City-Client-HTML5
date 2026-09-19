@@ -57,13 +57,23 @@ describe('recovered RoomItem geometry contract', () => {
     }).toEqual(sub1.tileOffset);
   });
 
-  it('promotes only the proven surfaces while keeping all other implicit footprints fail-closed', () => {
-    expect(contract.releasePolicy).toMatch(/all other implicit-footprint surfaces remain fail-closed/i);
+  it('promotes only source-grounded recovered footprints while keeping all others fail-closed', () => {
+    expect(contract.releasePolicy).toMatch(
+      /all other implicit-footprint surfaces remain fail-closed/i,
+    );
     expect(
       Object.values(contract.classes)
         .filter((entry) => entry.placementFootprintEnabled === true)
         .flatMap((entry) => entry.itemIds)
         .sort((a, b) => a - b),
-    ).toEqual([3030000, 3030002]);
+    ).toEqual([
+      3020049,
+      3020050,
+      3020051,
+      3020052,
+      3020055,
+      3030000,
+      3030002,
+    ]);
   });
 });
