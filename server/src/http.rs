@@ -19,6 +19,7 @@ use crate::service::{
     ProductStateStore, RestaurantProductService, RestaurantProductSnapshot,
     WallpaperMutationOutcome,
 };
+use crate::service_clock::remaining_ms;
 use crate::topology::{
     MAX_NUM_TILES_X, MAX_NUM_TILES_Y, ServiceLayoutSnapshot, facing_tile, is_meal_seat,
     is_table_free, table_for_chair,
@@ -239,10 +240,15 @@ pub struct ActiveServiceResponse {
     pub order_state: &'static str,
     pub customer_timer_ms: Option<u64>,
     pub order_timer_ms: Option<u64>,
+    pub customer_deadline_at_ms: Option<u64>,
+    pub order_deadline_at_ms: Option<u64>,
+    pub customer_remaining_ms: Option<u64>,
+    pub order_remaining_ms: Option<u64>,
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Eq, PartialEq)]
 pub struct ActiveServiceEnvelopeResponse {
+    pub server_now_ms: u64,
     pub active: Option<ActiveServiceResponse>,
 }
 
@@ -303,11 +309,16 @@ where
     S: ProductStateStore,
 {
     let session_token = session_token(context.session_token)?;
-    let active = service
-        .load_active_service(session_token)
-        .map_err(map_service_error)?
-        .map(active_service_response);
-    json_bytes(&ActiveServiceEnvelopeResponse { active })
+    let snapshot = service
+        .load_active_service_read(session_token)
+        .map_err(map_service_error)?;
+    let active = snapshot
+        .active
+        .map(|record| active_service_response(record, snapshot.server_now_ms));
+    json_bytes(&ActiveServiceEnvelopeResponse {
+        server_now_ms: snapshot.server_now_ms,
+        active,
+    })
 }
 
 pub fn handle_place_item<V, S>(
@@ -728,7 +739,10 @@ fn floor_tile_response(tile: PaintedFloorTile) -> FloorTileResponse {
     }
 }
 
-fn active_service_response(record: ActiveServiceRecord) -> ActiveServiceResponse {
+fn active_service_response(
+    record: ActiveServiceRecord,
+    server_now_ms: u64,
+) -> ActiveServiceResponse {
     ActiveServiceResponse {
         service_id: record.identity.service_id,
         restaurant_mutation_sequence: record.identity.restaurant_mutation_sequence,
@@ -745,6 +759,13 @@ fn active_service_response(record: ActiveServiceRecord) -> ActiveServiceResponse
         order_state: order_state_name(record.state.order),
         customer_timer_ms: record.state.customer_timer_ms,
         order_timer_ms: record.state.order_timer_ms,
+        customer_deadline_at_ms: record.deadlines.customer_deadline_at_ms,
+        order_deadline_at_ms: record.deadlines.order_deadline_at_ms,
+        customer_remaining_ms: remaining_ms(
+            record.deadlines.customer_deadline_at_ms,
+            server_now_ms,
+        ),
+        order_remaining_ms: remaining_ms(record.deadlines.order_deadline_at_ms, server_now_ms),
     }
 }
 
