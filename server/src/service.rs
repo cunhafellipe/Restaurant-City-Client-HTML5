@@ -2430,6 +2430,120 @@ where
         Err(ProductServiceError::StoreConflict)
     }
 
+    pub fn start_active_service(
+        &self,
+        session_token: &str,
+        mutation_id: MutationId,
+        assignment: ActiveServiceAssignment,
+    ) -> Result<ActiveServiceMutationOutcome, ProductServiceError> {
+        let session = self.verify(session_token)?;
+
+        for _ in 0..MAX_STORE_RETRIES {
+            let (expected_revision, mut state) = self.load_or_initialize(session.subject)?;
+            let outcome = state.start_active_service(
+                session,
+                &self.catalog,
+                mutation_id.clone(),
+                assignment,
+            )?;
+
+            if matches!(outcome, ActiveServiceMutationOutcome::Duplicate(_)) {
+                return Ok(outcome);
+            }
+
+            match self
+                .store
+                .compare_and_swap(session.subject, expected_revision, state)
+            {
+                Ok(_) => return Ok(outcome),
+                Err(ProductStateStoreError::Conflict) => continue,
+                Err(error) => return Err(ProductServiceError::Store(error)),
+            }
+        }
+
+        Err(ProductServiceError::StoreConflict)
+    }
+
+    pub fn transition_active_service(
+        &self,
+        session_token: &str,
+        mutation_id: MutationId,
+        service_id: u64,
+        event: ServiceLoopEvent,
+    ) -> Result<ActiveServiceMutationOutcome, ProductServiceError> {
+        let session = self.verify(session_token)?;
+
+        for _ in 0..MAX_STORE_RETRIES {
+            let (expected_revision, mut state) = self.load_or_initialize(session.subject)?;
+            let outcome = state.transition_active_service(
+                session,
+                mutation_id.clone(),
+                service_id,
+                event,
+            )?;
+
+            if matches!(outcome, ActiveServiceMutationOutcome::Duplicate(_)) {
+                return Ok(outcome);
+            }
+
+            match self
+                .store
+                .compare_and_swap(session.subject, expected_revision, state)
+            {
+                Ok(_) => return Ok(outcome),
+                Err(ProductStateStoreError::Conflict) => continue,
+                Err(error) => return Err(ProductServiceError::Store(error)),
+            }
+        }
+
+        Err(ProductServiceError::StoreConflict)
+    }
+
+    pub fn complete_active_service(
+        &self,
+        session_token: &str,
+        mutation_id: MutationId,
+        service_id: u64,
+    ) -> Result<ActiveServiceMutationOutcome, ProductServiceError> {
+        let session = self.verify(session_token)?;
+
+        for _ in 0..MAX_STORE_RETRIES {
+            let (expected_revision, mut state) = self.load_or_initialize(session.subject)?;
+            let outcome =
+                state.complete_active_service(session, mutation_id.clone(), service_id)?;
+
+            if matches!(outcome, ActiveServiceMutationOutcome::Duplicate(_)) {
+                return Ok(outcome);
+            }
+
+            match self
+                .store
+                .compare_and_swap(session.subject, expected_revision, state)
+            {
+                Ok(_) => return Ok(outcome),
+                Err(ProductStateStoreError::Conflict) => continue,
+                Err(error) => return Err(ProductServiceError::Store(error)),
+            }
+        }
+
+        Err(ProductServiceError::StoreConflict)
+    }
+
+    pub fn load_active_service(
+        &self,
+        session_token: &str,
+    ) -> Result<Option<ActiveServiceRecord>, ProductServiceError> {
+        let session = self.verify(session_token)?;
+        let state = self
+            .store
+            .load(session.subject)
+            .map_err(ProductServiceError::Store)?
+            .map(|loaded| loaded.state)
+            .unwrap_or_else(|| ProductAggregate::new(session.subject, self.initial_room));
+        state.require_subject(session)?;
+        Ok(state.active_service())
+    }
+
     pub fn load_restaurant(
         &self,
         session_token: &str,
