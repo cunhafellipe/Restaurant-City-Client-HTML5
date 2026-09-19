@@ -844,6 +844,32 @@ mod tests {
         )
     }
 
+    fn topology_service() -> RestaurantProductService<FakeVerifier, InMemoryProductStateStore> {
+        let catalog = PlacementCatalog::from_trusted_tsv(concat!(
+            "ANEWON_RC_PLACEMENT_CATALOG_V4\n",
+            "item_id\tsize_x\tsize_y\trotation_count\twall_item\twall_decoration_item\twallpaper_item\toutdoor\tfloor_tile_item\tsurface\tstackable\tdoor_item\tchair_item\ttable_item\tkitchen\tdrink\ttoilet\toccupied_cells\n",
+            "11\t1\t1\t4\t0\t0\t0\t0\t0\t0\t0\t0\t1\t0\t0\t0\t0\t-\n",
+            "12\t1\t1\t4\t0\t0\t0\t0\t0\t0\t0\t0\t0\t1\t0\t0\t0\t-\n",
+            "13\t2\t1\t4\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t1\t0\t0\t0,0+1,0/0,0+0,1/0,0+-1,0/0,0+0,-1\n",
+        ))
+        .unwrap();
+
+        RestaurantProductService::new(
+            FakeVerifier {
+                subject: AnewSubject::from_verified_platform_bytes([7; 16]).unwrap(),
+                session_id: ProductSessionId::from_verified_platform_bytes([9; 16]).unwrap(),
+            },
+            InMemoryProductStateStore::default(),
+            catalog,
+            RoomDimensions {
+                inside_x: 8,
+                inside_y: 8,
+                outside_x: 0,
+                outside_y: 0,
+            },
+        )
+    }
+
     fn context<'a>(
         session_token: Option<&'a str>,
         mutation_id: Option<&'a str>,
@@ -891,6 +917,64 @@ mod tests {
         assert_eq!(json["inventory"][0]["owned"], 2);
         assert_eq!(json["inventory"][0]["placed"], 0);
         assert_eq!(json["inventory"][0]["available"], 2);
+    }
+
+    #[test]
+    fn topology_projects_service_roles_walkability_and_exact_source_layout() {
+        let service = topology_service();
+        for item_id in [11_u32, 12, 13] {
+            service
+                .apply_player_command(
+                    "session",
+                    MutationId::new(format!("grant-{item_id}")).unwrap(),
+                    Command::GrantInventory {
+                        item_id,
+                        quantity: 1,
+                    },
+                )
+                .unwrap();
+        }
+
+        for (mutation_id, item_id, tile, rotation) in [
+            ("chair", 11_u32, TilePoint { x: 2, y: 2 }, 0_u8),
+            ("table", 12_u32, TilePoint { x: 3, y: 2 }, 0_u8),
+            ("kitchen", 13_u32, TilePoint { x: 6, y: 4 }, 2_u8),
+        ] {
+            service
+                .place_item(
+                    "session",
+                    MutationId::new(mutation_id.to_owned()).unwrap(),
+                    PlacementIntent {
+                        item_id,
+                        tile,
+                        rotation,
+                    },
+                )
+                .unwrap();
+        }
+
+        let body =
+            handle_load_service_topology(&service, context(Some("session"), None)).unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+        assert_eq!(json["source"]["items"].as_array().unwrap().len(), 3);
+        assert_eq!(json["chairs"].as_array().unwrap().len(), 1);
+        assert_eq!(json["chairs"][0]["facing_tile_x"], 3);
+        assert_eq!(json["chairs"][0]["facing_tile_y"], 2);
+        assert_eq!(json["chairs"][0]["table_instance_id"], 2);
+        assert_eq!(json["chairs"][0]["meal_seat"], true);
+        assert_eq!(json["tables"][0]["free"], true);
+        assert_eq!(json["kitchens"].as_array().unwrap().len(), 1);
+
+        let kitchen_cells = json["cells"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|cell| cell["tile_y"] == 4 && (cell["tile_x"] == 5 || cell["tile_x"] == 6))
+            .collect::<Vec<_>>();
+        assert_eq!(kitchen_cells.len(), 2);
+        assert!(kitchen_cells.iter().all(|cell| cell["item_count"] == 1));
+        assert!(kitchen_cells.iter().all(|cell| cell["walkable"] == false));
     }
 
     #[test]
