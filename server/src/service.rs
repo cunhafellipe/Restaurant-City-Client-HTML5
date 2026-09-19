@@ -359,7 +359,9 @@ impl ProductAggregate {
         catalog: &PlacementCatalog,
         persisted: LegacyPersistedAggregate,
     ) -> Result<Self, ProductStateStoreError> {
-        if persisted.schema_version != LEGACY_PRODUCT_PERSISTENCE_SCHEMA_VERSION {
+        if persisted.schema_version != LEGACY_PRODUCT_PERSISTENCE_SCHEMA_VERSION
+            || !persisted.restaurant.floor_tiles.is_empty()
+        {
             return Err(ProductStateStoreError::Corrupt);
         }
 
@@ -419,7 +421,29 @@ impl ProductAggregate {
             restaurant,
             restaurant_mutations,
             next_restaurant_mutation_sequence,
+            floor_tiles: BTreeMap::new(),
+            floor_mutations: BTreeMap::new(),
+            next_floor_mutation_sequence: 1,
         })
+    }
+
+    fn decode_v2_persisted(
+        catalog: &PlacementCatalog,
+        mut persisted: PersistedAggregate,
+    ) -> Result<Self, ProductStateStoreError> {
+        if persisted.schema_version != JOURNALED_OBJECT_PERSISTENCE_SCHEMA_VERSION
+            || !persisted.restaurant.floor_tiles.is_empty()
+            || persisted.next_floor_mutation_sequence != 0
+            || !persisted.floor_mutations.is_empty()
+        {
+            return Err(ProductStateStoreError::Corrupt);
+        }
+
+        // V2 predates floor state. Promote it in-memory to an empty V3 floor
+        // domain, then use the same strict object-journal replay as V3.
+        persisted.schema_version = PRODUCT_PERSISTENCE_SCHEMA_VERSION;
+        persisted.next_floor_mutation_sequence = 1;
+        Self::decode_current_persisted(catalog, persisted)
     }
 
     fn decode_current_persisted(
@@ -428,25 +452,30 @@ impl ProductAggregate {
     ) -> Result<Self, ProductStateStoreError> {
         if persisted.schema_version != PRODUCT_PERSISTENCE_SCHEMA_VERSION
             || persisted.next_restaurant_mutation_sequence == 0
+            || persisted.next_floor_mutation_sequence == 0
         {
             return Err(ProductStateStoreError::Corrupt);
         }
 
-        // V2 already persists the complete mutation journal. Replay that
-        // journal to recover historical bottom->top itemMap ordering instead of
-        // trusting the serialized Vec order used by older V2 writers.
+        // V3 keeps the V2 object journal and adds an independent historical
+        // floor-paint journal. Replay both domains instead of trusting either
+        // serialized snapshot.
         let player = PlayerState::from_persistence_snapshot(persisted.player)
             .map_err(|_| ProductStateStoreError::Corrupt)?;
+        let PersistedRestaurant {
+            room,
+            next_instance_id,
+            items,
+            floor_tiles,
+        } = persisted.restaurant;
+        let room: RoomDimensions = room.into();
         let expected_restaurant = RestaurantSnapshot {
-            room: persisted.restaurant.room.into(),
-            next_instance_id: persisted.restaurant.next_instance_id,
-            items: persisted
-                .restaurant
-                .items
-                .into_iter()
-                .map(PlacedItem::from)
-                .collect(),
+            room,
+            next_instance_id,
+            items: items.into_iter().map(PlacedItem::from).collect(),
         };
+        let expected_floor_tiles =
+            Self::decode_persisted_floor_tiles(catalog, room, floor_tiles)?;
         let mut restaurant_mutations = BTreeMap::new();
         let mut ordered = Vec::new();
         let mut seen_sequences = BTreeMap::<u64, ()>::new();
@@ -526,14 +555,112 @@ impl ProductAggregate {
         if !restaurant_snapshots_match_content(&replay_snapshot, &expected_restaurant) {
             return Err(ProductStateStoreError::Corrupt);
         }
-        Self::validate_inventory_against_restaurant(&player, &replay)?;
+
+        let mut floor_mutations = BTreeMap::new();
+        let mut ordered_floor = Vec::new();
+        let mut seen_floor_sequences = BTreeMap::<u64, ()>::new();
+        for entry in persisted.floor_mutations {
+            let mutation_id =
+                MutationId::new(entry.mutation_id).map_err(|_| ProductStateStoreError::Corrupt)?;
+            if restaurant_mutations.contains_key(&mutation_id)
+                || entry.sequence == 0
+                || seen_floor_sequences.insert(entry.sequence, ()).is_some()
+            {
+                return Err(ProductStateStoreError::Corrupt);
+            }
+
+            let requested = PaintedFloorTile::from(entry.tile);
+            let validated = validate_floor_tile_intent(
+                catalog,
+                room,
+                FloorTileIntent {
+                    item_id: requested.item_id,
+                    tile: requested.tile,
+                },
+            )
+            .map_err(|_| ProductStateStoreError::Corrupt)?;
+            if validated != requested {
+                return Err(ProductStateStoreError::Corrupt);
+            }
+
+            let record = FloorTileMutationRecord {
+                sequence: entry.sequence,
+                tile: validated,
+            };
+            if floor_mutations
+                .insert(mutation_id.clone(), record)
+                .is_some()
+            {
+                return Err(ProductStateStoreError::Corrupt);
+            }
+            ordered_floor.push((mutation_id, record));
+        }
+
+        ordered_floor.sort_by_key(|(_, record)| record.sequence);
+        for (index, (_, record)) in ordered_floor.iter().enumerate() {
+            let expected = u64::try_from(index)
+                .map_err(|_| ProductStateStoreError::Corrupt)?
+                .checked_add(1)
+                .ok_or(ProductStateStoreError::Corrupt)?;
+            if record.sequence != expected {
+                return Err(ProductStateStoreError::Corrupt);
+            }
+        }
+        let expected_floor_next = u64::try_from(ordered_floor.len())
+            .map_err(|_| ProductStateStoreError::Corrupt)?
+            .checked_add(1)
+            .ok_or(ProductStateStoreError::Corrupt)?;
+        if persisted.next_floor_mutation_sequence != expected_floor_next {
+            return Err(ProductStateStoreError::Corrupt);
+        }
+
+        let mut replay_floor_tiles = BTreeMap::new();
+        for (_, record) in &ordered_floor {
+            replay_floor_tiles.insert(FloorTileKey::from(record.tile), record.tile);
+        }
+        if replay_floor_tiles != expected_floor_tiles {
+            return Err(ProductStateStoreError::Corrupt);
+        }
+
+        Self::validate_inventory_against_restaurant(&player, &replay, &replay_floor_tiles)?;
 
         Ok(Self {
             player,
             restaurant: replay,
             restaurant_mutations,
             next_restaurant_mutation_sequence: persisted.next_restaurant_mutation_sequence,
+            floor_tiles: replay_floor_tiles,
+            floor_mutations,
+            next_floor_mutation_sequence: persisted.next_floor_mutation_sequence,
         })
+    }
+
+    fn decode_persisted_floor_tiles(
+        catalog: &PlacementCatalog,
+        room: RoomDimensions,
+        persisted: Vec<PersistedFloorTile>,
+    ) -> Result<BTreeMap<FloorTileKey, PaintedFloorTile>, ProductStateStoreError> {
+        let mut floor_tiles = BTreeMap::new();
+        for entry in persisted {
+            let requested = PaintedFloorTile::from(entry);
+            let validated = validate_floor_tile_intent(
+                catalog,
+                room,
+                FloorTileIntent {
+                    item_id: requested.item_id,
+                    tile: requested.tile,
+                },
+            )
+            .map_err(|_| ProductStateStoreError::Corrupt)?;
+            if validated != requested
+                || floor_tiles
+                    .insert(FloorTileKey::from(validated), validated)
+                    .is_some()
+            {
+                return Err(ProductStateStoreError::Corrupt);
+            }
+        }
+        Ok(floor_tiles)
     }
 
     pub fn apply_player_command(
