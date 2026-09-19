@@ -47,15 +47,38 @@ impl Inventory {
     }
 }
 
+const INTERNAL_MUTATION_PREFIX: &str = "__anewon_internal__:";
+
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct MutationId(String);
 
 impl MutationId {
     pub fn new(value: String) -> Result<Self, AuthorityError> {
-        if value.is_empty() || value.len() > 128 || value.chars().any(char::is_whitespace) {
+        Self::validate_shape(&value)?;
+        if value.starts_with(INTERNAL_MUTATION_PREFIX) {
             return Err(AuthorityError::InvalidMutationId);
         }
         Ok(Self(value))
+    }
+
+    pub(crate) fn new_internal(value: String) -> Result<Self, AuthorityError> {
+        Self::validate_shape(&value)?;
+        if !value.starts_with(INTERNAL_MUTATION_PREFIX) {
+            return Err(AuthorityError::InvalidMutationId);
+        }
+        Ok(Self(value))
+    }
+
+    pub(crate) fn from_persisted(value: String) -> Result<Self, AuthorityError> {
+        Self::validate_shape(&value)?;
+        Ok(Self(value))
+    }
+
+    fn validate_shape(value: &str) -> Result<(), AuthorityError> {
+        if value.is_empty() || value.len() > 128 || value.chars().any(char::is_whitespace) {
+            return Err(AuthorityError::InvalidMutationId);
+        }
+        Ok(())
     }
 
     pub(crate) fn as_str(&self) -> &str {
@@ -196,7 +219,8 @@ impl PlayerState {
 
         let mut processed_mutations = BTreeSet::new();
         for value in snapshot.processed_mutations {
-            let mutation = MutationId::new(value).map_err(|_| AuthorityError::CorruptSnapshot)?;
+            let mutation =
+                MutationId::from_persisted(value).map_err(|_| AuthorityError::CorruptSnapshot)?;
             if !processed_mutations.insert(mutation) {
                 return Err(AuthorityError::CorruptSnapshot);
             }
