@@ -2932,7 +2932,7 @@ mod tests {
     }
 
     #[test]
-    fn active_service_replays_across_reopen_and_survives_later_layout_edits() {
+    fn active_service_replays_across_reopen_and_stops_at_settlement_boundary() {
         let session = VerifiedProductSession {
             subject: subject(7),
             session_id: ProductSessionId::from_verified_platform_bytes([9; 16]).unwrap(),
@@ -3000,7 +3000,6 @@ mod tests {
             ServiceLoopEvent::EatingElapsed,
             ServiceLoopEvent::PayingElapsed,
             ServiceLoopEvent::Left,
-            ServiceLoopEvent::PlateCleared,
         ];
         for (index, event) in events.into_iter().enumerate() {
             let mutation_id = mutation(&format!("service-transition-{index}"));
@@ -3021,41 +3020,44 @@ mod tests {
 
         let final_record = aggregate.active_service().unwrap();
         assert_eq!(final_record.state.customer, CustomerServiceState::Left);
-        assert_eq!(final_record.state.order, OrderServiceState::Settled);
+        assert_eq!(final_record.state.order, OrderServiceState::EmptyPlate);
 
-        let encoded = aggregate.encode_persisted().unwrap();
-        let mut aggregate = ProductAggregate::decode_persisted(&catalog, &encoded).unwrap();
+        assert_eq!(
+            aggregate
+                .transition_active_service(
+                    session,
+                    mutation("service-plate-clear-not-wired"),
+                    1,
+                    ServiceLoopEvent::PlateCleared,
+                )
+                .unwrap_err(),
+            ProductServiceError::MealSettlementNotConnected
+        );
         assert_eq!(aggregate.active_service(), Some(final_record));
-
         assert_eq!(
             aggregate
-                .complete_active_service(session, mutation("service-complete"), 1)
-                .unwrap(),
-            ActiveServiceMutationOutcome::Applied(None)
+                .complete_active_service(session, mutation("service-complete-too-early"), 1)
+                .unwrap_err(),
+            ProductServiceError::ActiveServiceNotComplete
         );
         assert_eq!(
             aggregate
-                .complete_active_service(session, mutation("service-complete"), 1)
-                .unwrap(),
-            ActiveServiceMutationOutcome::Duplicate(None)
+                .transform_owned_item(
+                    session,
+                    &catalog,
+                    mutation("move-chair-still-active"),
+                    1,
+                    TilePoint { x: 2, y: 3 },
+                    0,
+                )
+                .unwrap_err(),
+            ProductServiceError::ActiveServiceLayoutLocked
         );
-        assert_eq!(aggregate.active_service(), None);
-
-        aggregate
-            .transform_owned_item(
-                session,
-                &catalog,
-                mutation("move-chair-after-service"),
-                1,
-                TilePoint { x: 2, y: 3 },
-                0,
-            )
-            .unwrap();
 
         let encoded = aggregate.encode_persisted().unwrap();
         let reopened = ProductAggregate::decode_persisted(&catalog, &encoded).unwrap();
         assert_eq!(reopened, aggregate);
-        assert_eq!(reopened.active_service(), None);
+        assert_eq!(reopened.active_service(), Some(final_record));
         assert_eq!(reopened.next_service_id, 2);
     }
 
