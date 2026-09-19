@@ -21,6 +21,41 @@ export const TILE_HEIGHT_HALF = 20;
 export const ROOM_INDEX_MAIN = 0;
 export const ROOM_INDEX_OUTSIDE_AREA = 1;
 
+export type DefaultWallKind = 'corner' | 'segment';
+
+export interface DefaultWallSegment {
+  readonly kind: DefaultWallKind;
+  readonly rotation: number;
+}
+
+export function defaultWallAt(
+  tile: TilePoint,
+  room: RoomDimensions,
+): DefaultWallSegment | null {
+  requireInteger(tile.x, 'tile.x');
+  requireInteger(tile.y, 'tile.y');
+  if (tile.x < 0 || tile.y < 0) return null;
+
+  if (tile.x === 0 && tile.y === 0) {
+    return { kind: 'corner', rotation: 0 };
+  }
+  if (tile.y === 0 && tile.x > 0 && tile.x < room.insideX) {
+    return { kind: 'segment', rotation: 1 };
+  }
+  if (tile.x === 0 && tile.y > 0 && tile.y < room.insideY) {
+    return { kind: 'segment', rotation: 0 };
+  }
+  return null;
+}
+
+export function defaultWallAttachmentRotation(
+  tile: TilePoint,
+  room: RoomDimensions,
+): number | null {
+  const wall = defaultWallAt(tile, room);
+  return wall?.kind === 'segment' ? wall.rotation : null;
+}
+
 export interface TilePoint {
   readonly x: number;
   readonly y: number;
