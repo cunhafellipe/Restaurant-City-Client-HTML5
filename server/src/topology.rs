@@ -536,6 +536,13 @@ pub fn calculate_food_service_topology(
             }
 
             for chair in chairs {
+                // Six canonical chairItem definitions are toilets. They share
+                // the chair role for interaction/pathing but are never meal
+                // seats and must not enter waiter/chef food eligibility.
+                if chair.toilet {
+                    continue;
+                }
+
                 let chair_reachable =
                     path_to_customer_chair(grid, waiter.tile, chair.tile, chair.rotation).is_some();
                 if !chair_reachable {
@@ -927,6 +934,50 @@ mod tests {
                 .map(|table| table.instance_id),
             Some(2)
         );
+    }
+
+    #[test]
+    fn toilet_chair_is_excluded_from_food_service_topology() {
+        let mut grid = ServiceTopologyGrid::new(room());
+        let toilet = ServiceChair {
+            instance_id: 10,
+            tile: TilePoint { x: 5, y: 5 },
+            rotation: 0,
+            toilet: true,
+        };
+        let kitchen = ServiceKitchen {
+            instance_id: 20,
+            tile: TilePoint { x: 7, y: 5 },
+        };
+        for tile in [toilet.tile, kitchen.tile] {
+            grid.set_cell(
+                tile,
+                TopologyCell {
+                    item_count: 1,
+                    ..TopologyCell::default()
+                },
+            )
+            .unwrap();
+        }
+
+        let snapshot = calculate_food_service_topology(
+            &grid,
+            &[toilet],
+            &[kitchen],
+            &[ServiceChef {
+                employee_id: 30,
+                kitchen_instance_id: 20,
+            }],
+            &[ServiceWaiter {
+                employee_id: 40,
+                tile: TilePoint { x: 3, y: 5 },
+            }],
+        );
+
+        assert!(snapshot.chair_food_eligible.is_empty());
+        assert_eq!(snapshot.waiter_chairs, vec![(40, vec![])]);
+        assert_eq!(snapshot.waiter_kitchens, vec![(40, vec![20])]);
+        assert_eq!(snapshot.chef_chairs, vec![(30, vec![])]);
     }
 
     #[test]
