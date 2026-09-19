@@ -12,8 +12,9 @@
 //! completion deadline without accepting browser-authored path completion.
 
 use crate::placement::TilePoint;
+use crate::restaurant::{PlacementCatalog, RestaurantSnapshot};
 use crate::topology::{
-    HistoricalPath, ServiceLayoutSnapshot, historical_path, path_to_customer_chair,
+    HistoricalPath, ServiceLayoutSnapshot, facing_tile, historical_path, path_to_customer_chair,
 };
 use serde::{Deserialize, Serialize};
 
@@ -59,6 +60,41 @@ pub fn canonical_waiter_walk_speed_y(work_percent: f64) -> Result<f64, ServicePa
 ///
 /// Customer.walkToChair uses stopNextToDestTile=false. The chair-facing table
 /// tile is association/service geometry, not the seated customer position.
+pub fn is_valid_customer_entrance(
+    restaurant: &RestaurantSnapshot,
+    catalog: &PlacementCatalog,
+    layout: &ServiceLayoutSnapshot,
+    entrance: TilePoint,
+) -> Result<bool, ServicePathError> {
+    for item in &restaurant.items {
+        let roles = catalog.service_flags(item.item_id);
+        if roles.door_item && item.tile == entrance {
+            let facing = facing_tile(item.tile, item.rotation);
+            return Ok(layout.grid.is_walkable(facing));
+        }
+    }
+
+    let outside_y_start = i32::try_from(restaurant.room.inside_y)
+        .map_err(|_| ServicePathError::ArithmeticOverflow)?;
+    let outside_y_end = i32::try_from(
+        restaurant
+            .room
+            .inside_y
+            .checked_add(restaurant.room.outside_y)
+            .ok_or(ServicePathError::ArithmeticOverflow)?,
+    )
+    .map_err(|_| ServicePathError::ArithmeticOverflow)?;
+
+    if entrance.x == 0 && (outside_y_start..outside_y_end).contains(&entrance.y) {
+        return Ok(layout.grid.is_walkable(TilePoint {
+            x: 1,
+            y: entrance.y,
+        }));
+    }
+
+    Ok(false)
+}
+
 pub fn customer_path_to_chair(
     layout: &ServiceLayoutSnapshot,
     start: TilePoint,
@@ -428,6 +464,57 @@ mod tests {
             validate_customer_path_to_chair_plan(&layout, 11, plan),
             Err(ServicePathError::PathPlanMismatch)
         );
+    }
+
+
+    #[test]
+    fn source_grounded_customer_entrance_accepts_only_valid_door_or_outside_lane() {
+        let catalog = PlacementCatalog::from_trusted_tsv(concat!(
+            "ANEWON_RC_PLACEMENT_CATALOG_V4\n",
+            "item_id\tsize_x\tsize_y\trotation_count\twall_item\twall_decoration_item\twallpaper_item\toutdoor\tfloor_tile_item\tsurface\tstackable\tdoor_item\tchair_item\ttable_item\tkitchen\tdrink\ttoilet\toccupied_cells\n",
+            "21\t1\t1\t2\t1\t0\t0\t0\t0\t0\t0\t1\t0\t0\t0\t0\t0\t-\n",
+        ))
+        .unwrap();
+        let mut state = crate::restaurant::RestaurantState::new(RoomDimensions {
+            inside_x: 8,
+            inside_y: 8,
+            outside_x: 3,
+            outside_y: 2,
+        });
+        state
+            .place(
+                &catalog,
+                crate::restaurant::PlacementIntent {
+                    item_id: 21,
+                    tile: TilePoint { x: 0, y: 3 },
+                    rotation: 0,
+                },
+            )
+            .unwrap();
+        let restaurant = state.snapshot();
+        let layout = crate::topology::derive_service_layout(&restaurant, &catalog).unwrap();
+
+        assert!(is_valid_customer_entrance(
+            &restaurant,
+            &catalog,
+            &layout,
+            TilePoint { x: 0, y: 3 }
+        )
+        .unwrap());
+        assert!(is_valid_customer_entrance(
+            &restaurant,
+            &catalog,
+            &layout,
+            TilePoint { x: 0, y: 8 }
+        )
+        .unwrap());
+        assert!(!is_valid_customer_entrance(
+            &restaurant,
+            &catalog,
+            &layout,
+            TilePoint { x: 0, y: 7 }
+        )
+        .unwrap());
     }
 
 
