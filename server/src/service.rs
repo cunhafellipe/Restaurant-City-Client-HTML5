@@ -2819,6 +2819,82 @@ mod tests {
         )
     }
 
+    fn active_service_catalog() -> PlacementCatalog {
+        PlacementCatalog::from_trusted_tsv(concat!(
+            "ANEWON_RC_PLACEMENT_CATALOG_V4\n",
+            "item_id\tsize_x\tsize_y\trotation_count\twall_item\twall_decoration_item\twallpaper_item\toutdoor\tfloor_tile_item\tsurface\tstackable\tdoor_item\tchair_item\ttable_item\tkitchen\tdrink\ttoilet\toccupied_cells\n",
+            "11\t1\t1\t4\t0\t0\t0\t0\t0\t0\t0\t0\t1\t0\t0\t0\t0\t-\n",
+            "12\t1\t1\t4\t0\t0\t0\t0\t0\t0\t0\t0\t0\t1\t0\t0\t0\t-\n",
+            "13\t1\t1\t4\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t1\t0\t0\t-\n",
+        ))
+        .unwrap()
+    }
+
+    fn active_service_assignment() -> ActiveServiceAssignment {
+        ActiveServiceAssignment {
+            chair_instance_id: 1,
+            table_instance_id: 2,
+            chef_employee_id: 101,
+            kitchen_instance_id: 3,
+            waiter_employee_id: 201,
+            waiter_tile: TilePoint { x: 4, y: 4 },
+        }
+    }
+
+    fn aggregate_with_service_layout(
+        session: VerifiedProductSession,
+        catalog: &PlacementCatalog,
+    ) -> ProductAggregate {
+        let mut aggregate = ProductAggregate::new(session.subject, room());
+        for (item_id, grant_id, place_id, tile, rotation) in [
+            (
+                11_u32,
+                "grant-chair",
+                "place-chair",
+                TilePoint { x: 2, y: 2 },
+                0_u8,
+            ),
+            (
+                12_u32,
+                "grant-table",
+                "place-table",
+                TilePoint { x: 3, y: 2 },
+                0_u8,
+            ),
+            (
+                13_u32,
+                "grant-kitchen",
+                "place-kitchen",
+                TilePoint { x: 6, y: 4 },
+                0_u8,
+            ),
+        ] {
+            aggregate
+                .apply_player_command(
+                    session,
+                    mutation(grant_id),
+                    Command::GrantInventory {
+                        item_id,
+                        quantity: 1,
+                    },
+                )
+                .unwrap();
+            aggregate
+                .place_owned_item(
+                    session,
+                    catalog,
+                    mutation(place_id),
+                    PlacementIntent {
+                        item_id,
+                        tile,
+                        rotation,
+                    },
+                )
+                .unwrap();
+        }
+        aggregate
+    }
+
     #[test]
     fn persistence_codec_round_trip_revalidates_authoritative_state() {
         let session = VerifiedProductSession {
