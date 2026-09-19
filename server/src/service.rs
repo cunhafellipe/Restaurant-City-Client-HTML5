@@ -713,7 +713,12 @@ impl ProductAggregate {
             if existing.operation != RestaurantMutationOperation::Place
                 || existing.item.item_id != intent.item_id
                 || existing.item.tile != intent.tile
-                || existing.item.rotation != intent.rotation
+                || !mutation_rotation_matches(
+                    catalog,
+                    existing.item.item_id,
+                    existing.item.rotation,
+                    intent.rotation,
+                )
             {
                 return Err(ProductServiceError::MutationIdConflict);
             }
@@ -799,7 +804,12 @@ impl ProductAggregate {
             if existing.operation != RestaurantMutationOperation::Transform
                 || existing.item.instance_id != instance_id
                 || existing.item.tile != tile
-                || existing.item.rotation != rotation
+                || !mutation_rotation_matches(
+                    catalog,
+                    existing.item.item_id,
+                    existing.item.rotation,
+                    rotation,
+                )
             {
                 return Err(ProductServiceError::MutationIdConflict);
             }
@@ -972,6 +982,19 @@ impl ProductAggregate {
             return Err(ProductServiceError::SubjectMismatch);
         }
         Ok(())
+    }
+}
+
+fn mutation_rotation_matches(
+    catalog: &PlacementCatalog,
+    item_id: u32,
+    authoritative_rotation: u8,
+    requested_rotation: u8,
+) -> bool {
+    match catalog.get(item_id) {
+        Some(definition) if definition.flags.wall_decoration_item => true,
+        Some(_) => authoritative_rotation == requested_rotation,
+        None => false,
     }
 }
 
