@@ -649,6 +649,41 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn authenticated_topology_route_is_read_only_and_no_store() {
+        let service = RestaurantProductService::new(
+            verifier(),
+            crate::service::InMemoryProductStateStore::default(),
+            catalog(),
+            room(),
+        );
+
+        let response = restaurant_router(service, EXPECTED_ORIGIN)
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v1/restaurant/topology")
+                    .header(COOKIE, SESSION_COOKIE)
+                    .header(&SEC_FETCH_SITE, "same-origin")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(response.headers()[CACHE_CONTROL], "no-store");
+
+        let body = to_bytes(response.into_body(), MAX_REQUEST_BODY_BYTES)
+            .await
+            .unwrap();
+        let value: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(value["source"]["items"].as_array().unwrap().len(), 0);
+        assert_eq!(value["cells"].as_array().unwrap().len(), 64);
+        assert_eq!(value["chairs"].as_array().unwrap().len(), 0);
+        assert_eq!(value["tables"].as_array().unwrap().len(), 0);
+        assert_eq!(value["kitchens"].as_array().unwrap().len(), 0);
+    }
+
+    #[tokio::test]
     async fn duplicate_product_session_cookie_fails_closed() {
         let service = RestaurantProductService::new(
             verifier(),
