@@ -56,9 +56,10 @@ pub use restaurant::{
 };
 
 pub use service::{
-    InMemoryProductStateStore, InventoryAvailability, LoadedProductState, PlacementMutationOutcome,
-    ProductAggregate, ProductServiceError, ProductStateStore, ProductStateStoreError,
-    RestaurantProductService, RestaurantProductSnapshot, WallpaperMutationOutcome,
+    ActiveServiceMutationOutcome, InMemoryProductStateStore, InventoryAvailability,
+    LoadedProductState, PlacementMutationOutcome, ProductAggregate, ProductServiceError,
+    ProductStateStore, ProductStateStoreError, RestaurantProductService,
+    RestaurantProductSnapshot, WallpaperMutationOutcome,
 };
 
 pub use persistence::RedbProductStateStore;
