@@ -10,6 +10,7 @@ pub mod gameplay;
 pub mod http;
 pub mod persistence;
 pub mod placement;
+pub mod topology;
 pub mod platform;
 pub mod restaurant;
 pub mod service;
@@ -25,6 +26,12 @@ pub use gameplay::{
     ServiceLoopState, ServiceLoopTransition, WAITER_ACTION_MAX_MS, WAITER_ACTION_MIN_MS,
     canonical_chef_base_cook_duration_ms, canonical_customer_spawn_delay_ms, canonical_meal_reward,
     transition_service_loop,
+};
+pub use topology::{
+    HistoricalPath, ServiceChair, ServiceChef, ServiceKitchen, ServiceTable, ServiceTopologyGrid,
+    ServiceTopologySnapshot, ServiceWaiter, TopologyCell, TopologyError,
+    calculate_food_service_topology, facing_tile, historical_path, is_table_free,
+    path_to_customer_chair, table_for_chair,
 };
 pub use platform::{
     AnewSubject, PRODUCT_ID, PlatformSessionError, PlatformSessionVerifier, ProductSessionId,
