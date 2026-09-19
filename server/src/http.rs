@@ -5,7 +5,9 @@
 //! product-session token and supplies it with request bytes; the product
 //! service verifies the Product-scoped session.
 
+use crate::active_service::ActiveServiceRecord;
 use crate::domain::MutationId;
+use crate::gameplay::{CustomerServiceState, OrderServiceState};
 use crate::placement::TilePoint;
 use crate::platform::{PlatformSessionError, PlatformSessionVerifier};
 use crate::restaurant::{
@@ -220,6 +222,30 @@ pub struct ServiceTopologyResponse {
     pub drinks: Vec<ServiceDrinkResponse>,
 }
 
+#[derive(Clone, Copy, Debug, Serialize, Eq, PartialEq)]
+pub struct ActiveServiceResponse {
+    pub service_id: u64,
+    pub restaurant_mutation_sequence: u64,
+    pub customer_id: u64,
+    pub order_id: u64,
+    pub chair_instance_id: u64,
+    pub table_instance_id: u64,
+    pub chef_employee_id: u64,
+    pub kitchen_instance_id: u64,
+    pub waiter_employee_id: u64,
+    pub waiter_tile_x: i32,
+    pub waiter_tile_y: i32,
+    pub customer_state: &'static str,
+    pub order_state: &'static str,
+    pub customer_timer_ms: Option<u64>,
+    pub order_timer_ms: Option<u64>,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Eq, PartialEq)]
+pub struct ActiveServiceEnvelopeResponse {
+    pub active: Option<ActiveServiceResponse>,
+}
+
 #[derive(Clone, Debug, Serialize, Eq, PartialEq)]
 pub struct PlacementResponse {
     pub outcome: &'static str,
@@ -266,6 +292,22 @@ where
         .load_restaurant_with_topology(session_token)
         .map_err(map_service_error)?;
     json_bytes(&service_topology_response(snapshot, topology))
+}
+
+pub fn handle_load_active_service<V, S>(
+    service: &RestaurantProductService<V, S>,
+    context: ProductHttpContext<'_>,
+) -> Result<Vec<u8>, PublicProductError>
+where
+    V: PlatformSessionVerifier,
+    S: ProductStateStore,
+{
+    let session_token = session_token(context.session_token)?;
+    let active = service
+        .load_active_service(session_token)
+        .map_err(map_service_error)?
+        .map(active_service_response);
+    json_bytes(&ActiveServiceEnvelopeResponse { active })
 }
 
 pub fn handle_place_item<V, S>(
@@ -683,6 +725,53 @@ fn floor_tile_response(tile: PaintedFloorTile) -> FloorTileResponse {
         tile_x: tile.tile.x,
         tile_y: tile.tile.y,
         room_index: tile.room_index,
+    }
+}
+
+fn active_service_response(record: ActiveServiceRecord) -> ActiveServiceResponse {
+    ActiveServiceResponse {
+        service_id: record.identity.service_id,
+        restaurant_mutation_sequence: record.identity.restaurant_mutation_sequence,
+        customer_id: record.identity.customer_id,
+        order_id: record.identity.order_id,
+        chair_instance_id: record.identity.chair_instance_id,
+        table_instance_id: record.identity.table_instance_id,
+        chef_employee_id: record.identity.chef_employee_id,
+        kitchen_instance_id: record.identity.kitchen_instance_id,
+        waiter_employee_id: record.identity.waiter_employee_id,
+        waiter_tile_x: record.identity.waiter_tile.x,
+        waiter_tile_y: record.identity.waiter_tile.y,
+        customer_state: customer_state_name(record.state.customer),
+        order_state: order_state_name(record.state.order),
+        customer_timer_ms: record.state.customer_timer_ms,
+        order_timer_ms: record.state.order_timer_ms,
+    }
+}
+
+fn customer_state_name(state: CustomerServiceState) -> &'static str {
+    match state {
+        CustomerServiceState::Admitted => "admitted",
+        CustomerServiceState::WalkingToChair => "walking-to-chair",
+        CustomerServiceState::Deciding => "deciding",
+        CustomerServiceState::Waiting => "waiting",
+        CustomerServiceState::WaitingForFood => "waiting-for-food",
+        CustomerServiceState::Eating => "eating",
+        CustomerServiceState::Paying => "paying",
+        CustomerServiceState::Leaving => "leaving",
+        CustomerServiceState::Left => "left",
+    }
+}
+
+fn order_state_name(state: OrderServiceState) -> &'static str {
+    match state {
+        OrderServiceState::Created => "created",
+        OrderServiceState::Queued => "queued",
+        OrderServiceState::Cooking => "cooking",
+        OrderServiceState::Completed => "completed",
+        OrderServiceState::WaiterCollecting => "waiter-collecting",
+        OrderServiceState::Serving => "serving",
+        OrderServiceState::EmptyPlate => "empty-plate",
+        OrderServiceState::Settled => "settled",
     }
 }
 
