@@ -5,7 +5,8 @@
 //! restaurant topology and advances only through the already recovered reducer.
 
 use crate::gameplay::{
-    ServiceLoopError, ServiceLoopEvent, ServiceLoopState, transition_service_loop,
+    ServiceLoopEffect, ServiceLoopError, ServiceLoopEvent, ServiceLoopState,
+    transition_service_loop,
 };
 use crate::placement::TilePoint;
 use crate::restaurant::{PlacementCatalog, RestaurantSnapshot};
@@ -131,12 +132,18 @@ impl ActiveServiceRecord {
         })
     }
 
-    pub fn transition(self, event: ServiceLoopEvent) -> Result<Self, ServiceLoopError> {
+    pub fn transition(
+        self,
+        event: ServiceLoopEvent,
+    ) -> Result<(Self, Option<ServiceLoopEffect>), ServiceLoopError> {
         let transition = transition_service_loop(self.state, event)?;
-        Ok(Self {
-            state: transition.state,
-            ..self
-        })
+        Ok((
+            Self {
+                state: transition.state,
+                ..self
+            },
+            transition.effect,
+        ))
     }
 
     pub fn locks_instance(self, instance_id: u64) -> bool {
