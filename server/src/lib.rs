@@ -47,7 +47,7 @@ pub use placement::{
 pub use restaurant::{
     AppliedWallpaper, ItemPlacementDefinition, PLACEMENT_CATALOG_MAGIC, PlacedItem,
     PlacementCatalog, PlacementCatalogLoadError, PlacementIntent, RestaurantAuthorityError,
-    RestaurantSnapshot, RestaurantState, WallpaperIntent, WallpaperOrientation,
+    RestaurantSnapshot, RestaurantState, ServiceItemFlags, WallpaperIntent, WallpaperOrientation,
 };
 
 pub use service::{
