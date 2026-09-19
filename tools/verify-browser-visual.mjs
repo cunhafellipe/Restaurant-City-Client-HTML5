@@ -47,6 +47,27 @@ const DOOR_PROBE_GOLDEN = path.join(
   'm2',
   'restaurant-door-probe.json',
 );
+const DOOR_LEFT_MASK_GOLDEN = path.join(
+  REPO,
+  'tests',
+  'golden',
+  'm2',
+  'restaurant-door-left-mask-probe.json',
+);
+const DOOR_AUTH_GOLDEN = path.join(
+  REPO,
+  'tests',
+  'golden',
+  'm2',
+  'restaurant-door-authoritative.json',
+);
+const DOOR_LEFT_AUTH_GOLDEN = path.join(
+  REPO,
+  'tests',
+  'golden',
+  'm2',
+  'restaurant-door-left-authoritative.json',
+);
 const STACK_GOLDEN = path.join(
   REPO,
   'tests',
@@ -1492,6 +1513,10 @@ try {
   const doorLeftMaskPng = PNG.sync.read(
     fs.readFileSync(DOOR_LEFT_MASK_SCREENSHOT),
   );
+  const doorLeftMaskGolden = fs.existsSync(DOOR_LEFT_MASK_GOLDEN)
+    ? JSON.parse(fs.readFileSync(DOOR_LEFT_MASK_GOLDEN, 'utf8'))
+    : null;
+  const doorLeftMaskBlock = quantizedBlockSignature(doorLeftMaskPng, 8);
   const doorLeftMaskMetadata = {
     schemaVersion: 1,
     fixture: 'simple-door-3010000-left-mask-probe-at-0-2',
@@ -1502,9 +1527,23 @@ try {
     pngSha256: sha256(DOOR_LEFT_MASK_SCREENSHOT),
     pixelSha256: bufferSha256(doorLeftMaskPng.data),
     blockSize: 8,
-    quantizedBlockSha256: quantizedBlockSignature(doorLeftMaskPng, 8),
-    goldenFrozen: false,
+    quantizedBlockSha256: doorLeftMaskBlock,
+    goldenFrozen: Boolean(doorLeftMaskGolden),
   };
+  if (
+    doorLeftMaskGolden &&
+    (doorLeftMaskGolden.schemaVersion !== 1 ||
+      doorLeftMaskGolden.fixture !==
+        'simple-door-3010000-left-mask-probe-at-0-2' ||
+      doorLeftMaskGolden.canvas?.width !== doorLeftMaskPng.width ||
+      doorLeftMaskGolden.canvas?.height !== doorLeftMaskPng.height ||
+      doorLeftMaskGolden.blockSize !== 8 ||
+      doorLeftMaskGolden.expectedQuantizedBlockSha256 !== doorLeftMaskBlock)
+  ) {
+    goldenFailures.push(
+      `door-left-mask expected=${doorLeftMaskGolden.expectedQuantizedBlockSha256} actual=${doorLeftMaskBlock}`,
+    );
+  }
   fs.writeFileSync(
     DOOR_LEFT_MASK_META,
     `${JSON.stringify(doorLeftMaskMetadata, null, 2)}\n`,
@@ -1519,6 +1558,7 @@ try {
     expectedFrame,
     screenshotFile,
     metadataFile,
+    goldenFile,
   ) {
     fixtureState = structuredClone(seed);
     await cdp.send('Page.navigate', { url });
@@ -1576,6 +1616,23 @@ try {
     }
     fs.writeFileSync(screenshotFile, Buffer.from(shot.data, 'base64'));
     const png = PNG.sync.read(fs.readFileSync(screenshotFile));
+    const block = quantizedBlockSignature(png, 8);
+    const golden = fs.existsSync(goldenFile)
+      ? JSON.parse(fs.readFileSync(goldenFile, 'utf8'))
+      : null;
+    if (
+      golden &&
+      (golden.schemaVersion !== 1 ||
+        golden.fixture !== fixture ||
+        golden.canvas?.width !== png.width ||
+        golden.canvas?.height !== png.height ||
+        golden.blockSize !== 8 ||
+        golden.expectedQuantizedBlockSha256 !== block)
+    ) {
+      goldenFailures.push(
+        `${fixture} expected=${golden.expectedQuantizedBlockSha256} actual=${block}`,
+      );
+    }
     const result = {
       schemaVersion: 1,
       fixture,
@@ -1584,8 +1641,8 @@ try {
       pngSha256: sha256(screenshotFile),
       pixelSha256: bufferSha256(png.data),
       blockSize: 8,
-      quantizedBlockSha256: quantizedBlockSignature(png, 8),
-      goldenFrozen: false,
+      quantizedBlockSha256: block,
+      goldenFrozen: Boolean(golden),
     };
     fs.writeFileSync(
       metadataFile,
@@ -1603,6 +1660,7 @@ try {
     'indoor_asset/door/002',
     DOOR_AUTH_SCREENSHOT,
     DOOR_AUTH_META,
+    DOOR_AUTH_GOLDEN,
   );
   const doorLeftAuthoritativeMetadata = await captureAuthoritativeDoor(
     doorLeftFixtureSeed,
@@ -1610,6 +1668,7 @@ try {
     'indoor_asset/door/001',
     DOOR_LEFT_AUTH_SCREENSHOT,
     DOOR_LEFT_AUTH_META,
+    DOOR_LEFT_AUTH_GOLDEN,
   );
 
   const metadata = {
@@ -1668,7 +1727,7 @@ try {
   }
 
   console.log(
-    `BROWSER VISUAL GOLDEN + EDIT INTERACTION PASS | browser=${browser} | bytes=${stat.size} | sha256=${metadata.sha256} | worldPixel=${worldPixelSha256} | exactPixelMatch=${exactPixelMatch} | worldBlock=${worldQuantizedBlockSha256} | edit=select-transform-remove | floor=WoodPanel block=${floorQuantizedBlockSha256} frozen=${Boolean(floorGolden)} | window=SimpleWindow block=${wallQuantizedBlockSha256} frozen=${Boolean(wallGolden)} | stack=Table+Violin curHeight=25 block=${stackQuantizedBlockSha256} frozen=${Boolean(stackGolden)} | door=SimpleDoor block=${doorQuantizedBlockSha256} frozen=${Boolean(doorGolden)}`,
+    `BROWSER VISUAL GOLDEN + EDIT INTERACTION PASS | browser=${browser} | bytes=${stat.size} | sha256=${metadata.sha256} | worldPixel=${worldPixelSha256} | exactPixelMatch=${exactPixelMatch} | worldBlock=${worldQuantizedBlockSha256} | edit=select-transform-remove | floor=WoodPanel block=${floorQuantizedBlockSha256} frozen=${Boolean(floorGolden)} | window=SimpleWindow block=${wallQuantizedBlockSha256} frozen=${Boolean(wallGolden)} | stack=Table+Violin curHeight=25 block=${stackQuantizedBlockSha256} frozen=${Boolean(stackGolden)} | doorProbe=SimpleDoor block=${doorQuantizedBlockSha256} frozen=${Boolean(doorGolden)} | doorLeftMask block=${doorLeftMaskMetadata.quantizedBlockSha256} frozen=${doorLeftMaskMetadata.goldenFrozen} | doorAuthorityTop block=${doorAuthoritativeMetadata.quantizedBlockSha256} frozen=${doorAuthoritativeMetadata.goldenFrozen} | doorAuthorityLeft block=${doorLeftAuthoritativeMetadata.quantizedBlockSha256} frozen=${doorLeftAuthoritativeMetadata.goldenFrozen}`,
   );
 } finally {
   try {
