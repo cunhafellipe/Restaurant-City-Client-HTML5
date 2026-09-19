@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "fixture": "canonical-wall-divider-5-items-12-frames-fail-closed",
+  "baseline": "0.9.143a",
+  "canvas": {
+    "width": 760,
+    "height": 600
+  },
+  "blockSize": 8,
+  "expectedQuantizedBlockSha256": "34a15ba2363b951f7a4edc026e7653f8b6ccde761e8e15f6af8133fdf8b78e73",
+  "referencePixelSha256": "526e86db2beb439ffda16eeab76e1152631c297776c017f0640b7f1cabd3f3cc",
+  "referencePngSha256": "3111adbda8ea78296f0d8d566cd2601c92493f42d307284a857b6373a20c96e0",
+  "provenance": {
+    "productSha": "5786552680466785f4f6b4dcd1bea759852d6c81",
+    "verificationRunId": 35425984855,
+    "r36RunId": 35425465142,
+    "r37RunId": 35425691765,
+    "r38RunId": 35425780733,
+    "itemIds": [
+      3020049,
+      3020050,
+      3020051,
+      3020052,
+      3020055
+    ],
+    "frameCount": 12,
+    "semantics": "All five canonical wallDivider records are ordinary interior decor items (0 wallItem); exact vector constructor geometry and atlas canvas origins are recovered before placement promotion."
+  }
+}
