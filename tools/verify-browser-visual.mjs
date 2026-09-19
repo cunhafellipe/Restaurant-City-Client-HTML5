@@ -20,6 +20,21 @@ const FLOOR_SCREENSHOT = path.join(WORK, 'restaurant-floor.png');
 const FLOOR_META = path.join(WORK, 'restaurant-floor.json');
 const WALL_SCREENSHOT = path.join(WORK, 'restaurant-window.png');
 const WALL_META = path.join(WORK, 'restaurant-window.json');
+const DIVIDER_PROBE_SCREENSHOT = path.join(
+  WORK,
+  'restaurant-divider-12-frame-probe.png',
+);
+const DIVIDER_PROBE_META = path.join(
+  WORK,
+  'restaurant-divider-12-frame-probe.json',
+);
+const DIVIDER_PROBE_GOLDEN = path.join(
+  REPO,
+  'tests',
+  'golden',
+  'm2',
+  'restaurant-divider-12-frame-probe.json',
+);
 const DOOR_PROBE_SCREENSHOT = path.join(WORK, 'restaurant-door-probe.png');
 const DOOR_PROBE_META = path.join(WORK, 'restaurant-door-probe.json');
 const DOOR_LEFT_MASK_SCREENSHOT = path.join(
@@ -1909,6 +1924,135 @@ try {
     `DOOR LEFT MASK PROBE CANDIDATE | fixture=simple-door-3010000-left-mask-probe-at-0-2 | pixel=${doorLeftMaskMetadata.pixelSha256} | png=${doorLeftMaskMetadata.pngSha256} | block=${doorLeftMaskMetadata.quantizedBlockSha256} | maskLocal=${JSON.stringify(doorLeftMaskState.probe.maskLocal)}`,
   );
 
+  fixtureState = structuredClone(doorProbeFixtureSeed);
+  await cdp.send('Page.navigate', { url: `${url}&dividerProbe=1` });
+  const dividerProbeState = await waitForRuntime(
+    cdp,
+    `(() => {
+      const status = document.querySelector('.rc-status');
+      const canvas = document.querySelector('#game-canvas-host canvas');
+      return {
+        phase: status?.dataset.phase ?? null,
+        status: status?.textContent ?? '',
+        probe: globalThis.__ANEWON_RC_DIVIDER_PROBE__ ?? null,
+        canvas: canvas ? (() => {
+          const rect = canvas.getBoundingClientRect();
+          return {
+            width: canvas.width,
+            height: canvas.height,
+            x: rect.x,
+            y: rect.y,
+            cssWidth: rect.width,
+            cssHeight: rect.height,
+          };
+        })() : null,
+      };
+    })()`,
+    (value) => {
+      if (
+        value?.phase !== 'editing' ||
+        !value?.status?.includes(
+          'Loaded baseline 0.9.143a, 0 persisted object(s), 0 floor tile(s), and 0 wallpaper slot(s).',
+        ) ||
+        !Array.isArray(value?.probe) ||
+        value.probe.length !== 12 ||
+        value?.canvas?.width !== 760 ||
+        value?.canvas?.height !== 600
+      ) {
+        return false;
+      }
+      const expected = [
+        [3020049, 0, 'indoor_asset/whitewall/001'],
+        [3020049, 1, 'indoor_asset/whitewall/002'],
+        [3020050, 0, 'indoor_asset/whitewallcorner/001'],
+        [3020050, 1, 'indoor_asset/whitewallcorner/002'],
+        [3020050, 2, 'indoor_asset/whitewallcorner/003'],
+        [3020050, 3, 'indoor_asset/whitewallcorner/004'],
+        [3020051, 0, 'indoor_asset/whitewallcross/001'],
+        [3020052, 0, 'indoor_asset/whitewallt/001'],
+        [3020052, 1, 'indoor_asset/whitewallt/002'],
+        [3020052, 2, 'indoor_asset/whitewallt/003'],
+        [3020052, 3, 'indoor_asset/whitewallt/004'],
+        [3020055, 0, 'indoor_asset/japaneselamp/001'],
+      ];
+      return expected.every(
+        ([itemId, rotation, frame], index) =>
+          value.probe[index]?.itemId === itemId &&
+          value.probe[index]?.rotation === rotation &&
+          value.probe[index]?.frame === frame &&
+          Number.isFinite(value.probe[index]?.canvasOriginPx?.x) &&
+          Number.isFinite(value.probe[index]?.canvasOriginPx?.y),
+      );
+    },
+    8000,
+    '12-frame canonical divider geometry probe',
+  );
+  await delay(300);
+
+  const dividerProbeShot = await cdp.send('Page.captureScreenshot', {
+    format: 'png',
+    fromSurface: true,
+    captureBeyondViewport: false,
+    clip: {
+      x: dividerProbeState.canvas.x,
+      y: dividerProbeState.canvas.y,
+      width: dividerProbeState.canvas.cssWidth,
+      height: dividerProbeState.canvas.cssHeight,
+      scale: 1,
+    },
+  });
+  if (
+    typeof dividerProbeShot.data !== 'string' ||
+    dividerProbeShot.data.length === 0
+  ) {
+    throw new Error('CDP did not return divider 12-frame probe screenshot bytes');
+  }
+  fs.writeFileSync(
+    DIVIDER_PROBE_SCREENSHOT,
+    Buffer.from(dividerProbeShot.data, 'base64'),
+  );
+  const dividerProbePng = PNG.sync.read(
+    fs.readFileSync(DIVIDER_PROBE_SCREENSHOT),
+  );
+  const dividerProbeBlock = quantizedBlockSignature(dividerProbePng, 8);
+  const dividerProbeGolden = fs.existsSync(DIVIDER_PROBE_GOLDEN)
+    ? JSON.parse(fs.readFileSync(DIVIDER_PROBE_GOLDEN, 'utf8'))
+    : null;
+  if (
+    !dividerProbeGolden ||
+    dividerProbeGolden.schemaVersion !== 1 ||
+    dividerProbeGolden.fixture !==
+      'canonical-wall-divider-5-items-12-frames-fail-closed' ||
+    dividerProbeGolden.canvas?.width !== dividerProbePng.width ||
+    dividerProbeGolden.canvas?.height !== dividerProbePng.height ||
+    dividerProbeGolden.blockSize !== 8 ||
+    dividerProbeGolden.expectedQuantizedBlockSha256 !== dividerProbeBlock
+  ) {
+    goldenFailures.push(
+      `divider-12-frame expected=${dividerProbeGolden?.expectedQuantizedBlockSha256 ?? '<missing>'} actual=${dividerProbeBlock}`,
+    );
+  }
+  const dividerProbeMetadata = {
+    schemaVersion: 1,
+    fixture: 'canonical-wall-divider-5-items-12-frames-fail-closed',
+    state: dividerProbeState,
+    screenshot: path
+      .relative(REPO, DIVIDER_PROBE_SCREENSHOT)
+      .replaceAll('\\\\', '/'),
+    pngSha256: sha256(DIVIDER_PROBE_SCREENSHOT),
+    pixelSha256: bufferSha256(dividerProbePng.data),
+    blockSize: 8,
+    quantizedBlockSha256: dividerProbeBlock,
+    goldenFrozen: Boolean(dividerProbeGolden),
+  };
+  fs.writeFileSync(
+    DIVIDER_PROBE_META,
+    `${JSON.stringify(dividerProbeMetadata, null, 2)}\n`,
+  );
+  console.log(
+    `DIVIDER 12-FRAME GOLDEN CANDIDATE | fixture=canonical-wall-divider-5-items-12-frames-fail-closed | pixel=${dividerProbeMetadata.pixelSha256} | png=${dividerProbeMetadata.pngSha256} | block=${dividerProbeMetadata.quantizedBlockSha256} | frames=${dividerProbeState.probe.length}`,
+  );
+
   async function captureAuthoritativeDoor(
     seed,
     fixture,
@@ -2178,6 +2322,7 @@ try {
     doorLeftAuthoritativeVisual: doorLeftAuthoritativeMetadata,
     wallpaperLeftAuthoritativeVisual: wallpaperLeftMetadata,
     wallpaperTopAuthoritativeVisual: wallpaperTopMetadata,
+    dividerProbeVisual: dividerProbeMetadata,
     interaction: {
       selected: selectedState.selection,
       rotated: rotatedState,
@@ -2227,7 +2372,7 @@ try {
   }
 
   console.log(
-    `BROWSER VISUAL GOLDEN + EDIT INTERACTION PASS | browser=${browser} | bytes=${stat.size} | sha256=${metadata.sha256} | worldPixel=${worldPixelSha256} | exactPixelMatch=${exactPixelMatch} | worldBlock=${worldQuantizedBlockSha256} | edit=select-transform-remove | wallpaperEdit=apply-select-remove | floor=WoodPanel block=${floorQuantizedBlockSha256} frozen=${Boolean(floorGolden)} | window=SimpleWindow block=${wallQuantizedBlockSha256} frozen=${Boolean(wallGolden)} | stack=Table+Violin curHeight=25 block=${stackQuantizedBlockSha256} frozen=${Boolean(stackGolden)} | doorProbe=SimpleDoor block=${doorQuantizedBlockSha256} frozen=${Boolean(doorGolden)} | doorLeftMask block=${doorLeftMaskMetadata.quantizedBlockSha256} frozen=${doorLeftMaskMetadata.goldenFrozen} | doorAuthorityTop block=${doorAuthoritativeMetadata.quantizedBlockSha256} frozen=${doorAuthoritativeMetadata.goldenFrozen} | doorAuthorityLeft block=${doorLeftAuthoritativeMetadata.quantizedBlockSha256} frozen=${doorLeftAuthoritativeMetadata.goldenFrozen} | wallpaperLeft block=${wallpaperLeftMetadata.quantizedBlockSha256} frozen=${wallpaperLeftMetadata.goldenFrozen} | wallpaperTop block=${wallpaperTopMetadata.quantizedBlockSha256} frozen=${wallpaperTopMetadata.goldenFrozen}`,
+    `BROWSER VISUAL GOLDEN + EDIT INTERACTION PASS | browser=${browser} | bytes=${stat.size} | sha256=${metadata.sha256} | worldPixel=${worldPixelSha256} | exactPixelMatch=${exactPixelMatch} | worldBlock=${worldQuantizedBlockSha256} | edit=select-transform-remove | wallpaperEdit=apply-select-remove | floor=WoodPanel block=${floorQuantizedBlockSha256} frozen=${Boolean(floorGolden)} | window=SimpleWindow block=${wallQuantizedBlockSha256} frozen=${Boolean(wallGolden)} | stack=Table+Violin curHeight=25 block=${stackQuantizedBlockSha256} frozen=${Boolean(stackGolden)} | doorProbe=SimpleDoor block=${doorQuantizedBlockSha256} frozen=${Boolean(doorGolden)} | doorLeftMask block=${doorLeftMaskMetadata.quantizedBlockSha256} frozen=${doorLeftMaskMetadata.goldenFrozen} | doorAuthorityTop block=${doorAuthoritativeMetadata.quantizedBlockSha256} frozen=${doorAuthoritativeMetadata.goldenFrozen} | doorAuthorityLeft block=${doorLeftAuthoritativeMetadata.quantizedBlockSha256} frozen=${doorLeftAuthoritativeMetadata.goldenFrozen} | wallpaperLeft block=${wallpaperLeftMetadata.quantizedBlockSha256} frozen=${wallpaperLeftMetadata.goldenFrozen} | wallpaperTop block=${wallpaperTopMetadata.quantizedBlockSha256} frozen=${wallpaperTopMetadata.goldenFrozen} | divider12 block=${dividerProbeMetadata.quantizedBlockSha256} frozen=${dividerProbeMetadata.goldenFrozen}`,
   );
 } finally {
   try {
