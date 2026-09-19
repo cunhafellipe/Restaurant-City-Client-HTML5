@@ -479,13 +479,13 @@ function serviceActorFixture() {
         item_id: chairItemId,
         tile_x: 2,
         tile_y: 3,
-        rotation: 0,
+        rotation: 2,
         room_index: 0,
       },
       {
         instance_id: 2,
         item_id: tableItemId,
-        tile_x: 3,
+        tile_x: 1,
         tile_y: 3,
         rotation: 0,
         room_index: 0,
@@ -2994,6 +2994,15 @@ try {
       const byRole = new Map(value.actors.map((actor) => [actor?.role, actor]));
       return (
         byRole.get('customer')?.animation === 'sit' &&
+        byRole.get('customer')?.tile?.x === 2 &&
+        byRole.get('customer')?.tile?.y === 3 &&
+        byRole.get('customer')?.chairOverlay?.visible === true &&
+        byRole.get('customer')?.chairOverlay?.rotation === 2 &&
+        byRole.get('customer')?.chairOverlay?.frame ===
+          'indoor_asset/chair01overlay/003' &&
+        Number.isFinite(byRole.get('customer')?.chairOverlay?.world?.x) &&
+        Number.isFinite(byRole.get('customer')?.chairOverlay?.world?.y) &&
+        Number.isFinite(byRole.get('customer')?.chairOverlay?.world?.depth) &&
         byRole.get('chef')?.animation === 'cooking' &&
         byRole.get('waiter')?.animation === 'idle' &&
         value.actors.every(
@@ -3102,6 +3111,8 @@ try {
     quantizedBlockSha256: quantizedBlockSignature(actorPng, 8),
     changedPixelsVsNoActiveService: changedPixels,
     perActorChangedPixels,
+    chairOverlay: actorState.actors.find((actor) => actor.role === 'customer')
+      ?.chairOverlay ?? null,
     goldenFrozen: false,
   };
   fs.writeFileSync(
