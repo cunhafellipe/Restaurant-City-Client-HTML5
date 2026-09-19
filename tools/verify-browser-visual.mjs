@@ -387,6 +387,68 @@ function tileCenterInCanvas(tileX, tileY, footprint) {
   };
 }
 
+function buildVisualProbeTopology(state) {
+  const cells = [];
+  for (let y = 0; y < state.room.inside_y; y += 1) {
+    for (let x = 0; x < state.room.inside_x; x += 1) {
+      const occupants = state.items.filter((item) => {
+        const footprint = rotatedFootprint(
+          loadFixtureFootprint(item.item_id),
+          item.rotation,
+        );
+        return (
+          x >= item.tile_x &&
+          x < item.tile_x + footprint.sizeX &&
+          y >= item.tile_y &&
+          y < item.tile_y + footprint.sizeY
+        );
+      });
+      const wall = x === 0 || y === 0;
+      const hasDoor = occupants.some((item) => item.item_id === 3010000);
+      cells.push({
+        tile_x: x,
+        tile_y: y,
+        wall,
+        item_count: occupants.length,
+        has_door: hasDoor,
+        walkable: wall ? hasDoor : occupants.length === 0,
+      });
+    }
+  }
+
+  const tables = state.items
+    .filter((item) => item.item_id === 3030000)
+    .map((item) => ({
+      instance_id: item.instance_id,
+      tile_x: item.tile_x,
+      tile_y: item.tile_y,
+      item_count_on_tile: state.items.filter(
+        (candidate) =>
+          candidate.tile_x === item.tile_x &&
+          candidate.tile_y === item.tile_y,
+      ).length,
+      has_table_top_order: false,
+      free:
+        state.items.filter(
+          (candidate) =>
+            candidate.tile_x === item.tile_x &&
+            candidate.tile_y === item.tile_y,
+        ).length === 1,
+    }));
+
+  return {
+    source: {
+      room: structuredClone(state.room),
+      items: structuredClone(state.items),
+    },
+    cells,
+    chairs: [],
+    tables,
+    kitchens: [],
+    drinks: [],
+  };
+}
+
 function contentType(file) {
   const ext = path.extname(file).toLowerCase();
   return (
@@ -696,6 +758,18 @@ const server = http.createServer(async (req, res) => {
       'Cache-Control': 'no-store',
     });
     res.end(JSON.stringify(fixtureState));
+    return;
+  }
+
+  if (
+    requestUrl.pathname === '/api/v1/restaurant/topology' &&
+    req.method === 'GET'
+  ) {
+    res.writeHead(200, {
+      'Content-Type': 'application/json; charset=utf-8',
+      'Cache-Control': 'no-store',
+    });
+    res.end(JSON.stringify(buildVisualProbeTopology(fixtureState)));
     return;
   }
 
