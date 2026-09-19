@@ -4,6 +4,9 @@ import {
   recoveredRoomItemFrame,
   recoveredRoomItemFrameOffset,
   recoveredRoomItemGeometry,
+  recoveredRoomItemLogicalRotationCount,
+  recoveredRoomItemOccupiedCells,
+  recoveredRoomItemRuntimeClassName,
 } from '../../src/content/recoveredRoomItemGeometry';
 
 describe('recovered RoomItem geometry lookup', () => {
@@ -58,6 +61,41 @@ describe('recovered RoomItem geometry lookup', () => {
       }
     }
     expect(frames).toBe(12);
+  });
+
+  it('projects exact logical rotations and occupied cells for promoted kitchen composites', () => {
+    const expected = [
+      [3070000, 'Stove01', 'StoveRotations'],
+      [3070001, 'Stove02', 'StoveRedRotations'],
+      [3070002, 'Stove04', 'StoveRotations4'],
+      [3070003, 'Stove5', 'StoveRotations5'],
+      [3070004, 'Stove7', 'StoveRotations7'],
+      [3070005, 'Stove10', 'StoveRotations10'],
+      [3070006, 'Stove03', 'StoveRotations3'],
+      [3070007, 'HalloweenStove01', 'HalloweenStoveRotations'],
+      [3070008, 'Stove11', 'Stove11Rotations_485'],
+      [3070009, 'Stove13', 'Stove13Rotations'],
+      [3070010, 'Stove14', 'StoveRotations14'],
+    ] as const;
+
+    for (const [itemId, className, runtimeClassName] of expected) {
+      expect(recoveredPlacementFootprint(itemId, className)).toEqual({
+        sizeX: 2,
+        sizeY: 1,
+      });
+      expect(recoveredRoomItemRuntimeClassName(itemId, className)).toBe(
+        runtimeClassName,
+      );
+      expect(recoveredRoomItemLogicalRotationCount(itemId, className)).toBe(4);
+      expect(recoveredRoomItemOccupiedCells(itemId, className, 2)).toEqual([
+        { x: 0, y: 0 },
+        { x: -1, y: 0 },
+      ]);
+      expect(recoveredRoomItemOccupiedCells(itemId, className, 3)).toEqual([
+        { x: 0, y: 0 },
+        { x: 0, y: -1 },
+      ]);
+    }
   });
 
   it('accepts qualified historical class names by exact leaf plus item id', () => {
