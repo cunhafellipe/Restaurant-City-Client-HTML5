@@ -27,6 +27,7 @@ pub struct ActiveServiceAssignment {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ActiveServiceIdentity {
     pub service_id: u64,
+    pub restaurant_mutation_sequence: u64,
     /// Customer and order ids are namespaced identities. For the first native
     /// lifecycle they intentionally share the monotonically allocated service
     /// id, making retries deterministic without inventing extra allocators.
@@ -49,6 +50,7 @@ pub struct ActiveServiceRecord {
 impl ActiveServiceRecord {
     pub fn start(
         service_id: u64,
+        restaurant_mutation_sequence: u64,
         assignment: ActiveServiceAssignment,
         restaurant: &RestaurantSnapshot,
         catalog: &PlacementCatalog,
@@ -115,6 +117,7 @@ impl ActiveServiceRecord {
         Ok(Self {
             identity: ActiveServiceIdentity {
                 service_id,
+                restaurant_mutation_sequence,
                 customer_id: service_id,
                 order_id: service_id,
                 chair_instance_id: assignment.chair_instance_id,
@@ -214,6 +217,7 @@ mod tests {
         let (restaurant, catalog) = fixture();
         let record = ActiveServiceRecord::start(
             1,
+            3,
             ActiveServiceAssignment {
                 chair_instance_id: 1,
                 table_instance_id: 2,
@@ -241,6 +245,7 @@ mod tests {
         assert_eq!(
             ActiveServiceRecord::start(
                 1,
+                3,
                 ActiveServiceAssignment {
                     chair_instance_id: 1,
                     table_instance_id: 3,
