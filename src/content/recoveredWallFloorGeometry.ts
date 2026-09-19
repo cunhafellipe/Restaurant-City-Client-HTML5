@@ -9,6 +9,7 @@ export interface RecoveredWallFloorGeometry {
   } | null;
   readonly itemHeightTwips: number | null;
   readonly serverCatalogEnabled: boolean;
+  readonly runtimeGeometryEnabled: boolean;
 }
 
 interface ContractEntry {
@@ -19,6 +20,7 @@ interface ContractEntry {
   } | null;
   readonly itemHeightTwips?: number | null;
   readonly serverCatalogEnabled?: boolean;
+  readonly runtimeGeometryEnabled?: boolean;
 }
 
 const entries = Object.entries(contract.classes) as ReadonlyArray<
@@ -50,6 +52,7 @@ export function recoveredWallFloorGeometry(
     footprint: entry.footprint ?? null,
     itemHeightTwips: entry.itemHeightTwips ?? null,
     serverCatalogEnabled: entry.serverCatalogEnabled === true,
+    runtimeGeometryEnabled: entry.runtimeGeometryEnabled === true,
   };
 }
 
@@ -58,5 +61,7 @@ export function recoveredEnabledWallFloorFootprint(
   className: string | null,
 ): NonNullable<RecoveredWallFloorGeometry['footprint']> | null {
   const geometry = recoveredWallFloorGeometry(itemId, className);
-  return geometry?.serverCatalogEnabled ? geometry.footprint : null;
+  return geometry?.runtimeGeometryEnabled || geometry?.serverCatalogEnabled
+    ? geometry.footprint
+    : null;
 }
