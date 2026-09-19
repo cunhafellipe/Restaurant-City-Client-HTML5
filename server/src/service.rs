@@ -717,6 +717,11 @@ impl ProductAggregate {
                     serde_json::from_slice(bytes).map_err(|_| ProductStateStoreError::Corrupt)?;
                 Self::decode_v4_persisted(catalog, persisted)
             }
+            ACTIVE_SERVICE_PERSISTENCE_SCHEMA_VERSION => {
+                let persisted: PersistedAggregate =
+                    serde_json::from_slice(bytes).map_err(|_| ProductStateStoreError::Corrupt)?;
+                Self::decode_v5_persisted(catalog, persisted)
+            }
             PRODUCT_PERSISTENCE_SCHEMA_VERSION => {
                 let persisted: PersistedAggregate =
                     serde_json::from_slice(bytes).map_err(|_| ProductStateStoreError::Corrupt)?;
@@ -934,6 +939,22 @@ impl ProductAggregate {
         Self::decode_current_persisted(catalog, persisted)
     }
 
+    fn decode_v5_persisted(
+        catalog: &PlacementCatalog,
+        mut persisted: PersistedAggregate,
+    ) -> Result<Self, ProductStateStoreError> {
+        if persisted.schema_version != ACTIVE_SERVICE_PERSISTENCE_SCHEMA_VERSION {
+            return Err(ProductStateStoreError::Corrupt);
+        }
+
+        // V5 predates authoritative wall-clock deadlines. Its service journal
+        // is replayed exactly as an unanchored legacy prefix. No timestamp is
+        // invented during decode; the first V6 server access must explicitly
+        // append AnchorTiming before any timed transition can occur.
+        persisted.schema_version = PRODUCT_PERSISTENCE_SCHEMA_VERSION;
+        Self::decode_current_persisted(catalog, persisted)
+    }
+
     fn decode_current_persisted(
         catalog: &PlacementCatalog,
         persisted: PersistedAggregate,
@@ -948,9 +969,10 @@ impl ProductAggregate {
             return Err(ProductStateStoreError::Corrupt);
         }
 
-        // V5 keeps the object/floor/wallpaper journals and adds an independent
-        // live-service journal. Replay every domain instead of trusting
-        // serialized snapshots.
+        // V6 extends the V5 live-service journal with authoritative timing.
+        // Replay every domain and every deadline from journal operations rather
+        // than trusting serialized result snapshots. A migrated V5 prefix is
+        // permitted to remain unanchored until an explicit AnchorTiming entry.
         let player = PlayerState::from_persistence_snapshot(persisted.player)
             .map_err(|_| ProductStateStoreError::Corrupt)?;
         let PersistedRestaurant {
@@ -1249,6 +1271,7 @@ impl ProductAggregate {
                 ServiceMutationOperation::Start {
                     restaurant_mutation_sequence,
                     assignment,
+                    effective_at_ms,
                 } => {
                     if replay_active_service.is_some() {
                         return Err(ProductStateStoreError::Corrupt);
@@ -1256,7 +1279,7 @@ impl ProductAggregate {
                     let source_restaurant = restaurant_snapshots_by_sequence
                         .get(&restaurant_mutation_sequence)
                         .ok_or(ProductStateStoreError::Corrupt)?;
-                    let started = ActiveServiceRecord::start(
+                    let mut started = ActiveServiceRecord::start(
                         replay_next_service_id,
                         restaurant_mutation_sequence,
                         assignment,
@@ -1264,19 +1287,48 @@ impl ProductAggregate {
                         catalog,
                     )
                     .map_err(|_| ProductStateStoreError::Corrupt)?;
+                    if let Some(effective_at_ms) = effective_at_ms {
+                        started = started
+                            .anchor_timing(effective_at_ms)
+                            .map_err(|_| ProductStateStoreError::Corrupt)?;
+                    }
                     replay_next_service_id = replay_next_service_id
                         .checked_add(1)
                         .ok_or(ProductStateStoreError::Corrupt)?;
                     replay_active_service = Some(started);
                 }
-                ServiceMutationOperation::Transition { service_id, event } => {
+                ServiceMutationOperation::AnchorTiming {
+                    service_id,
+                    effective_at_ms,
+                } => {
+                    let current = replay_active_service.ok_or(ProductStateStoreError::Corrupt)?;
+                    if current.identity.service_id != service_id || current.timing_anchored {
+                        return Err(ProductStateStoreError::Corrupt);
+                    }
+                    replay_active_service = Some(
+                        current
+                            .anchor_timing(effective_at_ms)
+                            .map_err(|_| ProductStateStoreError::Corrupt)?,
+                    );
+                }
+                ServiceMutationOperation::Transition {
+                    service_id,
+                    event,
+                    effective_at_ms,
+                } => {
                     let current = replay_active_service.ok_or(ProductStateStoreError::Corrupt)?;
                     if current.identity.service_id != service_id {
                         return Err(ProductStateStoreError::Corrupt);
                     }
-                    let (transitioned, effect) = current
-                        .transition(event)
-                        .map_err(|_| ProductStateStoreError::Corrupt)?;
+                    let (transitioned, effect) = match (current.timing_anchored, effective_at_ms) {
+                        (false, None) => current
+                            .transition(event)
+                            .map_err(|_| ProductStateStoreError::Corrupt)?,
+                        (true, Some(effective_at_ms)) => current
+                            .transition_at(event, effective_at_ms)
+                            .map_err(|_| ProductStateStoreError::Corrupt)?,
+                        _ => return Err(ProductStateStoreError::Corrupt),
+                    };
                     if effect.is_some() {
                         return Err(ProductStateStoreError::Corrupt);
                     }
