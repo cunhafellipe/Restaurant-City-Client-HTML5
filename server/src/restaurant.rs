@@ -18,6 +18,7 @@ pub struct ItemPlacementDefinition {
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct ServiceItemFlags {
+    pub door_item: bool,
     pub chair_item: bool,
     pub table_item: bool,
     pub kitchen: bool,
@@ -32,7 +33,7 @@ pub struct PlacementCatalog {
 }
 
 pub const PLACEMENT_CATALOG_MAGIC: &str = "ANEWON_RC_PLACEMENT_CATALOG_V4";
-const PLACEMENT_CATALOG_COLUMNS: &str = "item_id\tsize_x\tsize_y\trotation_count\twall_item\twall_decoration_item\twallpaper_item\toutdoor\tfloor_tile_item\tsurface\tstackable\tchair_item\ttable_item\tkitchen\tdrink\ttoilet";
+const PLACEMENT_CATALOG_COLUMNS: &str = "item_id\tsize_x\tsize_y\trotation_count\twall_item\twall_decoration_item\twallpaper_item\toutdoor\tfloor_tile_item\tsurface\tstackable\tdoor_item\tchair_item\ttable_item\tkitchen\tdrink\ttoilet";
 
 impl PlacementCatalog {
     pub fn new(
@@ -99,7 +100,7 @@ impl PlacementCatalog {
             }
 
             let fields: Vec<_> = line.split('\t').collect();
-            if fields.len() != 16 {
+            if fields.len() != 17 {
                 return Err(PlacementCatalogLoadError::InvalidRow { line: line_number });
             }
 
@@ -137,11 +138,12 @@ impl PlacementCatalog {
                 },
             };
             let service = ServiceItemFlags {
-                chair_item: parse_bool(fields[11])?,
-                table_item: parse_bool(fields[12])?,
-                kitchen: parse_bool(fields[13])?,
-                drink: parse_bool(fields[14])?,
-                toilet: parse_bool(fields[15])?,
+                door_item: parse_bool(fields[11])?,
+                chair_item: parse_bool(fields[12])?,
+                table_item: parse_bool(fields[13])?,
+                kitchen: parse_bool(fields[14])?,
+                drink: parse_bool(fields[15])?,
+                toilet: parse_bool(fields[16])?,
             };
             service_roles.insert(definition.item_id, service);
             definitions.push(definition);
@@ -1065,7 +1067,7 @@ mod tests {
         let input = concat!(
             "ANEWON_RC_PLACEMENT_CATALOG_V4\n",
             "# baseline=0.9.143a\n",
-            "item_id\tsize_x\tsize_y\trotation_count\twall_item\twall_decoration_item\twallpaper_item\toutdoor\tfloor_tile_item\tsurface\tstackable\tchair_item\ttable_item\tkitchen\tdrink\ttoilet\n",
+            "item_id\tsize_x\tsize_y\trotation_count\twall_item\twall_decoration_item\twallpaper_item\toutdoor\tfloor_tile_item\tsurface\tstackable\tdoor_item\tchair_item\ttable_item\tkitchen\tdrink\ttoilet\n",
             "10\t2\t1\t4\t0\t0\t0\t0\t0\t1\t0\n",
             "20\t1\t1\t1\t0\t0\t0\t0\t0\t0\t1\n",
         );
@@ -1078,7 +1080,7 @@ mod tests {
     fn trusted_catalog_loader_rejects_duplicate_ids() {
         let input = concat!(
             "ANEWON_RC_PLACEMENT_CATALOG_V4\n",
-            "item_id\tsize_x\tsize_y\trotation_count\twall_item\twall_decoration_item\twallpaper_item\toutdoor\tfloor_tile_item\tsurface\tstackable\tchair_item\ttable_item\tkitchen\tdrink\ttoilet\n",
+            "item_id\tsize_x\tsize_y\trotation_count\twall_item\twall_decoration_item\twallpaper_item\toutdoor\tfloor_tile_item\tsurface\tstackable\tdoor_item\tchair_item\ttable_item\tkitchen\tdrink\ttoilet\n",
             "10\t2\t1\t4\t0\t0\t0\t0\t0\t1\t0\n",
             "10\t1\t1\t4\t0\t0\t0\t0\t0\t0\t1\n",
         );
