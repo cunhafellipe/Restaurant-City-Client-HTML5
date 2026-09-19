@@ -1,0 +1,60 @@
+{
+  "schemaVersion": 1,
+  "baseline": "0.9.143a",
+  "canonicalArchiveSha256": "4493be9bc4c2f87ef80ca7afa5321e12bb94a7ec6ed2f0a673b4d48b19170ef4",
+  "canonicalActionScriptCommit": "d552cfa4767fe4fb5b7899493c30bfb375afc2c1",
+  "evidence": {
+    "r49": {
+      "runId": 35457046701,
+      "artifactId": 10588553551,
+      "artifactSha256": "f6bcfb9280574eafbc1d803179ed74b29dca5755765fa9d5ed2722ec7f3e5dac",
+      "sourceClass": "Chair01Overlay",
+      "sourceSymbolId": 2395,
+      "conclusion": "CHAIR01_OVERLAY_VECTOR_AND_ATLAS_ORIGINS_RECOVERED"
+    }
+  },
+  "overlays": {
+    "Chair01": {
+      "itemIds": [
+        3040000
+      ],
+      "overlayClassName": "Chair01Overlay",
+      "logicalRotationCount": 4,
+      "visibleFrameCount": 2,
+      "rotations": [
+        {
+          "rotation": 0,
+          "visible": false,
+          "frame": null,
+          "canvasOriginPx": null
+        },
+        {
+          "rotation": 1,
+          "visible": false,
+          "frame": null,
+          "canvasOriginPx": null
+        },
+        {
+          "rotation": 2,
+          "visible": true,
+          "frame": "indoor_asset/chair01overlay/003",
+          "canvasOriginPx": {
+            "x": -22.6,
+            "y": -23.25
+          }
+        },
+        {
+          "rotation": 3,
+          "visible": true,
+          "frame": "indoor_asset/chair01overlay/004",
+          "canvasOriginPx": {
+            "x": -22.8,
+            "y": -23
+          }
+        }
+      ]
+    }
+  },
+  "semantics": "Customer.sitOnChair creates <chair class>Overlay, gotoAndStop(rotation+1), adds it as a child of the customer, and keeps it until leaveCurrentChair. Empty logical overlay frames are preserved as empty rather than invented.",
+  "runtimePolicy": "Web runtime consumes only generated indoor atlas frames and this typed presentation contract; historical SWF/XML remains offline evidence."
+}
