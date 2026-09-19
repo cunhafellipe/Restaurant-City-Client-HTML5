@@ -1,7 +1,8 @@
 use crate::placement::{
     Footprint, HistoricalTileStackEntry, HistoricalTileStackValidation, PlacementFlags,
-    PlacementShape, RoomDimensions, StructuralPlacement, TilePoint, rotate_footprint,
-    validate_historical_tile_stack, validate_structural_placement,
+    PlacementShape, ROOM_INDEX_MAIN, RoomDimensions, StructuralPlacement, TilePoint,
+    default_wall_attachment_rotation, rotate_footprint, validate_historical_tile_stack,
+    validate_structural_placement,
 };
 use std::collections::BTreeMap;
 
@@ -360,14 +361,14 @@ impl RestaurantState {
             let validated =
                 state.validate_new_item(catalog, definition, intent, stored.instance_id, None)?;
 
-            if validated.room_index != stored.room_index {
-                return Err(RestaurantAuthorityError::SnapshotRoomMismatch {
+            if validated != stored {
+                return Err(RestaurantAuthorityError::SnapshotPlacementMismatch {
                     instance_id: stored.instance_id,
                 });
             }
 
             max_instance_id = max_instance_id.max(stored.instance_id);
-            state.items.insert(stored.instance_id, stored);
+            state.items.insert(stored.instance_id, validated);
             state.stack_order.push(stored.instance_id);
         }
 
@@ -389,22 +390,72 @@ impl RestaurantState {
         instance_id: u64,
         self_instance_id: Option<u64>,
     ) -> Result<PlacedItem, RestaurantAuthorityError> {
-        if intent.rotation >= definition.rotation_count {
-            return Err(RestaurantAuthorityError::InvalidRotation {
-                rotation: intent.rotation,
-            });
-        }
-
-        // The first M2 authoritative slice only permits ordinary floor-space
-        // items. Wall/floor-tile domains require their recovered collision maps
-        // before they can be accepted safely.
-        if definition.flags.wall_item
-            || definition.flags.wall_decoration_item
+        // Floor tiles use their own authority/state. Editable wall structures
+        // and wallpaper remain fail-closed. Wall decorations are the first
+        // recovered wall-domain slice and are normalized against the immutable
+        // default wallMap rather than trusting client rotation.
+        if definition.flags.floor_tile_item
+            || definition.flags.wall_item
             || definition.flags.wallpaper_item
-            || definition.flags.floor_tile_item
         {
             return Err(RestaurantAuthorityError::UnsupportedPlacementDomain {
                 item_id: definition.item_id,
+            });
+        }
+
+        if definition.flags.wall_decoration_item {
+            if definition.footprint
+                != (Footprint {
+                    size_x: 1,
+                    size_y: 1,
+                })
+            {
+                return Err(RestaurantAuthorityError::UnsupportedWallAttachmentFootprint {
+                    item_id: definition.item_id,
+                });
+            }
+
+            let rotation = default_wall_attachment_rotation(intent.tile, self.room).ok_or(
+                RestaurantAuthorityError::NoWallAttachmentTarget {
+                    item_id: definition.item_id,
+                    tile: intent.tile,
+                },
+            )?;
+            if rotation >= definition.rotation_count {
+                return Err(RestaurantAuthorityError::InvalidDefinition {
+                    item_id: definition.item_id,
+                });
+            }
+
+            for existing_id in &self.stack_order {
+                if Some(*existing_id) == self_instance_id {
+                    continue;
+                }
+                let existing = self.items.get(existing_id).ok_or(
+                    RestaurantAuthorityError::CorruptStackOrder {
+                        instance_id: *existing_id,
+                    },
+                )?;
+                if existing.room_index == ROOM_INDEX_MAIN && existing.tile == intent.tile {
+                    return Err(RestaurantAuthorityError::Collision {
+                        item_id: definition.item_id,
+                        with_instance_id: existing.instance_id,
+                    });
+                }
+            }
+
+            return Ok(PlacedItem {
+                instance_id,
+                item_id: intent.item_id,
+                tile: intent.tile,
+                rotation,
+                room_index: ROOM_INDEX_MAIN,
+            });
+        }
+
+        if intent.rotation >= definition.rotation_count {
+            return Err(RestaurantAuthorityError::InvalidRotation {
+                rotation: intent.rotation,
             });
         }
 
@@ -536,6 +587,13 @@ pub enum RestaurantAuthorityError {
     UnsupportedPlacementDomain {
         item_id: u32,
     },
+    UnsupportedWallAttachmentFootprint {
+        item_id: u32,
+    },
+    NoWallAttachmentTarget {
+        item_id: u32,
+        tile: TilePoint,
+    },
     NotFloorTile {
         item_id: u32,
     },
@@ -560,7 +618,7 @@ pub enum RestaurantAuthorityError {
     InvalidSnapshotInstanceId {
         instance_id: u64,
     },
-    SnapshotRoomMismatch {
+    SnapshotPlacementMismatch {
         instance_id: u64,
     },
     InvalidNextInstanceId {
@@ -602,6 +660,22 @@ mod tests {
                 flags: PlacementFlags::default(),
             },
         ])
+        .unwrap()
+    }
+
+    fn wall_attachment_catalog() -> PlacementCatalog {
+        PlacementCatalog::new([ItemPlacementDefinition {
+            item_id: 60,
+            footprint: Footprint {
+                size_x: 1,
+                size_y: 1,
+            },
+            rotation_count: 2,
+            flags: PlacementFlags {
+                wall_decoration_item: true,
+                ..PlacementFlags::default()
+            },
+        }])
         .unwrap()
     }
 
@@ -709,6 +783,85 @@ mod tests {
                 },
             ),
             Err(RestaurantAuthorityError::NotFloorTile { item_id: 20 })
+        );
+    }
+
+    #[test]
+    fn wall_attachment_rotation_is_derived_from_default_wall_not_client() {
+        let catalog = wall_attachment_catalog();
+        let mut state = RestaurantState::new(room());
+
+        let top = state
+            .place(
+                &catalog,
+                PlacementIntent {
+                    item_id: 60,
+                    tile: TilePoint { x: 2, y: 0 },
+                    rotation: 0,
+                },
+            )
+            .unwrap();
+        assert_eq!(top.rotation, 1);
+
+        let moved = state
+            .transform(&catalog, top.instance_id, TilePoint { x: 0, y: 3 }, 15)
+            .unwrap();
+        assert_eq!(moved.rotation, 0);
+        assert_eq!(moved.tile, TilePoint { x: 0, y: 3 });
+    }
+
+    #[test]
+    fn wall_attachment_rejects_corner_interior_and_double_occupancy() {
+        let catalog = wall_attachment_catalog();
+        let mut state = RestaurantState::new(room());
+
+        assert!(matches!(
+            state.place(
+                &catalog,
+                PlacementIntent {
+                    item_id: 60,
+                    tile: TilePoint { x: 0, y: 0 },
+                    rotation: 0,
+                },
+            ),
+            Err(RestaurantAuthorityError::NoWallAttachmentTarget { .. })
+        ));
+        assert!(matches!(
+            state.place(
+                &catalog,
+                PlacementIntent {
+                    item_id: 60,
+                    tile: TilePoint { x: 2, y: 2 },
+                    rotation: 0,
+                },
+            ),
+            Err(RestaurantAuthorityError::NoWallAttachmentTarget { .. })
+        ));
+
+        let first = state
+            .place(
+                &catalog,
+                PlacementIntent {
+                    item_id: 60,
+                    tile: TilePoint { x: 3, y: 0 },
+                    rotation: 0,
+                },
+            )
+            .unwrap();
+        assert_eq!(first.rotation, 1);
+        assert_eq!(
+            state.place(
+                &catalog,
+                PlacementIntent {
+                    item_id: 60,
+                    tile: TilePoint { x: 3, y: 0 },
+                    rotation: 1,
+                },
+            ),
+            Err(RestaurantAuthorityError::Collision {
+                item_id: 60,
+                with_instance_id: first.instance_id,
+            })
         );
     }
 
