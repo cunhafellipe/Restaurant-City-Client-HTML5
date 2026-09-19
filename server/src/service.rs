@@ -3556,9 +3556,24 @@ mod tests {
         );
 
         for (item_id, grant_id, place_id, tile) in [
-            (11_u32, "clock-grant-chair", "clock-place-chair", TilePoint { x: 2, y: 2 }),
-            (12_u32, "clock-grant-table", "clock-place-table", TilePoint { x: 3, y: 2 }),
-            (13_u32, "clock-grant-kitchen", "clock-place-kitchen", TilePoint { x: 6, y: 4 }),
+            (
+                11_u32,
+                "clock-grant-chair",
+                "clock-place-chair",
+                TilePoint { x: 2, y: 2 },
+            ),
+            (
+                12_u32,
+                "clock-grant-table",
+                "clock-place-table",
+                TilePoint { x: 3, y: 2 },
+            ),
+            (
+                13_u32,
+                "clock-grant-kitchen",
+                "clock-place-kitchen",
+                TilePoint { x: 6, y: 4 },
+            ),
         ] {
             service
                 .apply_player_command(
@@ -3612,12 +3627,18 @@ mod tests {
             )
             .unwrap();
 
-        let deciding = service.load_active_service("valid-product-session").unwrap().unwrap();
+        let deciding = service
+            .load_active_service("valid-product-session")
+            .unwrap()
+            .unwrap();
         assert_eq!(deciding.state.customer, CustomerServiceState::Deciding);
         assert_eq!(deciding.deadlines.customer_deadline_at_ms, Some(11_000));
 
         clock.set(11_000);
-        let waiting = service.load_active_service("valid-product-session").unwrap().unwrap();
+        let waiting = service
+            .load_active_service("valid-product-session")
+            .unwrap()
+            .unwrap();
         assert_eq!(waiting.state.customer, CustomerServiceState::Waiting);
         assert_eq!(waiting.state.order, OrderServiceState::Queued);
         assert_eq!(waiting.deadlines.customer_deadline_at_ms, Some(21_000));
@@ -3626,7 +3647,9 @@ mod tests {
         let first = service.store.load(subject).unwrap().unwrap();
         let first_sequence = first.state.next_service_mutation_sequence;
         assert_eq!(
-            service.load_active_service("valid-product-session").unwrap(),
+            service
+                .load_active_service("valid-product-session")
+                .unwrap(),
             Some(waiting)
         );
         let second = service.store.load(subject).unwrap().unwrap();
@@ -3702,12 +3725,7 @@ mod tests {
         assert_eq!(legacy.state.customer, CustomerServiceState::Deciding);
 
         let anchored = restored
-            .anchor_active_service_timing(
-                session,
-                mutation("v6-explicit-anchor"),
-                1,
-                50_000,
-            )
+            .anchor_active_service_timing(session, mutation("v6-explicit-anchor"), 1, 50_000)
             .unwrap()
             .record()
             .unwrap();
