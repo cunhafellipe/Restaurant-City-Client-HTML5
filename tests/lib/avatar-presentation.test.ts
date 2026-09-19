@@ -33,6 +33,11 @@ function active(
     orderState,
     customerTimerMs: null,
     orderTimerMs: null,
+    serverNowMs: 10_000,
+    customerDeadlineAtMs: null,
+    orderDeadlineAtMs: null,
+    customerRemainingMs: null,
+    orderRemainingMs: null,
   };
 }
 
