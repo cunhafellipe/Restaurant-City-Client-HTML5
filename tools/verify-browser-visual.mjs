@@ -216,6 +216,16 @@ const doorLeftFixtureSeed = {
     { item_id: 3010000, owned: 1, placed: 1, available: 0 },
   ],
 };
+const dividerEditorFixtureSeed = {
+  room: { inside_x: 8, inside_y: 8, outside_x: 0, outside_y: 0 },
+  next_instance_id: 1,
+  items: [],
+  floor_tiles: [],
+  wallpapers: [],
+  inventory: [
+    { item_id: 3020049, owned: 1, placed: 0, available: 1 },
+  ],
+};
 const wallpaperEditorFixtureSeed = {
   room: { inside_x: 8, inside_y: 8, outside_x: 0, outside_y: 0 },
   next_instance_id: 1,
@@ -658,6 +668,61 @@ const server = http.createServer(async (req, res) => {
     });
     res.end(JSON.stringify(fixtureState));
     return;
+  }
+
+  if (
+    requestUrl.pathname === '/api/v1/restaurant/placements' &&
+    req.method === 'POST'
+  ) {
+    try {
+      if (!req.headers['idempotency-key']) {
+        throw new Error('missing idempotency key');
+      }
+      const body = await readJsonBody(req);
+      const itemId = integerAttribute(body.item_id, 'item_id');
+      const tileX = integerAttribute(body.tile_x, 'tile_x');
+      const tileY = integerAttribute(body.tile_y, 'tile_y');
+      const rotation = integerAttribute(body.rotation, 'rotation');
+      const inventory = fixtureState.inventory.find(
+        (entry) => entry.item_id === itemId,
+      );
+      if (
+        !inventory ||
+        inventory.available <= 0 ||
+        tileX < 1 ||
+        tileY < 1 ||
+        tileX >= fixtureState.room.inside_x ||
+        tileY >= fixtureState.room.inside_y ||
+        fixtureState.items.some(
+          (entry) => entry.tile_x === tileX && entry.tile_y === tileY,
+        )
+      ) {
+        res.writeHead(409, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ error: { code: 'CONFLICT' } }));
+        return;
+      }
+      const item = {
+        instance_id: fixtureState.next_instance_id++,
+        item_id: itemId,
+        tile_x: tileX,
+        tile_y: tileY,
+        rotation,
+        room_index: 0,
+      };
+      fixtureState.items.push(item);
+      inventory.placed += 1;
+      inventory.available = inventory.owned - inventory.placed;
+      res.writeHead(200, {
+        'Content-Type': 'application/json; charset=utf-8',
+        'Cache-Control': 'no-store',
+      });
+      res.end(JSON.stringify({ outcome: 'applied', item }));
+      return;
+    } catch {
+      res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify({ error: { code: 'INVALID_REQUEST' } }));
+      return;
+    }
   }
 
   if (
@@ -1428,6 +1493,189 @@ try {
   ) {
     throw new Error(
       `Browser wallpaper removal did not reconcile inventory: ${JSON.stringify(wallpaperInventoryAfterRemove)}`,
+    );
+  }
+
+  // Canonical wallDivider proof: the source shows these are ordinary decor,
+  // not wallMap topology. Exercise the normal placement/edit/removal transport
+  // with White Wall after the full 12-frame visual family has been frozen.
+  fixtureState = structuredClone(dividerEditorFixtureSeed);
+  await cdp.send('Page.reload', { ignoreCache: true });
+  const dividerEditorState = await waitForRuntime(
+    cdp,
+    `(() => {
+      const status = document.querySelector('.rc-status');
+      const selection = document.querySelector('.rc-hud-card');
+      const canvas = document.querySelector('#game-canvas-host canvas');
+      return {
+        phase: status?.dataset.phase ?? null,
+        status: status?.textContent ?? '',
+        selection: selection?.textContent ?? '',
+        canvas: canvas ? (() => {
+          const rect = canvas.getBoundingClientRect();
+          return {
+            width: canvas.width,
+            height: canvas.height,
+            x: rect.x,
+            y: rect.y,
+            cssWidth: rect.width,
+            cssHeight: rect.height,
+          };
+        })() : null,
+      };
+    })()`,
+    (value) =>
+      value?.phase === 'editing' &&
+      value?.status?.includes(
+        'Loaded baseline 0.9.143a, 0 persisted object(s), 0 floor tile(s), and 0 wallpaper slot(s).',
+      ) &&
+      value?.selection?.includes('#3020049') &&
+      value?.selection?.includes('White Wall') &&
+      value?.canvas?.width === 760 &&
+      value?.canvas?.height === 600,
+    8000,
+    'White Wall ordinary placement selection',
+  );
+
+  const dividerPlaceTile = { x: 3, y: 3 };
+  const dividerPlaceCenter = tileCenterInCanvas(
+    dividerPlaceTile.x,
+    dividerPlaceTile.y,
+    { sizeX: 1, sizeY: 1 },
+  );
+  await dispatchMouseClick(
+    cdp,
+    dividerEditorState.canvas.x + dividerPlaceCenter.x,
+    dividerEditorState.canvas.y + dividerPlaceCenter.y,
+  );
+  const dividerPlacedStatus = await waitForRuntime(
+    cdp,
+    `document.querySelector('.rc-status')?.textContent ?? ''`,
+    (value) =>
+      typeof value === 'string' &&
+      value.includes('Placement #1 saved and reloaded from authority.'),
+    8000,
+    'White Wall authoritative placement reload',
+  );
+  if (
+    fixtureState.items.length !== 1 ||
+    fixtureState.items[0]?.item_id !== 3020049 ||
+    fixtureState.items[0]?.tile_x !== dividerPlaceTile.x ||
+    fixtureState.items[0]?.tile_y !== dividerPlaceTile.y ||
+    fixtureState.items[0]?.rotation !== 0
+  ) {
+    throw new Error(
+      `White Wall browser placement mismatch: ${JSON.stringify(fixtureState.items)}`,
+    );
+  }
+  if (
+    fixtureState.inventory[0]?.owned !== 1 ||
+    fixtureState.inventory[0]?.placed !== 1 ||
+    fixtureState.inventory[0]?.available !== 0
+  ) {
+    throw new Error(
+      `White Wall placement inventory mismatch: ${JSON.stringify(fixtureState.inventory[0])}`,
+    );
+  }
+
+  await dispatchMouseClick(
+    cdp,
+    dividerEditorState.canvas.x + dividerPlaceCenter.x,
+    dividerEditorState.canvas.y + dividerPlaceCenter.y,
+  );
+  const dividerSelectedState = await waitForRuntime(
+    cdp,
+    `document.querySelector('.rc-hud-card')?.textContent ?? ''`,
+    (value) =>
+      typeof value === 'string' &&
+      value.includes('Editing placed #1') &&
+      value.includes('White Wall'),
+    5000,
+    'White Wall placed selection',
+  );
+
+  await cdp.send('Runtime.evaluate', {
+    expression: `(() => {
+      const button = [...document.querySelectorAll('.rc-control-button')]
+        .find((candidate) => candidate.textContent === 'Rotate preview');
+      if (!button || button.disabled) {
+        throw new Error('White Wall rotate preview is unavailable');
+      }
+      button.click();
+      return true;
+    })()`,
+    returnByValue: true,
+  });
+  const dividerRotatedState = await waitForRuntime(
+    cdp,
+    `document.querySelector('.rc-hud-card')?.textContent ?? ''`,
+    (value) =>
+      typeof value === 'string' &&
+      value.includes('Editing placed #1') &&
+      value.includes('rot 1'),
+    5000,
+    'White Wall rotation 1 preview',
+  );
+
+  const dividerMoveTile = { x: 5, y: 4 };
+  const dividerMoveCenter = tileCenterInCanvas(
+    dividerMoveTile.x,
+    dividerMoveTile.y,
+    { sizeX: 1, sizeY: 1 },
+  );
+  await dispatchMouseClick(
+    cdp,
+    dividerEditorState.canvas.x + dividerMoveCenter.x,
+    dividerEditorState.canvas.y + dividerMoveCenter.y,
+  );
+  const dividerMovedStatus = await waitForRuntime(
+    cdp,
+    `document.querySelector('.rc-status')?.textContent ?? ''`,
+    (value) =>
+      typeof value === 'string' &&
+      value.includes('Edit #1 saved and reloaded from authority.'),
+    8000,
+    'White Wall transform reload',
+  );
+  if (
+    fixtureState.items[0]?.tile_x !== dividerMoveTile.x ||
+    fixtureState.items[0]?.tile_y !== dividerMoveTile.y ||
+    fixtureState.items[0]?.rotation !== 1
+  ) {
+    throw new Error(
+      `White Wall browser transform mismatch: ${JSON.stringify(fixtureState.items)}`,
+    );
+  }
+
+  await cdp.send('Runtime.evaluate', {
+    expression: `(() => {
+      const button = [...document.querySelectorAll('.rc-control-button')]
+        .find((candidate) => candidate.textContent === 'Remove placed');
+      if (!button || button.disabled) {
+        throw new Error('White Wall remove control is unavailable');
+      }
+      button.click();
+      return true;
+    })()`,
+    returnByValue: true,
+  });
+  const dividerRemovedStatus = await waitForRuntime(
+    cdp,
+    `document.querySelector('.rc-status')?.textContent ?? ''`,
+    (value) =>
+      typeof value === 'string' &&
+      value.includes('Placed #1 removed and inventory reconciled.'),
+    8000,
+    'White Wall removal reload',
+  );
+  if (
+    fixtureState.items.length !== 0 ||
+    fixtureState.inventory[0]?.owned !== 1 ||
+    fixtureState.inventory[0]?.placed !== 0 ||
+    fixtureState.inventory[0]?.available !== 1
+  ) {
+    throw new Error(
+      `White Wall removal reconciliation mismatch: items=${JSON.stringify(fixtureState.items)} inventory=${JSON.stringify(fixtureState.inventory[0])}`,
     );
   }
 
@@ -2331,6 +2579,18 @@ try {
       targetTile,
       previewRotation,
       finalInventory: inventoryAfterRemove,
+      divider: {
+        initialSelection: dividerEditorState.selection,
+        placeTile: dividerPlaceTile,
+        placedStatus: dividerPlacedStatus,
+        selected: dividerSelectedState,
+        rotated: dividerRotatedState,
+        moveTile: dividerMoveTile,
+        movedStatus: dividerMovedStatus,
+        removedStatus: dividerRemovedStatus,
+        finalInventory: fixtureState.inventory[0] ?? null,
+        passed: true,
+      },
       wallpaper: {
         initialSelection: wallpaperEditorState.selection,
         targetTile: wallpaperTarget,
@@ -2372,7 +2632,7 @@ try {
   }
 
   console.log(
-    `BROWSER VISUAL GOLDEN + EDIT INTERACTION PASS | browser=${browser} | bytes=${stat.size} | sha256=${metadata.sha256} | worldPixel=${worldPixelSha256} | exactPixelMatch=${exactPixelMatch} | worldBlock=${worldQuantizedBlockSha256} | edit=select-transform-remove | wallpaperEdit=apply-select-remove | floor=WoodPanel block=${floorQuantizedBlockSha256} frozen=${Boolean(floorGolden)} | window=SimpleWindow block=${wallQuantizedBlockSha256} frozen=${Boolean(wallGolden)} | stack=Table+Violin curHeight=25 block=${stackQuantizedBlockSha256} frozen=${Boolean(stackGolden)} | doorProbe=SimpleDoor block=${doorQuantizedBlockSha256} frozen=${Boolean(doorGolden)} | doorLeftMask block=${doorLeftMaskMetadata.quantizedBlockSha256} frozen=${doorLeftMaskMetadata.goldenFrozen} | doorAuthorityTop block=${doorAuthoritativeMetadata.quantizedBlockSha256} frozen=${doorAuthoritativeMetadata.goldenFrozen} | doorAuthorityLeft block=${doorLeftAuthoritativeMetadata.quantizedBlockSha256} frozen=${doorLeftAuthoritativeMetadata.goldenFrozen} | wallpaperLeft block=${wallpaperLeftMetadata.quantizedBlockSha256} frozen=${wallpaperLeftMetadata.goldenFrozen} | wallpaperTop block=${wallpaperTopMetadata.quantizedBlockSha256} frozen=${wallpaperTopMetadata.goldenFrozen} | divider12 block=${dividerProbeMetadata.quantizedBlockSha256} frozen=${dividerProbeMetadata.goldenFrozen}`,
+    `BROWSER VISUAL GOLDEN + EDIT INTERACTION PASS | browser=${browser} | bytes=${stat.size} | sha256=${metadata.sha256} | worldPixel=${worldPixelSha256} | exactPixelMatch=${exactPixelMatch} | worldBlock=${worldQuantizedBlockSha256} | edit=select-transform-remove | dividerEdit=place-select-rotate-move-remove | wallpaperEdit=apply-select-remove | floor=WoodPanel block=${floorQuantizedBlockSha256} frozen=${Boolean(floorGolden)} | window=SimpleWindow block=${wallQuantizedBlockSha256} frozen=${Boolean(wallGolden)} | stack=Table+Violin curHeight=25 block=${stackQuantizedBlockSha256} frozen=${Boolean(stackGolden)} | doorProbe=SimpleDoor block=${doorQuantizedBlockSha256} frozen=${Boolean(doorGolden)} | doorLeftMask block=${doorLeftMaskMetadata.quantizedBlockSha256} frozen=${doorLeftMaskMetadata.goldenFrozen} | doorAuthorityTop block=${doorAuthoritativeMetadata.quantizedBlockSha256} frozen=${doorAuthoritativeMetadata.goldenFrozen} | doorAuthorityLeft block=${doorLeftAuthoritativeMetadata.quantizedBlockSha256} frozen=${doorLeftAuthoritativeMetadata.goldenFrozen} | wallpaperLeft block=${wallpaperLeftMetadata.quantizedBlockSha256} frozen=${wallpaperLeftMetadata.goldenFrozen} | wallpaperTop block=${wallpaperTopMetadata.quantizedBlockSha256} frozen=${wallpaperTopMetadata.goldenFrozen} | divider12 block=${dividerProbeMetadata.quantizedBlockSha256} frozen=${dividerProbeMetadata.goldenFrozen}`,
   );
 } finally {
   try {
