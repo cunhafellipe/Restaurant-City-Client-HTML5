@@ -56,6 +56,20 @@ const WALLPAPER_TOP_META = path.join(
   WORK,
   'restaurant-wallpaper-top-authoritative.json',
 );
+const WALLPAPER_LEFT_GOLDEN = path.join(
+  REPO,
+  'tests',
+  'golden',
+  'm2',
+  'restaurant-wallpaper-left-authoritative.json',
+);
+const WALLPAPER_TOP_GOLDEN = path.join(
+  REPO,
+  'tests',
+  'golden',
+  'm2',
+  'restaurant-wallpaper-top-authoritative.json',
+);
 const DOOR_PROBE_GOLDEN = path.join(
   REPO,
   'tests',
@@ -1728,6 +1742,7 @@ try {
     expectedWallFrame,
     screenshotFile,
     metadataFile,
+    goldenFile,
   ) {
     fixtureState = structuredClone(seed);
     await cdp.send('Page.navigate', { url });
@@ -1792,6 +1807,23 @@ try {
     }
     fs.writeFileSync(screenshotFile, Buffer.from(shot.data, 'base64'));
     const png = PNG.sync.read(fs.readFileSync(screenshotFile));
+    const block = quantizedBlockSignature(png, 8);
+    const golden = fs.existsSync(goldenFile)
+      ? JSON.parse(fs.readFileSync(goldenFile, 'utf8'))
+      : null;
+    if (
+      !golden ||
+      golden.schemaVersion !== 1 ||
+      golden.fixture !== fixture ||
+      golden.canvas?.width !== png.width ||
+      golden.canvas?.height !== png.height ||
+      golden.blockSize !== 8 ||
+      golden.expectedQuantizedBlockSha256 !== block
+    ) {
+      goldenFailures.push(
+        `${fixture} expected=${golden?.expectedQuantizedBlockSha256 ?? '<missing>'} actual=${block}`,
+      );
+    }
     const result = {
       schemaVersion: 1,
       fixture,
@@ -1800,8 +1832,8 @@ try {
       pngSha256: sha256(screenshotFile),
       pixelSha256: bufferSha256(png.data),
       blockSize: 8,
-      quantizedBlockSha256: quantizedBlockSignature(png, 8),
-      goldenFrozen: false,
+      quantizedBlockSha256: block,
+      goldenFrozen: Boolean(golden),
     };
     fs.writeFileSync(
       metadataFile,
@@ -1821,6 +1853,7 @@ try {
     'indoor_asset/wall2/001',
     WALLPAPER_LEFT_SCREENSHOT,
     WALLPAPER_LEFT_META,
+    WALLPAPER_LEFT_GOLDEN,
   );
   const wallpaperTopMetadata = await captureAuthoritativeWallpaper(
     wallpaperTopFixtureSeed,
@@ -1830,6 +1863,7 @@ try {
     'indoor_asset/wall2/002',
     WALLPAPER_TOP_SCREENSHOT,
     WALLPAPER_TOP_META,
+    WALLPAPER_TOP_GOLDEN,
   );
 
   const metadata = {
@@ -1890,7 +1924,7 @@ try {
   }
 
   console.log(
-    `BROWSER VISUAL GOLDEN + EDIT INTERACTION PASS | browser=${browser} | bytes=${stat.size} | sha256=${metadata.sha256} | worldPixel=${worldPixelSha256} | exactPixelMatch=${exactPixelMatch} | worldBlock=${worldQuantizedBlockSha256} | edit=select-transform-remove | floor=WoodPanel block=${floorQuantizedBlockSha256} frozen=${Boolean(floorGolden)} | window=SimpleWindow block=${wallQuantizedBlockSha256} frozen=${Boolean(wallGolden)} | stack=Table+Violin curHeight=25 block=${stackQuantizedBlockSha256} frozen=${Boolean(stackGolden)} | doorProbe=SimpleDoor block=${doorQuantizedBlockSha256} frozen=${Boolean(doorGolden)} | doorLeftMask block=${doorLeftMaskMetadata.quantizedBlockSha256} frozen=${doorLeftMaskMetadata.goldenFrozen} | doorAuthorityTop block=${doorAuthoritativeMetadata.quantizedBlockSha256} frozen=${doorAuthoritativeMetadata.goldenFrozen} | doorAuthorityLeft block=${doorLeftAuthoritativeMetadata.quantizedBlockSha256} frozen=${doorLeftAuthoritativeMetadata.goldenFrozen} | wallpaperLeft block=${wallpaperLeftMetadata.quantizedBlockSha256} frozen=false | wallpaperTop block=${wallpaperTopMetadata.quantizedBlockSha256} frozen=false`,
+    `BROWSER VISUAL GOLDEN + EDIT INTERACTION PASS | browser=${browser} | bytes=${stat.size} | sha256=${metadata.sha256} | worldPixel=${worldPixelSha256} | exactPixelMatch=${exactPixelMatch} | worldBlock=${worldQuantizedBlockSha256} | edit=select-transform-remove | floor=WoodPanel block=${floorQuantizedBlockSha256} frozen=${Boolean(floorGolden)} | window=SimpleWindow block=${wallQuantizedBlockSha256} frozen=${Boolean(wallGolden)} | stack=Table+Violin curHeight=25 block=${stackQuantizedBlockSha256} frozen=${Boolean(stackGolden)} | doorProbe=SimpleDoor block=${doorQuantizedBlockSha256} frozen=${Boolean(doorGolden)} | doorLeftMask block=${doorLeftMaskMetadata.quantizedBlockSha256} frozen=${doorLeftMaskMetadata.goldenFrozen} | doorAuthorityTop block=${doorAuthoritativeMetadata.quantizedBlockSha256} frozen=${doorAuthoritativeMetadata.goldenFrozen} | doorAuthorityLeft block=${doorLeftAuthoritativeMetadata.quantizedBlockSha256} frozen=${doorLeftAuthoritativeMetadata.goldenFrozen} | wallpaperLeft block=${wallpaperLeftMetadata.quantizedBlockSha256} frozen=${wallpaperLeftMetadata.goldenFrozen} | wallpaperTop block=${wallpaperTopMetadata.quantizedBlockSha256} frozen=${wallpaperTopMetadata.goldenFrozen}`,
   );
 } finally {
   try {
