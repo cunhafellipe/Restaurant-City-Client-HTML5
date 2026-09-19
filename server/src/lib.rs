@@ -15,6 +15,7 @@ pub mod platform;
 pub mod restaurant;
 pub mod service;
 pub mod service_clock;
+pub mod service_path;
 pub mod topology;
 
 pub use active_service::{
@@ -68,6 +69,16 @@ pub use service_clock::{
     SystemServiceTimeSource, TimedServiceCatchUp, TimedServiceTransition, anchor_service_deadlines,
     catch_up_timed_service, due_service_event, remaining_ms, transition_timed_service,
     validate_service_deadlines,
+};
+
+pub use service_path::{
+    CUSTOMER_MOVE_SPEED_X_PX_PER_MS, CUSTOMER_MOVE_SPEED_Y_PX_PER_MS,
+    HISTORICAL_TILE_HEIGHT_HALF_PX, HISTORICAL_TILE_HEIGHT_PX,
+    HISTORICAL_TILE_WIDTH_HALF_PX, HISTORICAL_TILE_WIDTH_PX, ServicePathError,
+    WAITER_MOVE_SPEED_Y_MAX_PX_PER_MS, WAITER_MOVE_SPEED_Y_MIN_PX_PER_MS,
+    canonical_waiter_walk_speed_y, customer_path_duration_ms, customer_path_to_chair,
+    customer_path_to_exit, path_duration_ms, waiter_path_duration_ms,
+    waiter_path_to_customer, waiter_path_to_kitchen_pickup,
 };
 
 pub use persistence::RedbProductStateStore;
