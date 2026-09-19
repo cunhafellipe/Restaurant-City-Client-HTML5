@@ -157,63 +157,18 @@ pub enum ActiveServiceError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::placement::{Footprint, PlacementFlags, RoomDimensions};
-    use crate::restaurant::{
-        ItemPlacementDefinition, PlacementIntent, RestaurantState, ServiceItemFlags,
-    };
+    use crate::placement::RoomDimensions;
+    use crate::restaurant::{PlacementIntent, RestaurantState};
 
     fn fixture() -> (RestaurantSnapshot, PlacementCatalog) {
-        let mut catalog = PlacementCatalog::new([
-            ItemPlacementDefinition {
-                item_id: 11,
-                footprint: Footprint {
-                    size_x: 1,
-                    size_y: 1,
-                },
-                rotation_count: 4,
-                flags: PlacementFlags::default(),
-            },
-            ItemPlacementDefinition {
-                item_id: 12,
-                footprint: Footprint {
-                    size_x: 1,
-                    size_y: 1,
-                },
-                rotation_count: 4,
-                flags: PlacementFlags::default(),
-            },
-            ItemPlacementDefinition {
-                item_id: 13,
-                footprint: Footprint {
-                    size_x: 1,
-                    size_y: 1,
-                },
-                rotation_count: 4,
-                flags: PlacementFlags::default(),
-            },
-        ])
+        let catalog = PlacementCatalog::from_trusted_tsv(concat!(
+            "ANEWON_RC_PLACEMENT_CATALOG_V4\n",
+            "item_id\tsize_x\tsize_y\trotation_count\twall_item\twall_decoration_item\twallpaper_item\toutdoor\tfloor_tile_item\tsurface\tstackable\tdoor_item\tchair_item\ttable_item\tkitchen\tdrink\ttoilet\toccupied_cells\n",
+            "11\t1\t1\t4\t0\t0\t0\t0\t0\t0\t0\t0\t1\t0\t0\t0\t0\t-\n",
+            "12\t1\t1\t4\t0\t0\t0\t0\t0\t0\t0\t0\t0\t1\t0\t0\t0\t-\n",
+            "13\t1\t1\t4\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t1\t0\t0\t-\n",
+        ))
         .unwrap();
-        catalog.set_service_flags_for_test(
-            11,
-            ServiceItemFlags {
-                chair_item: true,
-                ..ServiceItemFlags::default()
-            },
-        );
-        catalog.set_service_flags_for_test(
-            12,
-            ServiceItemFlags {
-                table_item: true,
-                ..ServiceItemFlags::default()
-            },
-        );
-        catalog.set_service_flags_for_test(
-            13,
-            ServiceItemFlags {
-                kitchen: true,
-                ..ServiceItemFlags::default()
-            },
-        );
 
         let mut restaurant = RestaurantState::new(RoomDimensions {
             inside_x: 8,
