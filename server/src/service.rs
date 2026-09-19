@@ -6,14 +6,15 @@ use crate::platform::{
     AnewSubject, PlatformSessionError, PlatformSessionVerifier, VerifiedProductSession,
 };
 use crate::restaurant::{
-    PlacedItem, PlacementCatalog, PlacementIntent, RestaurantAuthorityError, RestaurantSnapshot,
-    RestaurantState,
+    FloorTileIntent, PaintedFloorTile, PlacedItem, PlacementCatalog, PlacementIntent,
+    RestaurantAuthorityError, RestaurantSnapshot, RestaurantState, validate_floor_tile_intent,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 
-const PRODUCT_PERSISTENCE_SCHEMA_VERSION: u8 = 2;
+const PRODUCT_PERSISTENCE_SCHEMA_VERSION: u8 = 3;
+const JOURNALED_OBJECT_PERSISTENCE_SCHEMA_VERSION: u8 = 2;
 const LEGACY_PRODUCT_PERSISTENCE_SCHEMA_VERSION: u8 = 1;
 const MAX_STORE_RETRIES: usize = 3;
 
@@ -21,6 +22,35 @@ const MAX_STORE_RETRIES: usize = 3;
 pub enum PlacementMutationOutcome {
     Applied(PlacedItem),
     Duplicate(PlacedItem),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum FloorTileMutationOutcome {
+    Applied(PaintedFloorTile),
+    Duplicate(PaintedFloorTile),
+}
+
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+struct FloorTileKey {
+    room_index: u8,
+    tile_x: i32,
+    tile_y: i32,
+}
+
+impl From<PaintedFloorTile> for FloorTileKey {
+    fn from(value: PaintedFloorTile) -> Self {
+        Self {
+            room_index: value.room_index,
+            tile_x: value.tile.x,
+            tile_y: value.tile.y,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct FloorTileMutationRecord {
+    sequence: u64,
+    tile: PaintedFloorTile,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -48,6 +78,7 @@ pub struct InventoryAvailability {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RestaurantProductSnapshot {
     pub restaurant: RestaurantSnapshot,
+    pub floor_tiles: Vec<PaintedFloorTile>,
     pub inventory: Vec<InventoryAvailability>,
 }
 
@@ -57,6 +88,9 @@ pub struct ProductAggregate {
     restaurant: RestaurantState,
     restaurant_mutations: BTreeMap<MutationId, RestaurantMutationRecord>,
     next_restaurant_mutation_sequence: u64,
+    floor_tiles: BTreeMap<FloorTileKey, PaintedFloorTile>,
+    floor_mutations: BTreeMap<MutationId, FloorTileMutationRecord>,
+    next_floor_mutation_sequence: u64,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -72,6 +106,10 @@ struct PersistedAggregate {
     restaurant: PersistedRestaurant,
     next_restaurant_mutation_sequence: u64,
     restaurant_mutations: Vec<PersistedRestaurantMutation>,
+    #[serde(default)]
+    next_floor_mutation_sequence: u64,
+    #[serde(default)]
+    floor_mutations: Vec<PersistedFloorTileMutation>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -89,6 +127,8 @@ struct PersistedRestaurant {
     room: PersistedRoom,
     next_instance_id: u64,
     items: Vec<PersistedPlacedItem>,
+    #[serde(default)]
+    floor_tiles: Vec<PersistedFloorTile>,
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
@@ -109,6 +149,23 @@ struct PersistedPlacedItem {
     tile_y: i32,
     rotation: u8,
     room_index: u8,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PersistedFloorTile {
+    item_id: u32,
+    tile_x: i32,
+    tile_y: i32,
+    room_index: u8,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PersistedFloorTileMutation {
+    mutation_id: String,
+    sequence: u64,
+    tile: PersistedFloorTile,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -162,6 +219,9 @@ impl ProductAggregate {
             restaurant: RestaurantState::new(room),
             restaurant_mutations: BTreeMap::new(),
             next_restaurant_mutation_sequence: 1,
+            floor_tiles: BTreeMap::new(),
+            floor_mutations: BTreeMap::new(),
+            next_floor_mutation_sequence: 1,
         }
     }
 
