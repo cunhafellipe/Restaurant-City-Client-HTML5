@@ -625,6 +625,11 @@ impl ProductAggregate {
                     serde_json::from_slice(bytes).map_err(|_| ProductStateStoreError::Corrupt)?;
                 Self::decode_v3_persisted(catalog, persisted)
             }
+            WALLPAPER_PERSISTENCE_SCHEMA_VERSION => {
+                let persisted: PersistedAggregate =
+                    serde_json::from_slice(bytes).map_err(|_| ProductStateStoreError::Corrupt)?;
+                Self::decode_v4_persisted(catalog, persisted)
+            }
             PRODUCT_PERSISTENCE_SCHEMA_VERSION => {
                 let persisted: PersistedAggregate =
                     serde_json::from_slice(bytes).map_err(|_| ProductStateStoreError::Corrupt)?;
@@ -771,6 +776,10 @@ impl ProductAggregate {
             wallpapers: BTreeMap::new(),
             wallpaper_mutations: BTreeMap::new(),
             next_wallpaper_mutation_sequence: 1,
+            active_service: None,
+            service_mutations: BTreeMap::new(),
+            next_service_mutation_sequence: 1,
+            next_service_id: 1,
         })
     }
 
@@ -789,10 +798,12 @@ impl ProductAggregate {
             return Err(ProductStateStoreError::Corrupt);
         }
 
-        // V2 predates floor and wallpaper state. Promote both domains empty.
+        // V2 predates floor, wallpaper and live-service state.
         persisted.schema_version = PRODUCT_PERSISTENCE_SCHEMA_VERSION;
         persisted.next_floor_mutation_sequence = 1;
         persisted.next_wallpaper_mutation_sequence = 1;
+        persisted.next_service_mutation_sequence = 1;
+        persisted.next_service_id = 1;
         Self::decode_current_persisted(catalog, persisted)
     }
 
@@ -808,9 +819,31 @@ impl ProductAggregate {
             return Err(ProductStateStoreError::Corrupt);
         }
 
-        // V3 already has object + floor journals; V4 adds wallpaper slots.
+        // V3 already has object + floor journals; V4 added wallpaper slots,
+        // while V5 adds durable live-service identity.
         persisted.schema_version = PRODUCT_PERSISTENCE_SCHEMA_VERSION;
         persisted.next_wallpaper_mutation_sequence = 1;
+        persisted.next_service_mutation_sequence = 1;
+        persisted.next_service_id = 1;
+        Self::decode_current_persisted(catalog, persisted)
+    }
+
+    fn decode_v4_persisted(
+        catalog: &PlacementCatalog,
+        mut persisted: PersistedAggregate,
+    ) -> Result<Self, ProductStateStoreError> {
+        if persisted.schema_version != WALLPAPER_PERSISTENCE_SCHEMA_VERSION
+            || persisted.active_service.is_some()
+            || !persisted.service_mutations.is_empty()
+            || persisted.next_service_mutation_sequence != 0
+            || persisted.next_service_id != 0
+        {
+            return Err(ProductStateStoreError::Corrupt);
+        }
+
+        persisted.schema_version = PRODUCT_PERSISTENCE_SCHEMA_VERSION;
+        persisted.next_service_mutation_sequence = 1;
+        persisted.next_service_id = 1;
         Self::decode_current_persisted(catalog, persisted)
     }
 
@@ -822,13 +855,15 @@ impl ProductAggregate {
             || persisted.next_restaurant_mutation_sequence == 0
             || persisted.next_floor_mutation_sequence == 0
             || persisted.next_wallpaper_mutation_sequence == 0
+            || persisted.next_service_mutation_sequence == 0
+            || persisted.next_service_id == 0
         {
             return Err(ProductStateStoreError::Corrupt);
         }
 
-        // V4 keeps the object/floor journals and adds an independent
-        // orientation-level wallpaper journal. Replay all domains instead of
-        // trusting serialized snapshots.
+        // V5 keeps the object/floor/wallpaper journals and adds an independent
+        // live-service journal. Replay every domain instead of trusting
+        // serialized snapshots.
         let player = PlayerState::from_persistence_snapshot(persisted.player)
             .map_err(|_| ProductStateStoreError::Corrupt)?;
         let PersistedRestaurant {
