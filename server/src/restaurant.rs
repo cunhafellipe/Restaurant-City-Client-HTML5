@@ -1275,7 +1275,7 @@ mod tests {
     }
 
     #[test]
-    fn tampered_snapshot_room_index_is_rejected() {
+    fn tampered_snapshot_placement_is_rejected() {
         let catalog = catalog();
         let snapshot = RestaurantSnapshot {
             room: room(),
@@ -1291,7 +1291,7 @@ mod tests {
 
         assert_eq!(
             RestaurantState::from_snapshot(&catalog, snapshot).unwrap_err(),
-            RestaurantAuthorityError::SnapshotRoomMismatch { instance_id: 1 }
+            RestaurantAuthorityError::SnapshotPlacementMismatch { instance_id: 1 }
         );
     }
 }
