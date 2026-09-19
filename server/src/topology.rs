@@ -1,6 +1,4 @@
-use crate::placement::{
-    RoomDimensions, TilePoint, default_wall_at, rotate_footprint,
-};
+use crate::placement::{RoomDimensions, TilePoint, default_wall_at};
 use crate::restaurant::{PlacementCatalog, RestaurantSnapshot};
 
 pub const MAX_NUM_TILES_X: i32 = 20;
@@ -377,30 +375,32 @@ pub fn derive_service_layout(
                 item_id: item.item_id,
             })?;
         let roles = catalog.service_flags(item.item_id);
-        let footprint = rotate_footprint(definition.footprint, i32::from(item.rotation));
+        let occupied_cells = catalog
+            .occupied_cells(item.item_id, item.rotation)
+            .ok_or(TopologyBuildError::UnknownCatalogItem {
+                item_id: item.item_id,
+            })?;
 
-        for offset_y in 0..footprint.size_y {
-            for offset_x in 0..footprint.size_x {
-                let tile = TilePoint {
-                    x: item.tile.x + offset_x as i32,
-                    y: item.tile.y + offset_y as i32,
-                };
-                let mut cell = grid
-                    .cell(tile)
-                    .ok_or(TopologyBuildError::GridCoordinateOutOfRange { tile })?;
-                cell.item_count = cell
-                    .item_count
-                    .checked_add(1)
-                    .ok_or(TopologyBuildError::CellItemOverflow { tile })?;
-                if definition.flags.wall_item {
-                    cell.wall = true;
-                }
-                if roles.door_item {
-                    cell.has_door = true;
-                }
-                grid.set_cell(tile, cell)
-                    .map_err(|_| TopologyBuildError::GridCoordinateOutOfRange { tile })?;
+        for offset in occupied_cells {
+            let tile = TilePoint {
+                x: item.tile.x + offset.x,
+                y: item.tile.y + offset.y,
+            };
+            let mut cell = grid
+                .cell(tile)
+                .ok_or(TopologyBuildError::GridCoordinateOutOfRange { tile })?;
+            cell.item_count = cell
+                .item_count
+                .checked_add(1)
+                .ok_or(TopologyBuildError::CellItemOverflow { tile })?;
+            if definition.flags.wall_item {
+                cell.wall = true;
             }
+            if roles.door_item {
+                cell.has_door = true;
+            }
+            grid.set_cell(tile, cell)
+                .map_err(|_| TopologyBuildError::GridCoordinateOutOfRange { tile })?;
         }
 
         if roles.chair_item {
@@ -842,12 +842,12 @@ mod tests {
         let catalog = PlacementCatalog::from_trusted_tsv(
             concat!(
                 "ANEWON_RC_PLACEMENT_CATALOG_V4\n",
-                "item_id\tsize_x\tsize_y\trotation_count\twall_item\twall_decoration_item\twallpaper_item\toutdoor\tfloor_tile_item\tsurface\tstackable\tdoor_item\tchair_item\ttable_item\tkitchen\tdrink\ttoilet\n",
-                "1\t1\t1\t4\t0\t0\t0\t0\t0\t0\t0\t0\t1\t0\t0\t0\t0\n",
-                "2\t1\t1\t1\t0\t0\t0\t0\t0\t1\t0\t0\t0\t1\t0\t0\t0\n",
-                "3\t2\t1\t4\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t1\t0\t0\n",
-                "4\t1\t1\t1\t0\t1\t0\t0\t0\t0\t0\t1\t0\t0\t0\t0\t0\n",
-                "5\t1\t1\t4\t0\t0\t0\t0\t0\t0\t0\t0\t1\t0\t0\t0\t1\n",
+                "item_id\tsize_x\tsize_y\trotation_count\twall_item\twall_decoration_item\twallpaper_item\toutdoor\tfloor_tile_item\tsurface\tstackable\tdoor_item\tchair_item\ttable_item\tkitchen\tdrink\ttoilet\toccupied_cells\n",
+                "1\t1\t1\t4\t0\t0\t0\t0\t0\t0\t0\t0\t1\t0\t0\t0\t0\t-\n",
+                "2\t1\t1\t1\t0\t0\t0\t0\t0\t1\t0\t0\t0\t1\t0\t0\t0\t-\n",
+                "3\t2\t1\t4\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t1\t0\t0\t0,0+1,0/0,0+0,1/0,0+-1,0/0,0+0,-1\n",
+                "4\t1\t1\t1\t0\t1\t0\t0\t0\t0\t0\t1\t0\t0\t0\t0\t0\t-\n",
+                "5\t1\t1\t4\t0\t0\t0\t0\t0\t0\t0\t0\t1\t0\t0\t0\t1\t-\n",
             ),
         )
         .unwrap();
@@ -874,7 +874,7 @@ mod tests {
                     instance_id: 3,
                     item_id: 3,
                     tile: TilePoint { x: 7, y: 4 },
-                    rotation: 1,
+                    rotation: 2,
                     room_index: 0,
                 },
                 // Default wall segment at x=0 becomes walkable only because a
@@ -910,10 +910,15 @@ mod tests {
         assert_eq!(layout.kitchens.len(), 1);
         assert!(layout.drinks.is_empty());
 
-        // Kitchen footprint is 2x1 but rotation 1 swaps it to 1x2.
+        // Composite kitchen rotation 2 keeps the anchor at (7,4) and
+        // rotates sub1 from (+1,0) to (-1,0).
+        assert_eq!(
+            layout.grid.cell(TilePoint { x: 6, y: 4 }).unwrap().item_count,
+            1
+        );
         assert_eq!(
             layout.grid.cell(TilePoint { x: 7, y: 5 }).unwrap().item_count,
-            1
+            0
         );
         assert!(layout.grid.is_walkable(TilePoint { x: 0, y: 3 }));
         assert!(!layout.grid.is_walkable(TilePoint { x: 0, y: 2 }));
