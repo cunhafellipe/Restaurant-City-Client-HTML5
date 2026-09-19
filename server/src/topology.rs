@@ -898,14 +898,13 @@ mod tests {
 
         let layout = derive_service_layout(&snapshot, &catalog).unwrap();
         assert_eq!(layout.chairs.len(), 2);
-        assert_eq!(
+        assert!(
             layout
                 .chairs
                 .iter()
                 .find(|chair| chair.instance_id == 5)
                 .unwrap()
-                .toilet,
-            true
+                .toilet
         );
         assert_eq!(layout.tables.len(), 1);
         assert_eq!(layout.kitchens.len(), 1);
