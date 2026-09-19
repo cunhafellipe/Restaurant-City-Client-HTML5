@@ -96,23 +96,23 @@ describe('recovered avatar presentation contract', () => {
   );
 
   it.each([
-    ['created', 'idle', false],
-    ['queued', 'idle', false],
-    ['cooking', 'idle', false],
-    ['completed', 'walk', true],
-    ['waiter-collecting', 'waitor-working', false],
-    ['serving', 'waitor-walk', true],
-    ['empty-plate', 'hidden', true],
-    ['settled', 'hidden', true],
+    ['created', 'idle', 'waiter-tile', false],
+    ['queued', 'idle', 'waiter-tile', false],
+    ['cooking', 'idle', 'waiter-tile', false],
+    ['completed', 'walk', 'waiter-tile', true],
+    ['waiter-collecting', 'waitor-working', 'waiter-tile', false],
+    ['serving', 'waitor-walk', 'waiter-tile', true],
+    ['empty-plate', 'hidden', 'hidden', true],
+    ['settled', 'hidden', 'hidden', true],
   ] as const)(
     'maps waiter order state %s to %s',
-    (orderState, animation, requiresAuthoritativePath) => {
+    (orderState, animation, anchor, requiresAuthoritativePath) => {
       const presentation = activeServiceActorPresentation(
         active('waiting-for-food', orderState),
       );
       expect(presentation?.waiter).toEqual({
         animation,
-        anchor: 'waiter-tile',
+        anchor,
         requiresAuthoritativePath,
       });
     },
