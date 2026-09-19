@@ -2932,6 +2932,213 @@ mod tests {
     }
 
     #[test]
+    fn active_service_replays_across_reopen_and_survives_later_layout_edits() {
+        let session = VerifiedProductSession {
+            subject: subject(7),
+            session_id: ProductSessionId::from_verified_platform_bytes([9; 16]).unwrap(),
+        };
+        let catalog = active_service_catalog();
+        let mut aggregate = aggregate_with_service_layout(session, &catalog);
+
+        let started = aggregate
+            .start_active_service(
+                session,
+                &catalog,
+                mutation("service-start"),
+                active_service_assignment(),
+            )
+            .unwrap();
+        let started = match started {
+            ActiveServiceMutationOutcome::Applied(Some(record)) => record,
+            other => panic!("unexpected start outcome: {other:?}"),
+        };
+        assert_eq!(started.identity.service_id, 1);
+        assert_eq!(started.identity.restaurant_mutation_sequence, 3);
+        assert_eq!(
+            aggregate
+                .start_active_service(
+                    session,
+                    &catalog,
+                    mutation("service-start"),
+                    active_service_assignment(),
+                )
+                .unwrap(),
+            ActiveServiceMutationOutcome::Duplicate(Some(started))
+        );
+
+        assert_eq!(
+            aggregate
+                .transform_owned_item(
+                    session,
+                    &catalog,
+                    mutation("move-chair-during-service"),
+                    1,
+                    TilePoint { x: 2, y: 3 },
+                    0,
+                )
+                .unwrap_err(),
+            ProductServiceError::ActiveServiceLayoutLocked
+        );
+
+        let encoded = aggregate.encode_persisted().unwrap();
+        let mut aggregate = ProductAggregate::decode_persisted(&catalog, &encoded).unwrap();
+        assert_eq!(aggregate.active_service(), Some(started));
+
+        let events = [
+            ServiceLoopEvent::StartChairWalk,
+            ServiceLoopEvent::ReachChair,
+            ServiceLoopEvent::DecisionElapsed,
+            ServiceLoopEvent::ChefAssigned {
+                cook_duration_ms: 24_000,
+            },
+            ServiceLoopEvent::CookElapsed,
+            ServiceLoopEvent::WaiterCollecting {
+                action_delay_ms: 4_000,
+            },
+            ServiceLoopEvent::WaiterActionElapsed,
+            ServiceLoopEvent::Served,
+            ServiceLoopEvent::EatingElapsed,
+            ServiceLoopEvent::PayingElapsed,
+            ServiceLoopEvent::Left,
+            ServiceLoopEvent::PlateCleared,
+        ];
+        for (index, event) in events.into_iter().enumerate() {
+            let mutation_id = mutation(&format!("service-transition-{index}"));
+            let outcome = aggregate
+                .transition_active_service(session, mutation_id.clone(), 1, event)
+                .unwrap();
+            let current = match outcome {
+                ActiveServiceMutationOutcome::Applied(Some(record)) => record,
+                other => panic!("unexpected transition outcome: {other:?}"),
+            };
+            assert_eq!(
+                aggregate
+                    .transition_active_service(session, mutation_id, 1, event)
+                    .unwrap(),
+                ActiveServiceMutationOutcome::Duplicate(Some(current))
+            );
+        }
+
+        let final_record = aggregate.active_service().unwrap();
+        assert_eq!(final_record.state.customer, CustomerServiceState::Left);
+        assert_eq!(final_record.state.order, OrderServiceState::Settled);
+
+        let encoded = aggregate.encode_persisted().unwrap();
+        let mut aggregate = ProductAggregate::decode_persisted(&catalog, &encoded).unwrap();
+        assert_eq!(aggregate.active_service(), Some(final_record));
+
+        assert_eq!(
+            aggregate
+                .complete_active_service(session, mutation("service-complete"), 1)
+                .unwrap(),
+            ActiveServiceMutationOutcome::Applied(None)
+        );
+        assert_eq!(
+            aggregate
+                .complete_active_service(session, mutation("service-complete"), 1)
+                .unwrap(),
+            ActiveServiceMutationOutcome::Duplicate(None)
+        );
+        assert_eq!(aggregate.active_service(), None);
+
+        aggregate
+            .transform_owned_item(
+                session,
+                &catalog,
+                mutation("move-chair-after-service"),
+                1,
+                TilePoint { x: 2, y: 3 },
+                0,
+            )
+            .unwrap();
+
+        let encoded = aggregate.encode_persisted().unwrap();
+        let reopened = ProductAggregate::decode_persisted(&catalog, &encoded).unwrap();
+        assert_eq!(reopened, aggregate);
+        assert_eq!(reopened.active_service(), None);
+        assert_eq!(reopened.next_service_id, 2);
+    }
+
+    #[test]
+    fn active_service_persistence_rejects_tampered_reducer_state() {
+        let session = VerifiedProductSession {
+            subject: subject(7),
+            session_id: ProductSessionId::from_verified_platform_bytes([9; 16]).unwrap(),
+        };
+        let catalog = active_service_catalog();
+        let mut aggregate = aggregate_with_service_layout(session, &catalog);
+        aggregate
+            .start_active_service(
+                session,
+                &catalog,
+                mutation("service-start-tamper"),
+                active_service_assignment(),
+            )
+            .unwrap();
+
+        let encoded = aggregate.encode_persisted().unwrap();
+        let mut value: serde_json::Value = serde_json::from_slice(&encoded).unwrap();
+        value["active_service"]["state"]["customer"] = serde_json::json!("left");
+        let tampered = serde_json::to_vec(&value).unwrap();
+
+        assert_eq!(
+            ProductAggregate::decode_persisted(&catalog, &tampered),
+            Err(ProductStateStoreError::Corrupt)
+        );
+    }
+
+    #[test]
+    fn v4_state_migrates_to_empty_v5_service_domain() {
+        let session = VerifiedProductSession {
+            subject: subject(7),
+            session_id: ProductSessionId::from_verified_platform_bytes([9; 16]).unwrap(),
+        };
+        let catalog = catalog();
+        let mut aggregate = ProductAggregate::new(subject(7), room());
+        aggregate
+            .apply_player_command(
+                session,
+                mutation("grant-v4"),
+                Command::GrantInventory {
+                    item_id: 10,
+                    quantity: 1,
+                },
+            )
+            .unwrap();
+        aggregate
+            .place_owned_item(
+                session,
+                &catalog,
+                mutation("place-v4"),
+                PlacementIntent {
+                    item_id: 10,
+                    tile: TilePoint { x: 2, y: 2 },
+                    rotation: 0,
+                },
+            )
+            .unwrap();
+
+        let encoded = aggregate.encode_persisted().unwrap();
+        let mut value: serde_json::Value = serde_json::from_slice(&encoded).unwrap();
+        value["schema_version"] = serde_json::json!(4);
+        value.as_object_mut().unwrap().remove("active_service");
+        value.as_object_mut().unwrap().remove("service_mutations");
+        value
+            .as_object_mut()
+            .unwrap()
+            .remove("next_service_mutation_sequence");
+        value.as_object_mut().unwrap().remove("next_service_id");
+
+        let legacy_v4 = serde_json::to_vec(&value).unwrap();
+        let restored = ProductAggregate::decode_persisted(&catalog, &legacy_v4).unwrap();
+        assert_eq!(restored.restaurant.snapshot(), aggregate.restaurant.snapshot());
+        assert_eq!(restored.active_service(), None);
+        assert!(restored.service_mutations.is_empty());
+        assert_eq!(restored.next_service_mutation_sequence, 1);
+        assert_eq!(restored.next_service_id, 1);
+    }
+
+    #[test]
     fn wall_attachment_round_trip_is_server_rotated_and_idempotent() {
         let session = VerifiedProductSession {
             subject: subject(7),
