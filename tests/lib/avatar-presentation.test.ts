@@ -73,7 +73,7 @@ describe('recovered avatar presentation contract', () => {
   });
 
   it.each([
-    ['admitted', 'idle', false],
+    ['admitted', 'hidden', true],
     ['walking-to-chair', 'walk', true],
     ['deciding', 'sit', false],
     ['waiting', 'sit', false],
