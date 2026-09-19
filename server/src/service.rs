@@ -16,12 +16,14 @@ use crate::restaurant::{
     PlacementIntent, RestaurantAuthorityError, RestaurantSnapshot, RestaurantState,
     WallpaperIntent, WallpaperOrientation, validate_floor_tile_intent, validate_wallpaper_intent,
 };
+use crate::service_clock::{ServiceDeadlines, ServiceTimingError, validate_service_deadlines};
 use crate::topology::{ServiceLayoutSnapshot, derive_service_layout};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 
-const PRODUCT_PERSISTENCE_SCHEMA_VERSION: u8 = 5;
+const PRODUCT_PERSISTENCE_SCHEMA_VERSION: u8 = 6;
+const ACTIVE_SERVICE_PERSISTENCE_SCHEMA_VERSION: u8 = 5;
 const WALLPAPER_PERSISTENCE_SCHEMA_VERSION: u8 = 4;
 const FLOOR_TILE_PERSISTENCE_SCHEMA_VERSION: u8 = 3;
 const JOURNALED_OBJECT_PERSISTENCE_SCHEMA_VERSION: u8 = 2;
@@ -57,10 +59,16 @@ enum ServiceMutationOperation {
     Start {
         restaurant_mutation_sequence: u64,
         assignment: ActiveServiceAssignment,
+        effective_at_ms: Option<u64>,
+    },
+    AnchorTiming {
+        service_id: u64,
+        effective_at_ms: u64,
     },
     Transition {
         service_id: u64,
         event: ServiceLoopEvent,
+        effective_at_ms: Option<u64>,
     },
     Complete {
         service_id: u64,
@@ -225,6 +233,12 @@ struct PersistedActiveService {
     waiter_tile_x: i32,
     waiter_tile_y: i32,
     state: ServiceLoopState,
+    #[serde(default)]
+    timing_anchored: bool,
+    #[serde(default)]
+    customer_deadline_at_ms: Option<u64>,
+    #[serde(default)]
+    order_deadline_at_ms: Option<u64>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -233,10 +247,18 @@ enum PersistedServiceMutationOperation {
     Start {
         restaurant_mutation_sequence: u64,
         assignment: PersistedActiveServiceAssignment,
+        #[serde(default)]
+        effective_at_ms: Option<u64>,
+    },
+    AnchorTiming {
+        service_id: u64,
+        effective_at_ms: u64,
     },
     Transition {
         service_id: u64,
         event: ServiceLoopEvent,
+        #[serde(default)]
+        effective_at_ms: Option<u64>,
     },
     Complete {
         service_id: u64,
@@ -431,6 +453,9 @@ impl From<ActiveServiceRecord> for PersistedActiveService {
             waiter_tile_x: value.identity.waiter_tile.x,
             waiter_tile_y: value.identity.waiter_tile.y,
             state: value.state,
+            timing_anchored: value.timing_anchored,
+            customer_deadline_at_ms: value.deadlines.customer_deadline_at_ms,
+            order_deadline_at_ms: value.deadlines.order_deadline_at_ms,
         }
     }
 }
@@ -450,6 +475,17 @@ impl TryFrom<PersistedActiveService> for ActiveServiceRecord {
         {
             return Err(ProductStateStoreError::Corrupt);
         }
+        let deadlines = ServiceDeadlines {
+            customer_deadline_at_ms: value.customer_deadline_at_ms,
+            order_deadline_at_ms: value.order_deadline_at_ms,
+        };
+        if value.timing_anchored {
+            validate_service_deadlines(value.state, deadlines)
+                .map_err(|_| ProductStateStoreError::Corrupt)?;
+        } else if deadlines != ServiceDeadlines::default() {
+            return Err(ProductStateStoreError::Corrupt);
+        }
+
         Ok(Self {
             identity: ActiveServiceIdentity {
                 service_id: value.service_id,
@@ -467,6 +503,8 @@ impl TryFrom<PersistedActiveService> for ActiveServiceRecord {
                 },
             },
             state: value.state,
+            timing_anchored: value.timing_anchored,
+            deadlines,
         })
     }
 }
@@ -477,13 +515,28 @@ impl From<ServiceMutationOperation> for PersistedServiceMutationOperation {
             ServiceMutationOperation::Start {
                 restaurant_mutation_sequence,
                 assignment,
+                effective_at_ms,
             } => Self::Start {
                 restaurant_mutation_sequence,
                 assignment: assignment.into(),
+                effective_at_ms,
             },
-            ServiceMutationOperation::Transition { service_id, event } => {
-                Self::Transition { service_id, event }
-            }
+            ServiceMutationOperation::AnchorTiming {
+                service_id,
+                effective_at_ms,
+            } => Self::AnchorTiming {
+                service_id,
+                effective_at_ms,
+            },
+            ServiceMutationOperation::Transition {
+                service_id,
+                event,
+                effective_at_ms,
+            } => Self::Transition {
+                service_id,
+                event,
+                effective_at_ms,
+            },
             ServiceMutationOperation::Complete { service_id } => Self::Complete { service_id },
         }
     }
@@ -495,13 +548,28 @@ impl From<PersistedServiceMutationOperation> for ServiceMutationOperation {
             PersistedServiceMutationOperation::Start {
                 restaurant_mutation_sequence,
                 assignment,
+                effective_at_ms,
             } => Self::Start {
                 restaurant_mutation_sequence,
                 assignment: assignment.into(),
+                effective_at_ms,
             },
-            PersistedServiceMutationOperation::Transition { service_id, event } => {
-                Self::Transition { service_id, event }
-            }
+            PersistedServiceMutationOperation::AnchorTiming {
+                service_id,
+                effective_at_ms,
+            } => Self::AnchorTiming {
+                service_id,
+                effective_at_ms,
+            },
+            PersistedServiceMutationOperation::Transition {
+                service_id,
+                event,
+                effective_at_ms,
+            } => Self::Transition {
+                service_id,
+                event,
+                effective_at_ms,
+            },
             PersistedServiceMutationOperation::Complete { service_id } => {
                 Self::Complete { service_id }
             }
