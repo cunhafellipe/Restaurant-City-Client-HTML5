@@ -29,6 +29,10 @@ import {
   recoveredWallFloorFrameOffset,
 } from '../../content/recoveredWallFloorGeometry';
 import {
+  recoveredWallpaperFrame,
+  recoveredWallpaperGeometry,
+} from '../../content/recoveredWallpaperGeometry';
+import {
   loadGeneratedItemDatabase,
   loadRuntimeManifest,
 } from '../../content/runtime';
@@ -40,6 +44,7 @@ import {
   type AuthoritativeFloorTile,
   type AuthoritativeInventoryAvailability,
   type AuthoritativePlacedItem,
+  type AuthoritativeWallpaper,
   type RestaurantAuthority,
   type RestaurantLayout,
 } from '../../net/restaurantAuthority';
@@ -82,7 +87,18 @@ export class RestaurantEditorScene extends Phaser.Scene {
   private floorSprites: Phaser.GameObjects.Sprite[] = [];
   private wallSprites: Phaser.GameObjects.Sprite[] = [];
   private wallCutoutTextures: Phaser.GameObjects.RenderTexture[] = [];
-  private wallCutoutSources: Phaser.GameObjects.Sprite[] = [];
+  private wallCutoutSources: Array<
+    Phaser.GameObjects.Sprite | Phaser.GameObjects.RenderTexture
+  > = [];
+  private wallpaperWallLayers = new Map<
+    string,
+    {
+      readonly texture: Phaser.GameObjects.RenderTexture;
+      readonly sourceWall: Phaser.GameObjects.Sprite;
+      readonly wallpaper: AuthoritativeWallpaper;
+      readonly tile: TilePoint;
+    }
+  >();
   private doorProbeWall: Phaser.GameObjects.RenderTexture | null = null;
   private doorProbeDoor: Phaser.GameObjects.Sprite | null = null;
   private previewSprite: Phaser.GameObjects.Sprite | null = null;
@@ -98,6 +114,7 @@ export class RestaurantEditorScene extends Phaser.Scene {
   >();
   private authoritativeItems: readonly AuthoritativePlacedItem[] = [];
   private authoritativeFloorTiles: readonly AuthoritativeFloorTile[] = [];
+  private authoritativeWallpapers: readonly AuthoritativeWallpaper[] = [];
 
   private room: RoomDimensions = INITIAL_ROOM;
   private selectedIndex = 0;
@@ -317,6 +334,37 @@ export class RestaurantEditorScene extends Phaser.Scene {
       }
     }
 
+    const seenWallpaperRotations = new Set<number>();
+    for (const wallpaper of layout.wallpapers) {
+      if (seenWallpaperRotations.has(wallpaper.rotation)) {
+        throw new Error('Authoritative layout has duplicate wallpaper orientation');
+      }
+      seenWallpaperRotations.add(wallpaper.rotation);
+
+      const definition = this.catalogById.get(wallpaper.itemId);
+      if (!definition || !this.isAuthoritativeWallpaper(definition)) {
+        throw new Error(
+          `Authoritative wallpaper references unsupported item #${wallpaper.itemId}`,
+        );
+      }
+      const visual = this.itemVisual(definition);
+      const recovered = recoveredWallpaperFrame(
+        definition.id,
+        definition.className,
+        wallpaper.rotation,
+      );
+      if (
+        !visual ||
+        visual.frames.length !== 2 ||
+        !recovered ||
+        !visual.frames.includes(recovered.frame)
+      ) {
+        throw new Error(
+          `Authoritative wallpaper #${wallpaper.itemId} has invalid visual contract`,
+        );
+      }
+    }
+
     for (const placed of layout.items) {
       const definition = this.catalogById.get(placed.itemId);
       if (
@@ -344,6 +392,7 @@ export class RestaurantEditorScene extends Phaser.Scene {
     };
     this.authoritativeItems = [...layout.items];
     this.authoritativeFloorTiles = [...layout.floorTiles];
+    this.authoritativeWallpapers = [...layout.wallpapers];
     this.inventoryByItemId = new Map(
       layout.inventory.map((entry) => [entry.itemId, entry]),
     );
@@ -378,6 +427,22 @@ export class RestaurantEditorScene extends Phaser.Scene {
       !item.placement.wallItem &&
       !item.placement.wallDecorationItem &&
       !item.placement.wallpaperItem &&
+      !item.placement.outdoor
+    );
+  }
+
+  private isAuthoritativeWallpaper(
+    item: RestaurantItemDefinition,
+  ): boolean {
+    const geometry = recoveredWallpaperGeometry(item.id, item.className);
+    return (
+      geometry !== null &&
+      geometry.frames.length === 2 &&
+      !isSystemOnlyRestaurantItem(item) &&
+      item.placement.wallpaperItem === true &&
+      !item.placement.wallItem &&
+      !item.placement.wallDecorationItem &&
+      !item.placement.floorTileItem &&
       !item.placement.outdoor
     );
   }
@@ -939,6 +1004,7 @@ export class RestaurantEditorScene extends Phaser.Scene {
 
   private drawDefaultWalls(): void {
     this.clearAuthoritativeWallCutouts();
+    this.clearAuthoritativeWallpaperLayers();
     for (const sprite of this.wallSprites) sprite.destroy();
     this.wallSprites = [];
 
@@ -988,7 +1054,7 @@ export class RestaurantEditorScene extends Phaser.Scene {
       ),
     );
 
-
+    this.drawAuthoritativeWallpapers();
     this.drawDoorEraseProbe();
     this.publishVisualProbeDiagnostics();
   }
@@ -1002,6 +1068,172 @@ export class RestaurantEditorScene extends Phaser.Scene {
     this.wallCutoutTextures = [];
   }
 
+  private wallLayerKey(tile: TilePoint): string {
+    return `${tile.x}:${tile.y}`;
+  }
+
+  private clearAuthoritativeWallpaperLayers(): void {
+    for (const layer of this.wallpaperWallLayers.values()) {
+      if (layer.sourceWall.active) layer.sourceWall.setVisible(true);
+      layer.texture.destroy();
+    }
+    this.wallpaperWallLayers.clear();
+  }
+
+  private wallpaperForRotation(rotation: number): AuthoritativeWallpaper | null {
+    return (
+      this.authoritativeWallpapers.find(
+        (wallpaper) => wallpaper.rotation === rotation,
+      ) ?? null
+    );
+  }
+
+  private createWallpaperStamp(
+    wallpaper: AuthoritativeWallpaper,
+  ): {
+    readonly definition: RestaurantItemDefinition;
+    readonly visual: RestaurantItemVisual;
+    readonly frameName: string;
+    readonly offset: { readonly x: number; readonly y: number };
+    readonly stamp: Phaser.GameObjects.Image;
+  } {
+    const definition = this.catalogById.get(wallpaper.itemId);
+    if (!definition || !this.isAuthoritativeWallpaper(definition)) {
+      throw new Error(
+        `Authoritative wallpaper references unsupported item #${wallpaper.itemId}`,
+      );
+    }
+    const visual = this.itemVisual(definition);
+    const frame = recoveredWallpaperFrame(
+      definition.id,
+      definition.className,
+      wallpaper.rotation,
+    );
+    if (!visual || !frame || !visual.frames.includes(frame.frame)) {
+      throw new Error(
+        `Recovered wallpaper raster is unavailable for #${wallpaper.itemId} rotation ${wallpaper.rotation}`,
+      );
+    }
+    const atlasFrame = this.textures.getFrame(visual.atlasId, frame.frame);
+    if (!atlasFrame) {
+      throw new Error(`Wallpaper atlas frame missing: ${frame.frame}`);
+    }
+    return {
+      definition,
+      visual,
+      frameName: frame.frame,
+      offset: frame.canvasOriginPx,
+      stamp: this.make
+        .image({
+          x: 0,
+          y: 0,
+          key: visual.atlasId,
+          frame: frame.frame,
+          add: false,
+        })
+        .setOrigin(0, 0),
+    };
+  }
+
+  private composeWallpaperWall(
+    wallpaper: AuthoritativeWallpaper,
+    tile: TilePoint,
+  ): {
+    readonly texture: Phaser.GameObjects.RenderTexture;
+    readonly sourceWall: Phaser.GameObjects.Sprite;
+  } {
+    const wall = this.catalogById.get(DEFAULT_WALL_ITEM_ID);
+    if (!wall?.placementFootprint) {
+      throw new Error('Recovered default wall geometry is unavailable');
+    }
+    const wallVisual = this.itemVisual(wall);
+    if (!wallVisual || wallpaper.rotation >= wallVisual.frames.length) {
+      throw new Error('Recovered default wall visual is unavailable');
+    }
+
+    const wallFrameName = frameForRestaurantItemRotation(
+      wallVisual,
+      wallpaper.rotation,
+    );
+    const wallFrame = this.textures.getFrame(wallVisual.atlasId, wallFrameName);
+    const wallOffset = recoveredWallFloorFrameOffset(
+      wall.id,
+      wall.className,
+      wallpaper.rotation,
+    );
+    if (!wallFrame || !wallOffset) {
+      throw new Error('Recovered wallpaper wall frame/origin is unavailable');
+    }
+
+    const projected = projectTile(tile);
+    const wallX = ORIGIN.x + projected.x + wallOffset.x;
+    const wallY = ORIGIN.y + projected.y + wallOffset.y;
+    const sourceWall = this.wallSprites.find(
+      (candidate) =>
+        candidate.frame.name === wallFrameName &&
+        Math.abs(candidate.x - wallX) < 0.01 &&
+        Math.abs(candidate.y - wallY) < 0.01,
+    );
+    if (!sourceWall) {
+      throw new Error(
+        `Wallpaper could not resolve default wall at ${tile.x},${tile.y}`,
+      );
+    }
+
+    const wallStamp = this.make
+      .image({
+        x: 0,
+        y: 0,
+        key: wallVisual.atlasId,
+        frame: wallFrameName,
+        add: false,
+      })
+      .setOrigin(0, 0);
+    const wallpaperStamp = this.createWallpaperStamp(wallpaper);
+    const texture = this.add
+      .renderTexture(wallX, wallY, wallFrame.width, wallFrame.height)
+      .setOrigin(0, 0)
+      .setDepth(sourceWall.depth);
+    texture.draw(wallStamp, 0, 0);
+    texture.draw(
+      wallpaperStamp.stamp,
+      wallpaperStamp.offset.x - wallOffset.x,
+      wallpaperStamp.offset.y - wallOffset.y,
+    );
+
+    wallStamp.destroy();
+    wallpaperStamp.stamp.destroy();
+    sourceWall.setVisible(false);
+    return { texture, sourceWall };
+  }
+
+  private drawAuthoritativeWallpapers(): void {
+    if (this.authoritativeWallpapers.length === 0) return;
+
+    for (const wallpaper of this.authoritativeWallpapers) {
+      const tiles: TilePoint[] = [];
+      if (wallpaper.rotation === 0) {
+        for (let y = 1; y < this.room.insideY; y += 1) {
+          tiles.push({ x: 0, y });
+        }
+      } else {
+        for (let x = 1; x < this.room.insideX; x += 1) {
+          tiles.push({ x, y: 0 });
+        }
+      }
+
+      for (const tile of tiles) {
+        const composed = this.composeWallpaperWall(wallpaper, tile);
+        this.wallpaperWallLayers.set(this.wallLayerKey(tile), {
+          texture: composed.texture,
+          sourceWall: composed.sourceWall,
+          wallpaper,
+          tile,
+        });
+      }
+    }
+  }
+
   private renderDoorWallComposition(
     door: RestaurantItemDefinition,
     doorVisual: RestaurantItemVisual,
@@ -1012,6 +1244,7 @@ export class RestaurantEditorScene extends Phaser.Scene {
   ): {
     wallTexture: Phaser.GameObjects.RenderTexture;
     sourceWall: Phaser.GameObjects.Sprite;
+    sourceLayer: Phaser.GameObjects.Sprite | Phaser.GameObjects.RenderTexture;
     doorSprite: Phaser.GameObjects.Sprite | null;
     wallFrame: string;
     maskFrame: string;
@@ -1062,7 +1295,9 @@ export class RestaurantEditorScene extends Phaser.Scene {
         `Simple Door could not resolve default wall at ${tile.x},${tile.y}`,
       );
     }
-    sourceWall.setVisible(false);
+    const wallpaperLayer = this.wallpaperWallLayers.get(this.wallLayerKey(tile));
+    const sourceLayer = wallpaperLayer?.texture ?? sourceWall;
+    sourceLayer.setVisible(false);
 
     const wallStamp = this.make
       .image({
@@ -1095,6 +1330,16 @@ export class RestaurantEditorScene extends Phaser.Scene {
       .setOrigin(0, 0)
       .setDepth(sourceWall.depth);
     wallTexture.draw(wallStamp, 0, 0);
+    const wallpaper = this.wallpaperForRotation(rotation);
+    if (wallpaper) {
+      const wallpaperStamp = this.createWallpaperStamp(wallpaper);
+      wallTexture.draw(
+        wallpaperStamp.stamp,
+        wallpaperStamp.offset.x - wallOffset.x,
+        wallpaperStamp.offset.y - wallOffset.y,
+      );
+      wallpaperStamp.stamp.destroy();
+    }
     wallTexture.erase(maskStamp, maskX, maskY);
     wallStamp.destroy();
     maskStamp.destroy();
@@ -1121,6 +1366,7 @@ export class RestaurantEditorScene extends Phaser.Scene {
     return {
       wallTexture,
       sourceWall,
+      sourceLayer,
       doorSprite,
       wallFrame: wallFrameName,
       maskFrame: mask.frame,
@@ -1326,7 +1572,7 @@ export class RestaurantEditorScene extends Phaser.Scene {
                 throw new Error('Authoritative Simple Door sprite was not created');
               }
               this.wallCutoutTextures.push(composition.wallTexture);
-              this.wallCutoutSources.push(composition.sourceWall);
+              this.wallCutoutSources.push(composition.sourceLayer);
               return composition.doorSprite;
             })()
           : this.createItemSprite(
