@@ -19,6 +19,12 @@ const RECOVERED_WALL_FLOOR_GEOMETRY = path.join(
   'restaurant-city',
   'recovered-wall-floor-geometry.json',
 );
+const RECOVERED_WALLPAPER_GEOMETRY = path.join(
+  REPO,
+  'contracts',
+  'restaurant-city',
+  'recovered-wallpaper-geometry.json',
+);
 const OUT_DIR = path.join(REPO, 'server', 'runtime', 'generated');
 const OUT_TSV = path.join(OUT_DIR, 'restaurant-placement-catalog.tsv');
 const OUT_META = path.join(OUT_DIR, 'restaurant-placement-catalog.meta.json');
@@ -124,6 +130,9 @@ const recoveredGeometry = JSON.parse(fs.readFileSync(RECOVERED_GEOMETRY, 'utf8')
 const recoveredWallFloorGeometry = JSON.parse(
   fs.readFileSync(RECOVERED_WALL_FLOOR_GEOMETRY, 'utf8'),
 );
+const recoveredWallpaperGeometry = JSON.parse(
+  fs.readFileSync(RECOVERED_WALLPAPER_GEOMETRY, 'utf8'),
+);
 const source = manifest.data?.find((entry) => entry.id === 'restaurant');
 const symbolIndex = buildAtlasSymbolIndex(manifest);
 if (!source) {
@@ -146,6 +155,19 @@ function recoveredGeometryFor(itemId, className) {
     ) {
       return { ...entry, recoveredGeometrySource: source };
     }
+  }
+
+  const wallpaper = recoveredWallpaperGeometry.items?.find(
+    (entry) => entry.itemId === itemId && entry.className === leaf,
+  );
+  if (wallpaper) {
+    return {
+      itemIds: [itemId],
+      footprint: { sizeX: 1, sizeY: 1 },
+      serverCatalogEnabled:
+        recoveredWallpaperGeometry.serverCatalogEnabled === true,
+      recoveredGeometrySource: 'wallpaper',
+    };
   }
   return null;
 }
@@ -370,6 +392,7 @@ const meta = {
   recoveredGeometryContracts: [
     path.relative(REPO, RECOVERED_GEOMETRY),
     path.relative(REPO, RECOVERED_WALL_FLOOR_GEOMETRY),
+    path.relative(REPO, RECOVERED_WALLPAPER_GEOMETRY),
   ],
   unsupportedDomainCounts: {
     total: unsupportedDomainInventory.length,
