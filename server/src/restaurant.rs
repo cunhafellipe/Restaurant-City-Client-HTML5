@@ -1152,8 +1152,8 @@ mod tests {
             "ANEWON_RC_PLACEMENT_CATALOG_V4\n",
             "# baseline=0.9.143a\n",
             "item_id\tsize_x\tsize_y\trotation_count\twall_item\twall_decoration_item\twallpaper_item\toutdoor\tfloor_tile_item\tsurface\tstackable\tdoor_item\tchair_item\ttable_item\tkitchen\tdrink\ttoilet\toccupied_cells\n",
-            "10\t2\t1\t4\t0\t0\t0\t0\t0\t1\t0\n",
-            "20\t1\t1\t1\t0\t0\t0\t0\t0\t0\t1\n",
+            "10\t2\t1\t4\t0\t0\t0\t0\t0\t1\t0\t0\t0\t0\t0\t0\t0\t-\n",
+            "20\t1\t1\t1\t0\t0\t0\t0\t0\t0\t1\t0\t0\t0\t0\t0\t0\t-\n",
         );
         let catalog = PlacementCatalog::from_trusted_tsv(input).unwrap();
         assert_eq!(catalog.get(10).unwrap().footprint.size_x, 2);
@@ -1180,8 +1180,8 @@ mod tests {
         let input = concat!(
             "ANEWON_RC_PLACEMENT_CATALOG_V4\n",
             "item_id\tsize_x\tsize_y\trotation_count\twall_item\twall_decoration_item\twallpaper_item\toutdoor\tfloor_tile_item\tsurface\tstackable\tdoor_item\tchair_item\ttable_item\tkitchen\tdrink\ttoilet\toccupied_cells\n",
-            "10\t2\t1\t4\t0\t0\t0\t0\t0\t1\t0\n",
-            "10\t1\t1\t4\t0\t0\t0\t0\t0\t0\t1\n",
+            "10\t2\t1\t4\t0\t0\t0\t0\t0\t1\t0\t0\t0\t0\t0\t0\t0\t-\n",
+            "10\t1\t1\t4\t0\t0\t0\t0\t0\t0\t1\t0\t0\t0\t0\t0\t0\t-\n",
         );
         assert_eq!(
             PlacementCatalog::from_trusted_tsv(input).unwrap_err(),
