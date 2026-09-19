@@ -1479,6 +1479,22 @@ mod tests {
         }
     }
 
+    fn wall_catalog() -> PlacementCatalog {
+        PlacementCatalog::new([ItemPlacementDefinition {
+            item_id: 60,
+            footprint: Footprint {
+                size_x: 1,
+                size_y: 1,
+            },
+            rotation_count: 2,
+            flags: PlacementFlags {
+                wall_decoration_item: true,
+                ..PlacementFlags::default()
+            },
+        }])
+        .unwrap()
+    }
+
     fn floor_catalog() -> PlacementCatalog {
         PlacementCatalog::new([
             ItemPlacementDefinition {
@@ -1570,6 +1586,98 @@ mod tests {
         let encoded = aggregate.encode_persisted().unwrap();
         let restored = ProductAggregate::decode_persisted(&catalog, &encoded).unwrap();
         assert_eq!(restored, aggregate);
+    }
+
+    #[test]
+    fn wall_attachment_round_trip_is_server_rotated_and_idempotent() {
+        let session = VerifiedProductSession {
+            subject: subject(7),
+            session_id: ProductSessionId::from_verified_platform_bytes([9; 16]).unwrap(),
+        };
+        let catalog = wall_catalog();
+        let mut aggregate = ProductAggregate::new(subject(7), room());
+        aggregate
+            .apply_player_command(
+                session,
+                mutation("grant-wall"),
+                Command::GrantInventory {
+                    item_id: 60,
+                    quantity: 1,
+                },
+            )
+            .unwrap();
+
+        let first = aggregate
+            .place_owned_item(
+                session,
+                &catalog,
+                mutation("place-wall"),
+                PlacementIntent {
+                    item_id: 60,
+                    tile: TilePoint { x: 2, y: 0 },
+                    rotation: 0,
+                },
+            )
+            .unwrap();
+        let placed = match first {
+            PlacementMutationOutcome::Applied(item) => item,
+            PlacementMutationOutcome::Duplicate(_) => unreachable!(),
+        };
+        assert_eq!(placed.rotation, 1);
+
+        assert_eq!(
+            aggregate
+                .place_owned_item(
+                    session,
+                    &catalog,
+                    mutation("place-wall"),
+                    PlacementIntent {
+                        item_id: 60,
+                        tile: TilePoint { x: 2, y: 0 },
+                        rotation: 15,
+                    },
+                )
+                .unwrap(),
+            PlacementMutationOutcome::Duplicate(placed)
+        );
+
+        let moved = aggregate
+            .transform_owned_item(
+                session,
+                &catalog,
+                mutation("move-wall"),
+                placed.instance_id,
+                TilePoint { x: 0, y: 3 },
+                15,
+            )
+            .unwrap();
+        let moved = match moved {
+            PlacementMutationOutcome::Applied(item) => item,
+            PlacementMutationOutcome::Duplicate(_) => unreachable!(),
+        };
+        assert_eq!(moved.rotation, 0);
+
+        assert_eq!(
+            aggregate
+                .transform_owned_item(
+                    session,
+                    &catalog,
+                    mutation("move-wall"),
+                    placed.instance_id,
+                    TilePoint { x: 0, y: 3 },
+                    0,
+                )
+                .unwrap(),
+            PlacementMutationOutcome::Duplicate(moved)
+        );
+
+        let encoded = aggregate.encode_persisted().unwrap();
+        let restored = ProductAggregate::decode_persisted(&catalog, &encoded).unwrap();
+        assert_eq!(restored, aggregate);
+        let snapshot = restored.restaurant_product_snapshot(session).unwrap();
+        assert_eq!(snapshot.restaurant.items, vec![moved]);
+        assert_eq!(snapshot.inventory[0].placed, 1);
+        assert_eq!(snapshot.inventory[0].available, 0);
     }
 
     #[test]
