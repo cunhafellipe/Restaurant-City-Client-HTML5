@@ -1786,20 +1786,12 @@ mod tests {
         assert_eq!(before_remove.inventory[0].available, 0);
 
         let removed = restored
-            .remove_owned_item(
-                session,
-                mutation("remove-simple-door"),
-                moved.instance_id,
-            )
+            .remove_owned_item(session, mutation("remove-simple-door"), moved.instance_id)
             .unwrap();
         assert_eq!(removed, PlacementMutationOutcome::Applied(moved));
         assert_eq!(
             restored
-                .remove_owned_item(
-                    session,
-                    mutation("remove-simple-door"),
-                    moved.instance_id,
-                )
+                .remove_owned_item(session, mutation("remove-simple-door"), moved.instance_id,)
                 .unwrap(),
             PlacementMutationOutcome::Duplicate(moved)
         );
