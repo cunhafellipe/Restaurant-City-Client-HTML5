@@ -745,7 +745,7 @@ try {
       `Default wall sprite visibility contract failed: ${JSON.stringify(wallDiagnostics.walls)}`,
     );
   }
-  console.log(`WALL RUNTIME DIAGNOSTICS | ${JSON.stringify(wallDiagnostics.walls)}`);
+  console.log(`WALL RUNTIME DIAGNOSTICS | ${JSON.stringify(wallDiagnostics)}`);
 
   await delay(250);
 
