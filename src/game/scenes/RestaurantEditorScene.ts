@@ -212,7 +212,7 @@ export class RestaurantEditorScene extends Phaser.Scene {
     void this.initializeEditor();
   }
 
-  update(_time: number, delta: number): void {
+  override update(_time: number, delta: number): void {
     if (!this.avatarAtlas || this.serviceActorSprites.size === 0) return;
     for (const state of this.serviceActorSprites.values()) {
       const animation = this.avatarAtlas.animations[state.actor.animation];
