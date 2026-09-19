@@ -1,1 +1,1124 @@
-{"schemaVersion":1,"baseline":"0.9.143a","sourceR34Run":35422580214,"sourceR34Artifact":10578235495,"sourceR35Run":35422709522,"sourceR35Artifact":10578040814,"canonicalActionScriptCommit":"d552cfa4767fe4fb5b7899493c30bfb375afc2c1","serverCatalogEnabled":false,"items":[{"itemId":3060000,"className":"Wall1","spriteId":729,"frames":[{"rotation":0,"frame":"indoor_asset/wall1/001","canvasOriginPx":{"x":-40,"y":-97}},{"rotation":1,"frame":"indoor_asset/wall1/002","canvasOriginPx":{"x":-40,"y":-97}}]},{"itemId":3060001,"className":"Wall3","spriteId":732,"frames":[{"rotation":0,"frame":"indoor_asset/wall3/001","canvasOriginPx":{"x":-40,"y":-96.6}},{"rotation":1,"frame":"indoor_asset/wall3/002","canvasOriginPx":{"x":-40,"y":-96.6}}]},{"itemId":3060002,"className":"Wall4","spriteId":602,"frames":[{"rotation":0,"frame":"indoor_asset/wall4/001","canvasOriginPx":{"x":-40,"y":-96.6}},{"rotation":1,"frame":"indoor_asset/wall4/002","canvasOriginPx":{"x":-40,"y":-96.6}}]},{"itemId":3060003,"className":"Wall5","spriteId":599,"frames":[{"rotation":0,"frame":"indoor_asset/wall5/001","canvasOriginPx":{"x":-40,"y":-96.6}},{"rotation":1,"frame":"indoor_asset/wall5/002","canvasOriginPx":{"x":-40,"y":-96.6}}]},{"itemId":3060004,"className":"Wall6","spriteId":596,"frames":[{"rotation":0,"frame":"indoor_asset/wall6/001","canvasOriginPx":{"x":-40,"y":-96.6}},{"rotation":1,"frame":"indoor_asset/wall6/002","canvasOriginPx":{"x":-40,"y":-96.6}}]},{"itemId":3060005,"className":"Wall7","spriteId":719,"frames":[{"rotation":0,"frame":"indoor_asset/wall7/001","canvasOriginPx":{"x":-40,"y":-96.6}},{"rotation":1,"frame":"indoor_asset/wall7/002","canvasOriginPx":{"x":-40,"y":-96.6}}]},{"itemId":3060006,"className":"Wall8","spriteId":716,"frames":[{"rotation":0,"frame":"indoor_asset/wall8/001","canvasOriginPx":{"x":-40,"y":-96.6}},{"rotation":1,"frame":"indoor_asset/wall8/002","canvasOriginPx":{"x":-40,"y":-96.6}}]},{"itemId":3060007,"className":"Wall9","spriteId":713,"frames":[{"rotation":0,"frame":"indoor_asset/wall9/001","canvasOriginPx":{"x":-40,"y":-96.6}},{"rotation":1,"frame":"indoor_asset/wall9/002","canvasOriginPx":{"x":-40,"y":-96.6}}]},{"itemId":3060008,"className":"Wall10","spriteId":710,"frames":[{"rotation":0,"frame":"indoor_asset/wall10/001","canvasOriginPx":{"x":-40,"y":-96.6}},{"rotation":1,"frame":"indoor_asset/wall10/002","canvasOriginPx":{"x":-40,"y":-96.6}}]},{"itemId":3060009,"className":"Wall11","spriteId":707,"frames":[{"rotation":0,"frame":"indoor_asset/wall11/001","canvasOriginPx":{"x":-40,"y":-96.6}},{"rotation":1,"frame":"indoor_asset/wall11/002","canvasOriginPx":{"x":-40,"y":-96.6}}]},{"itemId":3060010,"className":"Wall12","spriteId":704,"frames":[{"rotation":0,"frame":"indoor_asset/wall12/001","canvasOriginPx":{"x":-40,"y":-96.6}},{"rotation":1,"frame":"indoor_asset/wall12/002","canvasOriginPx":{"x":-40,"y":-96.6}}]},{"itemId":3060011,"className":"Wall13","spriteId":701,"frames":[{"rotation":0,"frame":"indoor_asset/wall13/001","canvasOriginPx":{"x":-40,"y":-96.6}},{"rotation":1,"frame":"indoor_asset/wall13/002","canvasOriginPx":{"x":-40,"y":-96.6}}]},{"itemId":3060012,"className":"Wall14","spriteId":698,"frames":[{"rotation":0,"frame":"indoor_asset/wall14/001","canvasOriginPx":{"x":-40,"y":-96.6}},{"rotation":1,"frame":"indoor_asset/wall14/002","canvasOriginPx":{"x":-40,"y":-96.6}}]},{"itemId":3060013,"className":"Wall15","spriteId":695,"frames":[{"rotation":0,"frame":"indoor_asset/wall15/001","canvasOriginPx":{"x":-40,"y":-96.6}},{"rotation":1,"frame":"indoor_asset/wall15/002","canvasOriginPx":{"x":-40,"y":-96.6}}]},{"itemId":3060014,"className":"Wall18","spriteId":686,"frames":[{"rotation":0,"frame":"indoor_asset/wall18/001","canvasOriginPx":{"x":-40,"y":-96.6}},{"rotation":1,"frame":"indoor_asset/wall18/002","canvasOriginPx":{"x":-40,"y":-96.6}}]},{"itemId":3060015,"className":"Wall19","spriteId":683,"frames":[{"rotation":0,"frame":"indoor_asset/wall19/001","canvasOriginPx":{"x":-40,"y":-96.6}},{"rotation":1,"frame":"indoor_asset/wall19/002","canvasOriginPx":{"x":-40,"y":-96.6}}]},{"itemId":3060016,"className":"Wall17","spriteId":689,"frames":[{"rotation":0,"frame":"indoor_asset/wall17/001","canvasOriginPx":{"x":-40,"y":-96.6}},{"rotation":1,"frame":"indoor_asset/wall17/002","canvasOriginPx":{"x":-40,"y":-96.6}}]},{"itemId":3060017,"className":"Wall16","spriteId":692,"frames":[{"rotation":0,"frame":"indoor_asset/wall16/001","canvasOriginPx":{"x":-40,"y":-96.6}},{"rotation":1,"frame":"indoor_asset/wall16/002","canvasOriginPx":{"x":-40,"y":-96.6}}]},{"itemId":3060018,"className":"Wall20","spriteId":680,"frames":[{"rotation":0,"frame":"indoor_asset/wall20/001","canvasOriginPx":{"x":-40,"y":-96.6}},{"rotation":1,"frame":"indoor_asset/wall20/002","canvasOriginPx":{"x":-40,"y":-96.6}}]},{"itemId":3060019,"className":"Wall21","spriteId":677,"frames":[{"rotation":0,"frame":"indoor_asset/wall21/001","canvasOriginPx":{"x":-40,"y":-96.6}},{"rotation":1,"frame":"indoor_asset/wall21/002","canvasOriginPx":{"x":-40,"y":-96.6}}]},{"itemId":3060020,"className":"Wall22","spriteId":674,"frames":[{"rotation":0,"frame":"indoor_asset/wall22/001","canvasOriginPx":{"x":-40,"y":-96.6}},{"rotation":1,"frame":"indoor_asset/wall22/002","canvasOriginPx":{"x":-40,"y":-96.6}}]},{"itemId":3060021,"className":"Wall23","spriteId":671,"frames":[{"rotation":0,"frame":"indoor_asset/wall23/001","canvasOriginPx":{"x":-40,"y":-96.6}},{"rotation":1,"frame":"indoor_asset/wall23/002","canvasOriginPx":{"x":-40,"y":-96.6}}]},{"itemId":3060022,"className":"Wall24","spriteId":668,"frames":[{"rotation":0,"frame":"indoor_asset/wall24/001","canvasOriginPx":{"x":-40,"y":-96.6}},{"rotation":1,"frame":"indoor_asset/wall24/002","canvasOriginPx":{"x":-40,"y":-96.6}}]},{"itemId":3060023,"className":"Wall25","spriteId":665,"frames":[{"rotation":0,"frame":"indoor_asset/wall25/001","canvasOriginPx":{"x":-40,"y":-96.6}},{"rotation":1,"frame":"indoor_asset/wall25/002","canvasOriginPx":{"x":-40,"y":-96.6}}]},{"itemId":3060024,"className":"Wall26","spriteId":662,"frames":[{"rotation":0,"frame":"indoor_asset/wall26/001","canvasOriginPx":{"x":-40,"y":-96.6}},{"rotation":1,"frame":"indoor_asset/wall26/002","canvasOriginPx":{"x":-40,"y":-96.6}}]},{"itemId":3060025,"className":"Wall27","spriteId":659,"frames":[{"rotation":0,"frame":"indoor_asset/wall27/001","canvasOriginPx":{"x":-40,"y":-96.6}},{"rotation":1,"frame":"indoor_asset/wall27/002","canvasOriginPx":{"x":-40,"y":-96.6}}]},{"itemId":3060026,"className":"Wall28","spriteId":656,"frames":[{"rotation":0,"frame":"indoor_asset/wall28/001","canvasOriginPx":{"x":-40,"y":-96.6}},{"rotation":1,"frame":"indoor_asset/wall28/002","canvasOriginPx":{"x":-40,"y":-96.6}}]},{"itemId":3060027,"className":"Wall29","spriteId":611,"frames":[{"rotation":0,"frame":"indoor_asset/wall29/001","canvasOriginPx":{"x":-40,"y":-96.6}},{"rotation":1,"frame":"indoor_asset/wall29/002","canvasOriginPx":{"x":-40,"y":-96.6}}]},{"itemId":3060028,"className":"Wall30","spriteId":608,"frames":[{"rotation":0,"frame":"indoor_asset/wall30/001","canvasOriginPx":{"x":-40,"y":-96.6}},{"rotation":1,"frame":"indoor_asset/wall30/002","canvasOriginPx":{"x":-40,"y":-96.6}}]},{"itemId":3060029,"className":"Wall31","spriteId":605,"frames":[{"rotation":0,"frame":"indoor_asset/wall31/001","canvasOriginPx":{"x":-40,"y":-96.6}},{"rotation":1,"frame":"indoor_asset/wall31/002","canvasOriginPx":{"x":-40,"y":-96.6}}]},{"itemId":3060030,"className":"Wall32","spriteId":653,"frames":[{"rotation":0,"frame":"indoor_asset/wall32/001","canvasOriginPx":{"x":-40,"y":-96.6}},{"rotation":1,"frame":"indoor_asset/wall32/002","canvasOriginPx":{"x":-40,"y":-96.6}}]},{"itemId":3060031,"className":"Wall33","spriteId":650,"frames":[{"rotation":0,"frame":"indoor_asset/wall33/001","canvasOriginPx":{"x":-40,"y":-96.6}},{"rotation":1,"frame":"indoor_asset/wall33/002","canvasOriginPx":{"x":-40,"y":-96.55}}]},{"itemId":3060032,"className":"Wall34","spriteId":647,"frames":[{"rotation":0,"frame":"indoor_asset/wall34/001","canvasOriginPx":{"x":-40,"y":-96.6}},{"rotation":1,"frame":"indoor_asset/wall34/002","canvasOriginPx":{"x":-40,"y":-96.55}}]},{"itemId":3060033,"className":"Wall35","spriteId":644,"frames":[{"rotation":0,"frame":"indoor_asset/wall35/001","canvasOriginPx":{"x":-40,"y":-96.6}},{"rotation":1,"frame":"indoor_asset/wall35/002","canvasOriginPx":{"x":-40,"y":-96.6}}]},{"itemId":3060034,"className":"Wall36","spriteId":641,"frames":[{"rotation":0,"frame":"indoor_asset/wall36/001","canvasOriginPx":{"x":-40,"y":-96.6}},{"rotation":1,"frame":"indoor_asset/wall36/002","canvasOriginPx":{"x":-40,"y":-96.6}}]},{"itemId":3060035,"className":"Wall37","spriteId":638,"frames":[{"rotation":0,"frame":"indoor_asset/wall37/001","canvasOriginPx":{"x":-40,"y":-96.6}},{"rotation":1,"frame":"indoor_asset/wall37/002","canvasOriginPx":{"x":-40,"y":-96.6}}]},{"itemId":3060036,"className":"Wall38","spriteId":629,"frames":[{"rotation":0,"frame":"indoor_asset/wall38/001","canvasOriginPx":{"x":-40,"y":-96.6}},{"rotation":1,"frame":"indoor_asset/wall38/002","canvasOriginPx":{"x":-40,"y":-96.6}}]},{"itemId":3060037,"className":"Wall39","spriteId":626,"frames":[{"rotation":0,"frame":"indoor_asset/wall39/001","canvasOriginPx":{"x":-40,"y":-96.6}},{"rotation":1,"frame":"indoor_asset/wall39/002","canvasOriginPx":{"x":-40,"y":-96.6}}]},{"itemId":3060038,"className":"Wall41","spriteId":620,"frames":[{"rotation":0,"frame":"indoor_asset/wall41/001","canvasOriginPx":{"x":-40,"y":-96.6}},{"rotation":1,"frame":"indoor_asset/wall41/002","canvasOriginPx":{"x":-40,"y":-96.6}}]},{"itemId":3060039,"className":"Wall40","spriteId":623,"frames":[{"rotation":0,"frame":"indoor_asset/wall40/001","canvasOriginPx":{"x":-40,"y":-96.6}},{"rotation":1,"frame":"indoor_asset/wall40/002","canvasOriginPx":{"x":-40,"y":-96.6}}]},{"itemId":3060040,"className":"Wall42","spriteId":617,"frames":[{"rotation":0,"frame":"indoor_asset/wall42/001","canvasOriginPx":{"x":-40,"y":-96.15}},{"rotation":1,"frame":"indoor_asset/wall42/002","canvasOriginPx":{"x":-40,"y":-96.15}}]},{"itemId":3060041,"className":"Wall43","spriteId":614,"frames":[{"rotation":0,"frame":"indoor_asset/wall43/001","canvasOriginPx":{"x":-39.95,"y":-93.9}},{"rotation":1,"frame":"indoor_asset/wall43/002","canvasOriginPx":{"x":-39.95,"y":-93.9}}]},{"itemId":3060042,"className":"Wall44","spriteId":635,"frames":[{"rotation":0,"frame":"indoor_asset/wall44/001","canvasOriginPx":{"x":-40,"y":-97.15}},{"rotation":1,"frame":"indoor_asset/wall44/002","canvasOriginPx":{"x":-40,"y":-97.15}}]},{"itemId":3060043,"className":"Wall45","spriteId":632,"frames":[{"rotation":0,"frame":"indoor_asset/wall45/001","canvasOriginPx":{"x":-40,"y":-97.15}},{"rotation":1,"frame":"indoor_asset/wall45/002","canvasOriginPx":{"x":-40,"y":-97.1}}]},{"itemId":3060044,"className":"Wall46","spriteId":2852,"frames":[{"rotation":0,"frame":"indoor_asset/wall46/001","canvasOriginPx":{"x":-40.05,"y":-96.95}},{"rotation":1,"frame":"indoor_asset/wall46/002","canvasOriginPx":{"x":0,"y":-96.95}}]},{"itemId":3060045,"className":"Wall47","spriteId":726,"frames":[{"rotation":0,"frame":"indoor_asset/wall47/001","canvasOriginPx":{"x":-40,"y":-96.6}},{"rotation":1,"frame":"indoor_asset/wall47/002","canvasOriginPx":{"x":-40,"y":-96.6}}]},{"itemId":3060046,"className":"Wall48","spriteId":724,"frames":[{"rotation":0,"frame":"indoor_asset/wall48/001","canvasOriginPx":{"x":-40,"y":-94.2}},{"rotation":1,"frame":"indoor_asset/wall48/002","canvasOriginPx":{"x":-40,"y":-94.2}}]},{"itemId":3060047,"className":"Wall49","spriteId":722,"frames":[{"rotation":0,"frame":"indoor_asset/wall49/001","canvasOriginPx":{"x":-40,"y":-94.2}},{"rotation":1,"frame":"indoor_asset/wall49/002","canvasOriginPx":{"x":-40,"y":-94.2}}]}]}
+{
+  "schemaVersion": 1,
+  "baseline": "0.9.143a",
+  "sourceR34Run": 35422580214,
+  "sourceR34Artifact": 10578235495,
+  "sourceR35Run": 35422709522,
+  "sourceR35Artifact": 10578040814,
+  "canonicalActionScriptCommit": "d552cfa4767fe4fb5b7899493c30bfb375afc2c1",
+  "serverCatalogEnabled": true,
+  "items": [
+    {
+      "itemId": 3060000,
+      "className": "Wall1",
+      "spriteId": 729,
+      "frames": [
+        {
+          "rotation": 0,
+          "frame": "indoor_asset/wall1/001",
+          "canvasOriginPx": {
+            "x": -40,
+            "y": -97
+          }
+        },
+        {
+          "rotation": 1,
+          "frame": "indoor_asset/wall1/002",
+          "canvasOriginPx": {
+            "x": -40,
+            "y": -97
+          }
+        }
+      ]
+    },
+    {
+      "itemId": 3060001,
+      "className": "Wall3",
+      "spriteId": 732,
+      "frames": [
+        {
+          "rotation": 0,
+          "frame": "indoor_asset/wall3/001",
+          "canvasOriginPx": {
+            "x": -40,
+            "y": -96.6
+          }
+        },
+        {
+          "rotation": 1,
+          "frame": "indoor_asset/wall3/002",
+          "canvasOriginPx": {
+            "x": -40,
+            "y": -96.6
+          }
+        }
+      ]
+    },
+    {
+      "itemId": 3060002,
+      "className": "Wall4",
+      "spriteId": 602,
+      "frames": [
+        {
+          "rotation": 0,
+          "frame": "indoor_asset/wall4/001",
+          "canvasOriginPx": {
+            "x": -40,
+            "y": -96.6
+          }
+        },
+        {
+          "rotation": 1,
+          "frame": "indoor_asset/wall4/002",
+          "canvasOriginPx": {
+            "x": -40,
+            "y": -96.6
+          }
+        }
+      ]
+    },
+    {
+      "itemId": 3060003,
+      "className": "Wall5",
+      "spriteId": 599,
+      "frames": [
+        {
+          "rotation": 0,
+          "frame": "indoor_asset/wall5/001",
+          "canvasOriginPx": {
+            "x": -40,
+            "y": -96.6
+          }
+        },
+        {
+          "rotation": 1,
+          "frame": "indoor_asset/wall5/002",
+          "canvasOriginPx": {
+            "x": -40,
+            "y": -96.6
+          }
+        }
+      ]
+    },
+    {
+      "itemId": 3060004,
+      "className": "Wall6",
+      "spriteId": 596,
+      "frames": [
+        {
+          "rotation": 0,
+          "frame": "indoor_asset/wall6/001",
+          "canvasOriginPx": {
+            "x": -40,
+            "y": -96.6
+          }
+        },
+        {
+          "rotation": 1,
+          "frame": "indoor_asset/wall6/002",
+          "canvasOriginPx": {
+            "x": -40,
+            "y": -96.6
+          }
+        }
+      ]
+    },
+    {
+      "itemId": 3060005,
+      "className": "Wall7",
+      "spriteId": 719,
+      "frames": [
+        {
+          "rotation": 0,
+          "frame": "indoor_asset/wall7/001",
+          "canvasOriginPx": {
+            "x": -40,
+            "y": -96.6
+          }
+        },
+        {
+          "rotation": 1,
+          "frame": "indoor_asset/wall7/002",
+          "canvasOriginPx": {
+            "x": -40,
+            "y": -96.6
+          }
+        }
+      ]
+    },
+    {
+      "itemId": 3060006,
+      "className": "Wall8",
+      "spriteId": 716,
+      "frames": [
+        {
+          "rotation": 0,
+          "frame": "indoor_asset/wall8/001",
+          "canvasOriginPx": {
+            "x": -40,
+            "y": -96.6
+          }
+        },
+        {
+          "rotation": 1,
+          "frame": "indoor_asset/wall8/002",
+          "canvasOriginPx": {
+            "x": -40,
+            "y": -96.6
+          }
+        }
+      ]
+    },
+    {
+      "itemId": 3060007,
+      "className": "Wall9",
+      "spriteId": 713,
+      "frames": [
+        {
+          "rotation": 0,
+          "frame": "indoor_asset/wall9/001",
+          "canvasOriginPx": {
+            "x": -40,
+            "y": -96.6
+          }
+        },
+        {
+          "rotation": 1,
+          "frame": "indoor_asset/wall9/002",
+          "canvasOriginPx": {
+            "x": -40,
+            "y": -96.6
+          }
+        }
+      ]
+    },
+    {
+      "itemId": 3060008,
+      "className": "Wall10",
+      "spriteId": 710,
+      "frames": [
+        {
+          "rotation": 0,
+          "frame": "indoor_asset/wall10/001",
+          "canvasOriginPx": {
+            "x": -40,
+            "y": -96.6
+          }
+        },
+        {
+          "rotation": 1,
+          "frame": "indoor_asset/wall10/002",
+          "canvasOriginPx": {
+            "x": -40,
+            "y": -96.6
+          }
+        }
+      ]
+    },
+    {
+      "itemId": 3060009,
+      "className": "Wall11",
+      "spriteId": 707,
+      "frames": [
+        {
+          "rotation": 0,
+          "frame": "indoor_asset/wall11/001",
+          "canvasOriginPx": {
+            "x": -40,
+            "y": -96.6
+          }
+        },
+        {
+          "rotation": 1,
+          "frame": "indoor_asset/wall11/002",
+          "canvasOriginPx": {
+            "x": -40,
+            "y": -96.6
+          }
+        }
+      ]
+    },
+    {
+      "itemId": 3060010,
+      "className": "Wall12",
+      "spriteId": 704,
+      "frames": [
+        {
+          "rotation": 0,
+          "frame": "indoor_asset/wall12/001",
+          "canvasOriginPx": {
+            "x": -40,
+            "y": -96.6
+          }
+        },
+        {
+          "rotation": 1,
+          "frame": "indoor_asset/wall12/002",
+          "canvasOriginPx": {
+            "x": -40,
+            "y": -96.6
+          }
+        }
+      ]
+    },
+    {
+      "itemId": 3060011,
+      "className": "Wall13",
+      "spriteId": 701,
+      "frames": [
+        {
+          "rotation": 0,
+          "frame": "indoor_asset/wall13/001",
+          "canvasOriginPx": {
+            "x": -40,
+            "y": -96.6
+          }
+        },
+        {
+          "rotation": 1,
+          "frame": "indoor_asset/wall13/002",
+          "canvasOriginPx": {
+            "x": -40,
+            "y": -96.6
+          }
+        }
+      ]
+    },
+    {
+      "itemId": 3060012,
+      "className": "Wall14",
+      "spriteId": 698,
+      "frames": [
+        {
+          "rotation": 0,
+          "frame": "indoor_asset/wall14/001",
+          "canvasOriginPx": {
+            "x": -40,
+            "y": -96.6
+          }
+        },
+        {
+          "rotation": 1,
+          "frame": "indoor_asset/wall14/002",
+          "canvasOriginPx": {
+            "x": -40,
+            "y": -96.6
+          }
+        }
+      ]
+    },
+    {
+      "itemId": 3060013,
+      "className": "Wall15",
+      "spriteId": 695,
+      "frames": [
+        {
+          "rotation": 0,
+          "frame": "indoor_asset/wall15/001",
+          "canvasOriginPx": {
+            "x": -40,
+            "y": -96.6
+          }
+        },
+        {
+          "rotation": 1,
+          "frame": "indoor_asset/wall15/002",
+          "canvasOriginPx": {
+            "x": -40,
+            "y": -96.6
+          }
+        }
+      ]
+    },
+    {
+      "itemId": 3060014,
+      "className": "Wall18",
+      "spriteId": 686,
+      "frames": [
+        {
+          "rotation": 0,
+          "frame": "indoor_asset/wall18/001",
+          "canvasOriginPx": {
+            "x": -40,
+            "y": -96.6
+          }
+        },
+        {
+          "rotation": 1,
+          "frame": "indoor_asset/wall18/002",
+          "canvasOriginPx": {
+            "x": -40,
+            "y": -96.6
+          }
+        }
+      ]
+    },
+    {
+      "itemId": 3060015,
+      "className": "Wall19",
+      "spriteId": 683,
+      "frames": [
+        {
+          "rotation": 0,
+          "frame": "indoor_asset/wall19/001",
+          "canvasOriginPx": {
+            "x": -40,
+            "y": -96.6
+          }
+        },
+        {
+          "rotation": 1,
+          "frame": "indoor_asset/wall19/002",
+          "canvasOriginPx": {
+            "x": -40,
+            "y": -96.6
+          }
+        }
+      ]
+    },
+    {
+      "itemId": 3060016,
+      "className": "Wall17",
+      "spriteId": 689,
+      "frames": [
+        {
+          "rotation": 0,
+          "frame": "indoor_asset/wall17/001",
+          "canvasOriginPx": {
+            "x": -40,
+            "y": -96.6
+          }
+        },
+        {
+          "rotation": 1,
+          "frame": "indoor_asset/wall17/002",
+          "canvasOriginPx": {
+            "x": -40,
+            "y": -96.6
+          }
+        }
+      ]
+    },
+    {
+      "itemId": 3060017,
+      "className": "Wall16",
+      "spriteId": 692,
+      "frames": [
+        {
+          "rotation": 0,
+          "frame": "indoor_asset/wall16/001",
+          "canvasOriginPx": {
+            "x": -40,
+            "y": -96.6
+          }
+        },
+        {
+          "rotation": 1,
+          "frame": "indoor_asset/wall16/002",
+          "canvasOriginPx": {
+            "x": -40,
+            "y": -96.6
+          }
+        }
+      ]
+    },
+    {
+      "itemId": 3060018,
+      "className": "Wall20",
+      "spriteId": 680,
+      "frames": [
+        {
+          "rotation": 0,
+          "frame": "indoor_asset/wall20/001",
+          "canvasOriginPx": {
+            "x": -40,
+            "y": -96.6
+          }
+        },
+        {
+          "rotation": 1,
+          "frame": "indoor_asset/wall20/002",
+          "canvasOriginPx": {
+            "x": -40,
+            "y": -96.6
+          }
+        }
+      ]
+    },
+    {
+      "itemId": 3060019,
+      "className": "Wall21",
+      "spriteId": 677,
+      "frames": [
+        {
+          "rotation": 0,
+          "frame": "indoor_asset/wall21/001",
+          "canvasOriginPx": {
+            "x": -40,
+            "y": -96.6
+          }
+        },
+        {
+          "rotation": 1,
+          "frame": "indoor_asset/wall21/002",
+          "canvasOriginPx": {
+            "x": -40,
+            "y": -96.6
+          }
+        }
+      ]
+    },
+    {
+      "itemId": 3060020,
+      "className": "Wall22",
+      "spriteId": 674,
+      "frames": [
+        {
+          "rotation": 0,
+          "frame": "indoor_asset/wall22/001",
+          "canvasOriginPx": {
+            "x": -40,
+            "y": -96.6
+          }
+        },
+        {
+          "rotation": 1,
+          "frame": "indoor_asset/wall22/002",
+          "canvasOriginPx": {
+            "x": -40,
+            "y": -96.6
+          }
+        }
+      ]
+    },
+    {
+      "itemId": 3060021,
+      "className": "Wall23",
+      "spriteId": 671,
+      "frames": [
+        {
+          "rotation": 0,
+          "frame": "indoor_asset/wall23/001",
+          "canvasOriginPx": {
+            "x": -40,
+            "y": -96.6
+          }
+        },
+        {
+          "rotation": 1,
+          "frame": "indoor_asset/wall23/002",
+          "canvasOriginPx": {
+            "x": -40,
+            "y": -96.6
+          }
+        }
+      ]
+    },
+    {
+      "itemId": 3060022,
+      "className": "Wall24",
+      "spriteId": 668,
+      "frames": [
+        {
+          "rotation": 0,
+          "frame": "indoor_asset/wall24/001",
+          "canvasOriginPx": {
+            "x": -40,
+            "y": -96.6
+          }
+        },
+        {
+          "rotation": 1,
+          "frame": "indoor_asset/wall24/002",
+          "canvasOriginPx": {
+            "x": -40,
+            "y": -96.6
+          }
+        }
+      ]
+    },
+    {
+      "itemId": 3060023,
+      "className": "Wall25",
+      "spriteId": 665,
+      "frames": [
+        {
+          "rotation": 0,
+          "frame": "indoor_asset/wall25/001",
+          "canvasOriginPx": {
+            "x": -40,
+            "y": -96.6
+          }
+        },
+        {
+          "rotation": 1,
+          "frame": "indoor_asset/wall25/002",
+          "canvasOriginPx": {
+            "x": -40,
+            "y": -96.6
+          }
+        }
+      ]
+    },
+    {
+      "itemId": 3060024,
+      "className": "Wall26",
+      "spriteId": 662,
+      "frames": [
+        {
+          "rotation": 0,
+          "frame": "indoor_asset/wall26/001",
+          "canvasOriginPx": {
+            "x": -40,
+            "y": -96.6
+          }
+        },
+        {
+          "rotation": 1,
+          "frame": "indoor_asset/wall26/002",
+          "canvasOriginPx": {
+            "x": -40,
+            "y": -96.6
+          }
+        }
+      ]
+    },
+    {
+      "itemId": 3060025,
+      "className": "Wall27",
+      "spriteId": 659,
+      "frames": [
+        {
+          "rotation": 0,
+          "frame": "indoor_asset/wall27/001",
+          "canvasOriginPx": {
+            "x": -40,
+            "y": -96.6
+          }
+        },
+        {
+          "rotation": 1,
+          "frame": "indoor_asset/wall27/002",
+          "canvasOriginPx": {
+            "x": -40,
+            "y": -96.6
+          }
+        }
+      ]
+    },
+    {
+      "itemId": 3060026,
+      "className": "Wall28",
+      "spriteId": 656,
+      "frames": [
+        {
+          "rotation": 0,
+          "frame": "indoor_asset/wall28/001",
+          "canvasOriginPx": {
+            "x": -40,
+            "y": -96.6
+          }
+        },
+        {
+          "rotation": 1,
+          "frame": "indoor_asset/wall28/002",
+          "canvasOriginPx": {
+            "x": -40,
+            "y": -96.6
+          }
+        }
+      ]
+    },
+    {
+      "itemId": 3060027,
+      "className": "Wall29",
+      "spriteId": 611,
+      "frames": [
+        {
+          "rotation": 0,
+          "frame": "indoor_asset/wall29/001",
+          "canvasOriginPx": {
+            "x": -40,
+            "y": -96.6
+          }
+        },
+        {
+          "rotation": 1,
+          "frame": "indoor_asset/wall29/002",
+          "canvasOriginPx": {
+            "x": -40,
+            "y": -96.6
+          }
+        }
+      ]
+    },
+    {
+      "itemId": 3060028,
+      "className": "Wall30",
+      "spriteId": 608,
+      "frames": [
+        {
+          "rotation": 0,
+          "frame": "indoor_asset/wall30/001",
+          "canvasOriginPx": {
+            "x": -40,
+            "y": -96.6
+          }
+        },
+        {
+          "rotation": 1,
+          "frame": "indoor_asset/wall30/002",
+          "canvasOriginPx": {
+            "x": -40,
+            "y": -96.6
+          }
+        }
+      ]
+    },
+    {
+      "itemId": 3060029,
+      "className": "Wall31",
+      "spriteId": 605,
+      "frames": [
+        {
+          "rotation": 0,
+          "frame": "indoor_asset/wall31/001",
+          "canvasOriginPx": {
+            "x": -40,
+            "y": -96.6
+          }
+        },
+        {
+          "rotation": 1,
+          "frame": "indoor_asset/wall31/002",
+          "canvasOriginPx": {
+            "x": -40,
+            "y": -96.6
+          }
+        }
+      ]
+    },
+    {
+      "itemId": 3060030,
+      "className": "Wall32",
+      "spriteId": 653,
+      "frames": [
+        {
+          "rotation": 0,
+          "frame": "indoor_asset/wall32/001",
+          "canvasOriginPx": {
+            "x": -40,
+            "y": -96.6
+          }
+        },
+        {
+          "rotation": 1,
+          "frame": "indoor_asset/wall32/002",
+          "canvasOriginPx": {
+            "x": -40,
+            "y": -96.6
+          }
+        }
+      ]
+    },
+    {
+      "itemId": 3060031,
+      "className": "Wall33",
+      "spriteId": 650,
+      "frames": [
+        {
+          "rotation": 0,
+          "frame": "indoor_asset/wall33/001",
+          "canvasOriginPx": {
+            "x": -40,
+            "y": -96.6
+          }
+        },
+        {
+          "rotation": 1,
+          "frame": "indoor_asset/wall33/002",
+          "canvasOriginPx": {
+            "x": -40,
+            "y": -96.55
+          }
+        }
+      ]
+    },
+    {
+      "itemId": 3060032,
+      "className": "Wall34",
+      "spriteId": 647,
+      "frames": [
+        {
+          "rotation": 0,
+          "frame": "indoor_asset/wall34/001",
+          "canvasOriginPx": {
+            "x": -40,
+            "y": -96.6
+          }
+        },
+        {
+          "rotation": 1,
+          "frame": "indoor_asset/wall34/002",
+          "canvasOriginPx": {
+            "x": -40,
+            "y": -96.55
+          }
+        }
+      ]
+    },
+    {
+      "itemId": 3060033,
+      "className": "Wall35",
+      "spriteId": 644,
+      "frames": [
+        {
+          "rotation": 0,
+          "frame": "indoor_asset/wall35/001",
+          "canvasOriginPx": {
+            "x": -40,
+            "y": -96.6
+          }
+        },
+        {
+          "rotation": 1,
+          "frame": "indoor_asset/wall35/002",
+          "canvasOriginPx": {
+            "x": -40,
+            "y": -96.6
+          }
+        }
+      ]
+    },
+    {
+      "itemId": 3060034,
+      "className": "Wall36",
+      "spriteId": 641,
+      "frames": [
+        {
+          "rotation": 0,
+          "frame": "indoor_asset/wall36/001",
+          "canvasOriginPx": {
+            "x": -40,
+            "y": -96.6
+          }
+        },
+        {
+          "rotation": 1,
+          "frame": "indoor_asset/wall36/002",
+          "canvasOriginPx": {
+            "x": -40,
+            "y": -96.6
+          }
+        }
+      ]
+    },
+    {
+      "itemId": 3060035,
+      "className": "Wall37",
+      "spriteId": 638,
+      "frames": [
+        {
+          "rotation": 0,
+          "frame": "indoor_asset/wall37/001",
+          "canvasOriginPx": {
+            "x": -40,
+            "y": -96.6
+          }
+        },
+        {
+          "rotation": 1,
+          "frame": "indoor_asset/wall37/002",
+          "canvasOriginPx": {
+            "x": -40,
+            "y": -96.6
+          }
+        }
+      ]
+    },
+    {
+      "itemId": 3060036,
+      "className": "Wall38",
+      "spriteId": 629,
+      "frames": [
+        {
+          "rotation": 0,
+          "frame": "indoor_asset/wall38/001",
+          "canvasOriginPx": {
+            "x": -40,
+            "y": -96.6
+          }
+        },
+        {
+          "rotation": 1,
+          "frame": "indoor_asset/wall38/002",
+          "canvasOriginPx": {
+            "x": -40,
+            "y": -96.6
+          }
+        }
+      ]
+    },
+    {
+      "itemId": 3060037,
+      "className": "Wall39",
+      "spriteId": 626,
+      "frames": [
+        {
+          "rotation": 0,
+          "frame": "indoor_asset/wall39/001",
+          "canvasOriginPx": {
+            "x": -40,
+            "y": -96.6
+          }
+        },
+        {
+          "rotation": 1,
+          "frame": "indoor_asset/wall39/002",
+          "canvasOriginPx": {
+            "x": -40,
+            "y": -96.6
+          }
+        }
+      ]
+    },
+    {
+      "itemId": 3060038,
+      "className": "Wall41",
+      "spriteId": 620,
+      "frames": [
+        {
+          "rotation": 0,
+          "frame": "indoor_asset/wall41/001",
+          "canvasOriginPx": {
+            "x": -40,
+            "y": -96.6
+          }
+        },
+        {
+          "rotation": 1,
+          "frame": "indoor_asset/wall41/002",
+          "canvasOriginPx": {
+            "x": -40,
+            "y": -96.6
+          }
+        }
+      ]
+    },
+    {
+      "itemId": 3060039,
+      "className": "Wall40",
+      "spriteId": 623,
+      "frames": [
+        {
+          "rotation": 0,
+          "frame": "indoor_asset/wall40/001",
+          "canvasOriginPx": {
+            "x": -40,
+            "y": -96.6
+          }
+        },
+        {
+          "rotation": 1,
+          "frame": "indoor_asset/wall40/002",
+          "canvasOriginPx": {
+            "x": -40,
+            "y": -96.6
+          }
+        }
+      ]
+    },
+    {
+      "itemId": 3060040,
+      "className": "Wall42",
+      "spriteId": 617,
+      "frames": [
+        {
+          "rotation": 0,
+          "frame": "indoor_asset/wall42/001",
+          "canvasOriginPx": {
+            "x": -40,
+            "y": -96.15
+          }
+        },
+        {
+          "rotation": 1,
+          "frame": "indoor_asset/wall42/002",
+          "canvasOriginPx": {
+            "x": -40,
+            "y": -96.15
+          }
+        }
+      ]
+    },
+    {
+      "itemId": 3060041,
+      "className": "Wall43",
+      "spriteId": 614,
+      "frames": [
+        {
+          "rotation": 0,
+          "frame": "indoor_asset/wall43/001",
+          "canvasOriginPx": {
+            "x": -39.95,
+            "y": -93.9
+          }
+        },
+        {
+          "rotation": 1,
+          "frame": "indoor_asset/wall43/002",
+          "canvasOriginPx": {
+            "x": -39.95,
+            "y": -93.9
+          }
+        }
+      ]
+    },
+    {
+      "itemId": 3060042,
+      "className": "Wall44",
+      "spriteId": 635,
+      "frames": [
+        {
+          "rotation": 0,
+          "frame": "indoor_asset/wall44/001",
+          "canvasOriginPx": {
+            "x": -40,
+            "y": -97.15
+          }
+        },
+        {
+          "rotation": 1,
+          "frame": "indoor_asset/wall44/002",
+          "canvasOriginPx": {
+            "x": -40,
+            "y": -97.15
+          }
+        }
+      ]
+    },
+    {
+      "itemId": 3060043,
+      "className": "Wall45",
+      "spriteId": 632,
+      "frames": [
+        {
+          "rotation": 0,
+          "frame": "indoor_asset/wall45/001",
+          "canvasOriginPx": {
+            "x": -40,
+            "y": -97.15
+          }
+        },
+        {
+          "rotation": 1,
+          "frame": "indoor_asset/wall45/002",
+          "canvasOriginPx": {
+            "x": -40,
+            "y": -97.1
+          }
+        }
+      ]
+    },
+    {
+      "itemId": 3060044,
+      "className": "Wall46",
+      "spriteId": 2852,
+      "frames": [
+        {
+          "rotation": 0,
+          "frame": "indoor_asset/wall46/001",
+          "canvasOriginPx": {
+            "x": -40.05,
+            "y": -96.95
+          }
+        },
+        {
+          "rotation": 1,
+          "frame": "indoor_asset/wall46/002",
+          "canvasOriginPx": {
+            "x": 0,
+            "y": -96.95
+          }
+        }
+      ]
+    },
+    {
+      "itemId": 3060045,
+      "className": "Wall47",
+      "spriteId": 726,
+      "frames": [
+        {
+          "rotation": 0,
+          "frame": "indoor_asset/wall47/001",
+          "canvasOriginPx": {
+            "x": -40,
+            "y": -96.6
+          }
+        },
+        {
+          "rotation": 1,
+          "frame": "indoor_asset/wall47/002",
+          "canvasOriginPx": {
+            "x": -40,
+            "y": -96.6
+          }
+        }
+      ]
+    },
+    {
+      "itemId": 3060046,
+      "className": "Wall48",
+      "spriteId": 724,
+      "frames": [
+        {
+          "rotation": 0,
+          "frame": "indoor_asset/wall48/001",
+          "canvasOriginPx": {
+            "x": -40,
+            "y": -94.2
+          }
+        },
+        {
+          "rotation": 1,
+          "frame": "indoor_asset/wall48/002",
+          "canvasOriginPx": {
+            "x": -40,
+            "y": -94.2
+          }
+        }
+      ]
+    },
+    {
+      "itemId": 3060047,
+      "className": "Wall49",
+      "spriteId": 722,
+      "frames": [
+        {
+          "rotation": 0,
+          "frame": "indoor_asset/wall49/001",
+          "canvasOriginPx": {
+            "x": -40,
+            "y": -94.2
+          }
+        },
+        {
+          "rotation": 1,
+          "frame": "indoor_asset/wall49/002",
+          "canvasOriginPx": {
+            "x": -40,
+            "y": -94.2
+          }
+        }
+      ]
+    }
+  ],
+  "releasePolicy": "All 48 canonical wallpaper items are enabled in the trusted server catalog after R34/R35 exact geometry recovery and frozen physical browser goldens for both wall orientations. Wallpaper remains orientation-level authority state (not itemMap occupancy); target rotation is derived from the selected default wall.",
+  "runtimeValidation": {
+    "prePromotionRun": 35423823661,
+    "leftGolden": "b06a0a5e6acfedd0dc8dc2a9a04c57e6e30d89fbb401d41e661437e996fcb5c0",
+    "topGolden": "b28c10ab42522c31d9f00cb94a59ef226b9b194dca4700d676c519714d234a14",
+    "canonicalActionScriptCommit": "d552cfa4767fe4fb5b7899493c30bfb375afc2c1",
+    "setWallPaperSemantics": "wallpaper MovieClip is addChildAt(...,1) on every default wall whose getRotationCount() matches the selected target wall; corner is excluded"
+  }
+}
