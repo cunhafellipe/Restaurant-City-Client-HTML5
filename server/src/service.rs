@@ -52,9 +52,16 @@ pub enum ActiveServiceMutationOutcome {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum ServiceMutationOperation {
-    Start,
-    Transition(ServiceLoopEvent),
-    Complete { service_id: u64 },
+    Start {
+        assignment: ActiveServiceAssignment,
+    },
+    Transition {
+        service_id: u64,
+        event: ServiceLoopEvent,
+    },
+    Complete {
+        service_id: u64,
+    },
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -190,6 +197,18 @@ struct LegacyPersistedAggregate {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
+struct PersistedActiveServiceAssignment {
+    chair_instance_id: u64,
+    table_instance_id: u64,
+    chef_employee_id: u64,
+    kitchen_instance_id: u64,
+    waiter_employee_id: u64,
+    waiter_tile_x: i32,
+    waiter_tile_y: i32,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct PersistedActiveService {
     service_id: u64,
     customer_id: u64,
@@ -207,9 +226,16 @@ struct PersistedActiveService {
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 enum PersistedServiceMutationOperation {
-    Start,
-    Transition { event: ServiceLoopEvent },
-    Complete { service_id: u64 },
+    Start {
+        assignment: PersistedActiveServiceAssignment,
+    },
+    Transition {
+        service_id: u64,
+        event: ServiceLoopEvent,
+    },
+    Complete {
+        service_id: u64,
+    },
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -355,6 +381,36 @@ impl From<PersistedWallpaperMutationOperation> for WallpaperMutationOperation {
     }
 }
 
+impl From<ActiveServiceAssignment> for PersistedActiveServiceAssignment {
+    fn from(value: ActiveServiceAssignment) -> Self {
+        Self {
+            chair_instance_id: value.chair_instance_id,
+            table_instance_id: value.table_instance_id,
+            chef_employee_id: value.chef_employee_id,
+            kitchen_instance_id: value.kitchen_instance_id,
+            waiter_employee_id: value.waiter_employee_id,
+            waiter_tile_x: value.waiter_tile.x,
+            waiter_tile_y: value.waiter_tile.y,
+        }
+    }
+}
+
+impl From<PersistedActiveServiceAssignment> for ActiveServiceAssignment {
+    fn from(value: PersistedActiveServiceAssignment) -> Self {
+        Self {
+            chair_instance_id: value.chair_instance_id,
+            table_instance_id: value.table_instance_id,
+            chef_employee_id: value.chef_employee_id,
+            kitchen_instance_id: value.kitchen_instance_id,
+            waiter_employee_id: value.waiter_employee_id,
+            waiter_tile: TilePoint {
+                x: value.waiter_tile_x,
+                y: value.waiter_tile_y,
+            },
+        }
+    }
+}
+
 impl From<ActiveServiceRecord> for PersistedActiveService {
     fn from(value: ActiveServiceRecord) -> Self {
         Self {
@@ -411,8 +467,12 @@ impl TryFrom<PersistedActiveService> for ActiveServiceRecord {
 impl From<ServiceMutationOperation> for PersistedServiceMutationOperation {
     fn from(value: ServiceMutationOperation) -> Self {
         match value {
-            ServiceMutationOperation::Start => Self::Start,
-            ServiceMutationOperation::Transition(event) => Self::Transition { event },
+            ServiceMutationOperation::Start { assignment } => Self::Start {
+                assignment: assignment.into(),
+            },
+            ServiceMutationOperation::Transition { service_id, event } => {
+                Self::Transition { service_id, event }
+            }
             ServiceMutationOperation::Complete { service_id } => Self::Complete { service_id },
         }
     }
@@ -421,8 +481,12 @@ impl From<ServiceMutationOperation> for PersistedServiceMutationOperation {
 impl From<PersistedServiceMutationOperation> for ServiceMutationOperation {
     fn from(value: PersistedServiceMutationOperation) -> Self {
         match value {
-            PersistedServiceMutationOperation::Start => Self::Start,
-            PersistedServiceMutationOperation::Transition { event } => Self::Transition(event),
+            PersistedServiceMutationOperation::Start { assignment } => Self::Start {
+                assignment: assignment.into(),
+            },
+            PersistedServiceMutationOperation::Transition { service_id, event } => {
+                Self::Transition { service_id, event }
+            }
             PersistedServiceMutationOperation::Complete { service_id } => {
                 Self::Complete { service_id }
             }
