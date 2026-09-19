@@ -33,6 +33,20 @@
       "artifactSha256": "00f84fdbdbea5232d5aedc14ef5f23178d7b4041e4a07f8cb5e3f73c7426369b",
       "conclusion": "WALL_ATLAS_ALPHA_BOUNDS_RECOVERED",
       "policy": "Generated multiatlas crops scanned for exact non-transparent pixel bounds."
+    },
+    "r32": {
+      "runId": 35419426970,
+      "artifactId": 10577710328,
+      "artifactSha256": "da8deac467986d3e4bccbad9df3cb33314abda3e0180fa9b26b53674e5f9379b",
+      "conclusion": "DOOR_MASK_EXPORT_AND_ATLAS_RESOLVED",
+      "policy": "SymbolClass alignment resolves Door #1396, DoorWayMask #1313 and DoorWayMask2 #1369; generated multiatlas frames resolved without name guessing."
+    },
+    "r33": {
+      "runId": 35419500686,
+      "artifactId": 10577290797,
+      "artifactSha256": "198fbb57d2b0e8297c9355948daf1cb3b1e33eab7c94624c038ea4f4730153c0",
+      "conclusion": "DOOR_AND_MASK_RASTERS_EXTRACTED",
+      "policy": "Exact atlas crops and non-transparent pixel bounds prove Door frames contain visible mc_content only while DoorWayMask is a separate opaque erase raster."
     }
   },
   "historicalSemantics": {
@@ -378,6 +392,25 @@
           "ymaxTwips": 794,
           "widthPx": 39.7,
           "heightPx": 114.8
+        },
+        "raster": {
+          "symbolClass": "DoorWayMask",
+          "spriteId": 1313,
+          "frame": "indoor_asset/doorwaymask/001",
+          "atlasSize": {
+            "width": 40,
+            "height": 115
+          },
+          "alphaBounds": {
+            "x": 0,
+            "y": 0,
+            "width": 40,
+            "height": 115
+          },
+          "canvasOriginPx": {
+            "x": 0,
+            "y": -75.1
+          }
         }
       },
       "content": {
@@ -395,7 +428,7 @@
         }
       },
       "serverCatalogEnabled": false,
-      "status": "Geometry and erase-mask instance proven by R26; wallMap attachment authority still required.",
+      "status": "Geometry, per-rotation Door content rasters and DoorWayMask erase raster proven by R26/R30/R32/R33. Mutations remain fail-closed until per-wall erase composition passes a physical browser golden.",
       "runtimeGeometryEnabled": true,
       "localBounds": {
         "leftPx": 0,
@@ -404,8 +437,62 @@
         "bottomPx": 41.3,
         "widthPx": 43.15,
         "heightPx": 116.55
-      }
+      },
+      "rotationFrames": [
+        {
+          "rotation": 0,
+          "frame": "indoor_asset/door/001",
+          "vectorBounds": {
+            "leftPx": 0,
+            "rightPx": 43.15,
+            "topPx": -75.25,
+            "bottomPx": 41.3,
+            "widthPx": 43.15,
+            "heightPx": 116.55
+          },
+          "atlasSize": {
+            "width": 173,
+            "height": 118
+          },
+          "alphaBounds": {
+            "x": 86,
+            "y": 0,
+            "width": 44,
+            "height": 117
+          },
+          "canvasOriginPx": {
+            "x": -86,
+            "y": -75.25
+          }
+        },
+        {
+          "rotation": 1,
+          "frame": "indoor_asset/door/002",
+          "vectorBounds": {
+            "leftPx": 0,
+            "rightPx": 43.25,
+            "topPx": -75.25,
+            "bottomPx": 41.3,
+            "widthPx": 43.25,
+            "heightPx": 116.55
+          },
+          "atlasSize": {
+            "width": 173,
+            "height": 118
+          },
+          "alphaBounds": {
+            "x": 43,
+            "y": 0,
+            "width": 44,
+            "height": 117
+          },
+          "canvasOriginPx": {
+            "x": -42.9,
+            "y": -75.25
+          }
+        }
+      ]
     }
   },
-  "releasePolicy": "R25/R26 proven geometry is available to the renderer for default wall/floor infrastructure and authoritative snapshots. Only FloorTile #3050000 and WindowInside #3000001 are enabled in the trusted server catalog. Door remains fail-closed for mutations until erase-mask rendering is implemented; wall items, wallpapers and custom walls remain non-persistent derived/disabled domains."
+  "releasePolicy": "FloorTile #3050000 and WindowInside #3000001 remain enabled in the trusted server catalog. R25-R33 geometry/raster evidence is available to the renderer. Door #3010000 remains fail-closed for mutations until per-wall DoorWayMask erase composition is physically validated; wall items, wallpapers and custom walls remain non-persistent/disabled domains."
 }
