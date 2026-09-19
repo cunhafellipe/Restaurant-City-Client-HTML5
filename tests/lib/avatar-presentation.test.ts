@@ -2,7 +2,10 @@ import { describe, expect, it } from 'vitest';
 import recoveredContract from '../../contracts/restaurant-city/recovered-avatar-service-presentation.json';
 import {
   RECOVERED_AVATAR_ANIMATIONS,
+  RECOVERED_WAITER_INITIAL_DIRECTION,
   activeServiceActorPresentation,
+  actorDirectionFromItemRotation,
+  chefDirectionFromKitchenRotation,
 } from '../../src/game/avatarPresentation';
 import type {
   AuthoritativeCustomerServiceState,
@@ -34,6 +37,17 @@ function active(
 }
 
 describe('recovered avatar presentation contract', () => {
+  it('keeps the historical item-rotation to actor-direction map', () => {
+    expect([0, 1, 2, 3].map(actorDirectionFromItemRotation)).toEqual([
+      1, 7, 5, 3,
+    ]);
+    expect([0, 1, 2, 3].map(chefDirectionFromKitchenRotation)).toEqual([
+      5, 3, 1, 7,
+    ]);
+    expect(RECOVERED_WAITER_INITIAL_DIRECTION).toBe(0);
+    expect(() => actorDirectionFromItemRotation(4)).toThrow(/\[0, 3\]/);
+  });
+
   it('keeps TypeScript animation metadata pinned to the recovered contract', () => {
     const byName = new Map(
       recoveredContract.animation.definitions.map((definition) => [
