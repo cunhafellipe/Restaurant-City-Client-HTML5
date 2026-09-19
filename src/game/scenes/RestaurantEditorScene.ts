@@ -219,7 +219,15 @@ export class RestaurantEditorScene extends Phaser.Scene {
     );
 
     const rotate = () => {
-      if (this.placementInFlight) return;
+      if (this.placementInFlight || this.selectedWallpaperRotation !== null) return;
+      const item = this.currentDefinition();
+      if (item && this.isAuthoritativeWallpaper(item)) {
+        this.publishUi(
+          'Wallpaper orientation is derived from the wall under the pointer.',
+          this.currentValidation(),
+        );
+        return;
+      }
       const maxRotations = this.currentVisual()?.frames.length ?? 1;
       this.rotation = (this.rotation + 1) % maxRotations;
       this.refreshSelectedItem();
@@ -229,12 +237,12 @@ export class RestaurantEditorScene extends Phaser.Scene {
     this.input.keyboard?.on('keydown-R', rotate);
     this.input.keyboard?.on('keydown-LEFT', () => this.selectRelative(-1));
     this.input.keyboard?.on('keydown-RIGHT', () => this.selectRelative(1));
-    this.input.keyboard?.on('keydown-ESC', () => this.cancelPlacedEdit());
+    this.input.keyboard?.on('keydown-ESC', () => this.cancelSelectedEdit());
     this.input.keyboard?.on('keydown-DELETE', () => {
-      void this.removeSelectedPlacedItem();
+      void this.removeSelectedAuthorityState();
     });
     this.input.keyboard?.on('keydown-BACKSPACE', () => {
-      void this.removeSelectedPlacedItem();
+      void this.removeSelectedAuthorityState();
     });
 
     this.unsubscribeCommands = gameUiBridge.subscribeCommands((command) => {
@@ -242,9 +250,9 @@ export class RestaurantEditorScene extends Phaser.Scene {
       else if (command === 'next-item') this.selectRelative(1);
       else if (command === 'rotate-item') rotate();
       else if (command === 'remove-selected') {
-        void this.removeSelectedPlacedItem();
+        void this.removeSelectedAuthorityState();
       } else if (command === 'cancel-edit') {
-        this.cancelPlacedEdit();
+        this.cancelSelectedEdit();
       }
     });
 
@@ -271,7 +279,10 @@ export class RestaurantEditorScene extends Phaser.Scene {
           frameNames: this.requireAtlasFrameNames('indoor_asset'),
         },
       ]);
-      this.candidates = catalog.filter((item) => this.isOrdinaryPlaceable(item));
+      this.candidates = catalog.filter(
+        (item) =>
+          this.isOrdinaryPlaceable(item) || this.isAuthoritativeWallpaper(item),
+      );
 
       for (const item of this.candidates) {
         if (!this.itemVisual(item)) {
@@ -283,7 +294,7 @@ export class RestaurantEditorScene extends Phaser.Scene {
 
       if (this.candidates.length === 0) {
         throw new Error(
-          'restaurant ItemDatabase contains no ordinary item with an explicit historical footprint',
+          'restaurant ItemDatabase contains no authoritative editor item with proven geometry',
         );
       }
 
@@ -310,7 +321,7 @@ export class RestaurantEditorScene extends Phaser.Scene {
         phase: 'editing',
         baseline: manifest.baseline,
         status:
-          `Loaded baseline ${manifest.baseline}, ${layout.items.length} persisted object(s), and ${layout.floorTiles.length} authoritative floor tile(s).`,
+          `Loaded baseline ${manifest.baseline}, ${layout.items.length} persisted object(s), ${layout.floorTiles.length} floor tile(s), and ${layout.wallpapers.length} wallpaper slot(s).`,
         selectedItem: this.selectedItemUi(),
         corpus: {
           restaurantRecords: catalog.length,
@@ -496,7 +507,8 @@ export class RestaurantEditorScene extends Phaser.Scene {
     if (
       this.candidates.length === 0 ||
       this.placementInFlight ||
-      this.selectedPlacedInstanceId !== null
+      this.selectedPlacedInstanceId !== null ||
+      this.selectedWallpaperRotation !== null
     ) {
       return;
     }
