@@ -6,14 +6,16 @@ use crate::platform::{
     AnewSubject, PlatformSessionError, PlatformSessionVerifier, VerifiedProductSession,
 };
 use crate::restaurant::{
-    FloorTileIntent, PaintedFloorTile, PlacedItem, PlacementCatalog, PlacementIntent,
-    RestaurantAuthorityError, RestaurantSnapshot, RestaurantState, validate_floor_tile_intent,
+    AppliedWallpaper, FloorTileIntent, PaintedFloorTile, PlacedItem, PlacementCatalog,
+    PlacementIntent, RestaurantAuthorityError, RestaurantSnapshot, RestaurantState,
+    WallpaperIntent, WallpaperOrientation, validate_floor_tile_intent, validate_wallpaper_intent,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 
-const PRODUCT_PERSISTENCE_SCHEMA_VERSION: u8 = 3;
+const PRODUCT_PERSISTENCE_SCHEMA_VERSION: u8 = 4;
+const FLOOR_TILE_PERSISTENCE_SCHEMA_VERSION: u8 = 3;
 const JOURNALED_OBJECT_PERSISTENCE_SCHEMA_VERSION: u8 = 2;
 const LEGACY_PRODUCT_PERSISTENCE_SCHEMA_VERSION: u8 = 1;
 const MAX_STORE_RETRIES: usize = 3;
@@ -28,6 +30,25 @@ pub enum PlacementMutationOutcome {
 pub enum FloorTileMutationOutcome {
     Applied(PaintedFloorTile),
     Duplicate(PaintedFloorTile),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum WallpaperMutationOutcome {
+    Applied(AppliedWallpaper),
+    Duplicate(AppliedWallpaper),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum WallpaperMutationOperation {
+    Apply,
+    Remove,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct WallpaperMutationRecord {
+    sequence: u64,
+    operation: WallpaperMutationOperation,
+    wallpaper: AppliedWallpaper,
 }
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
@@ -79,6 +100,7 @@ pub struct InventoryAvailability {
 pub struct RestaurantProductSnapshot {
     pub restaurant: RestaurantSnapshot,
     pub floor_tiles: Vec<PaintedFloorTile>,
+    pub wallpapers: Vec<AppliedWallpaper>,
     pub inventory: Vec<InventoryAvailability>,
 }
 
@@ -91,6 +113,9 @@ pub struct ProductAggregate {
     floor_tiles: BTreeMap<FloorTileKey, PaintedFloorTile>,
     floor_mutations: BTreeMap<MutationId, FloorTileMutationRecord>,
     next_floor_mutation_sequence: u64,
+    wallpapers: BTreeMap<WallpaperOrientation, AppliedWallpaper>,
+    wallpaper_mutations: BTreeMap<MutationId, WallpaperMutationRecord>,
+    next_wallpaper_mutation_sequence: u64,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -110,6 +135,10 @@ struct PersistedAggregate {
     next_floor_mutation_sequence: u64,
     #[serde(default)]
     floor_mutations: Vec<PersistedFloorTileMutation>,
+    #[serde(default)]
+    next_wallpaper_mutation_sequence: u64,
+    #[serde(default)]
+    wallpaper_mutations: Vec<PersistedWallpaperMutation>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -129,6 +158,8 @@ struct PersistedRestaurant {
     items: Vec<PersistedPlacedItem>,
     #[serde(default)]
     floor_tiles: Vec<PersistedFloorTile>,
+    #[serde(default)]
+    wallpapers: Vec<PersistedWallpaper>,
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
@@ -166,6 +197,29 @@ struct PersistedFloorTileMutation {
     mutation_id: String,
     sequence: u64,
     tile: PersistedFloorTile,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PersistedWallpaper {
+    item_id: u32,
+    rotation: u8,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum PersistedWallpaperMutationOperation {
+    Apply,
+    Remove,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PersistedWallpaperMutation {
+    mutation_id: String,
+    sequence: u64,
+    operation: PersistedWallpaperMutationOperation,
+    wallpaper: PersistedWallpaper,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -212,6 +266,24 @@ impl From<PersistedRestaurantMutationOperation> for RestaurantMutationOperation 
     }
 }
 
+impl From<WallpaperMutationOperation> for PersistedWallpaperMutationOperation {
+    fn from(value: WallpaperMutationOperation) -> Self {
+        match value {
+            WallpaperMutationOperation::Apply => Self::Apply,
+            WallpaperMutationOperation::Remove => Self::Remove,
+        }
+    }
+}
+
+impl From<PersistedWallpaperMutationOperation> for WallpaperMutationOperation {
+    fn from(value: PersistedWallpaperMutationOperation) -> Self {
+        match value {
+            PersistedWallpaperMutationOperation::Apply => Self::Apply,
+            PersistedWallpaperMutationOperation::Remove => Self::Remove,
+        }
+    }
+}
+
 impl ProductAggregate {
     pub fn new(subject: AnewSubject, room: RoomDimensions) -> Self {
         Self {
@@ -222,6 +294,9 @@ impl ProductAggregate {
             floor_tiles: BTreeMap::new(),
             floor_mutations: BTreeMap::new(),
             next_floor_mutation_sequence: 1,
+            wallpapers: BTreeMap::new(),
+            wallpaper_mutations: BTreeMap::new(),
+            next_wallpaper_mutation_sequence: 1,
         }
     }
 
@@ -256,6 +331,12 @@ impl ProductAggregate {
                     .copied()
                     .map(PersistedFloorTile::from)
                     .collect(),
+                wallpapers: self
+                    .wallpapers
+                    .values()
+                    .copied()
+                    .map(PersistedWallpaper::from)
+                    .collect(),
             },
             next_restaurant_mutation_sequence: self.next_restaurant_mutation_sequence,
             restaurant_mutations: self
@@ -276,6 +357,17 @@ impl ProductAggregate {
                     mutation_id: mutation_id.as_str().to_owned(),
                     sequence: record.sequence,
                     tile: PersistedFloorTile::from(record.tile),
+                })
+                .collect(),
+            next_wallpaper_mutation_sequence: self.next_wallpaper_mutation_sequence,
+            wallpaper_mutations: self
+                .wallpaper_mutations
+                .iter()
+                .map(|(mutation_id, record)| PersistedWallpaperMutation {
+                    mutation_id: mutation_id.as_str().to_owned(),
+                    sequence: record.sequence,
+                    operation: record.operation.into(),
+                    wallpaper: PersistedWallpaper::from(record.wallpaper),
                 })
                 .collect(),
         };
@@ -300,6 +392,11 @@ impl ProductAggregate {
                 let persisted: PersistedAggregate =
                     serde_json::from_slice(bytes).map_err(|_| ProductStateStoreError::Corrupt)?;
                 Self::decode_v2_persisted(catalog, persisted)
+            }
+            FLOOR_TILE_PERSISTENCE_SCHEMA_VERSION => {
+                let persisted: PersistedAggregate =
+                    serde_json::from_slice(bytes).map_err(|_| ProductStateStoreError::Corrupt)?;
+                Self::decode_v3_persisted(catalog, persisted)
             }
             PRODUCT_PERSISTENCE_SCHEMA_VERSION => {
                 let persisted: PersistedAggregate =
