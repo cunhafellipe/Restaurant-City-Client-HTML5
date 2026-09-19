@@ -104,7 +104,11 @@ export function projectActiveServiceActors(
     actors.push({
       role: 'customer',
       animation: presentation.customer.animation,
-      tile: { x: chair.facingTileX, y: chair.facingTileY },
+      // Customer.walkToChair() uses PathFinder with its historical
+      // stopNextToDestTile default (false), so the final path destination is
+      // the chair's own tile. sitOnChair() changes direction/animation only;
+      // it does not move the actor to the table-facing tile.
+      tile: { x: chair.tileX, y: chair.tileY },
       direction: actorDirectionFromItemRotation(chair.rotation),
     });
   }
