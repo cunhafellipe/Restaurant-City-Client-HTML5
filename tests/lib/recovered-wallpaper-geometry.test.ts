@@ -3,7 +3,9 @@ import {
   recoveredWallpaperFrame,
   recoveredWallpaperFrameOffset,
   recoveredWallpaperGeometry,
+  recoveredEnabledWallpaperFootprint,
   recoveredWallpaperItemIds,
+  wallpaperServerCatalogEnabled,
 } from '../../src/content/recoveredWallpaperGeometry';
 
 describe('recovered wallpaper geometry contract', () => {
@@ -13,6 +15,15 @@ describe('recovered wallpaper geometry contract', () => {
     expect(new Set(ids).size).toBe(48);
     expect(Math.min(...ids)).toBe(3060000);
     expect(Math.max(...ids)).toBe(3060047);
+  });
+
+  it('promotes the recovered wallpaper family through the trusted footprint gate', () => {
+    expect(wallpaperServerCatalogEnabled()).toBe(true);
+    expect(recoveredEnabledWallpaperFootprint(3060000, 'Wall1')).toEqual({
+      sizeX: 1,
+      sizeY: 1,
+    });
+    expect(recoveredEnabledWallpaperFootprint(3060000, 'Wall49')).toBeNull();
   });
 
   it('pins Green Wallpaper to the two recovered Wall1 frames', () => {
