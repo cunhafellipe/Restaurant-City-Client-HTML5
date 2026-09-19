@@ -7,11 +7,12 @@
     "height": 600
   },
   "blockSize": 8,
-  "expectedQuantizedBlockSha256": "7352914dc1d7264b2dd5d496ca2bdc8100d3bfb6e294086222b5a24d2764e369",
-  "referencePixelSha256": "e3bcdc5967f3af4cdc9100c3ac82cea1ce69af7e098800e607df45e107d575b1",
-  "referenceProductSha": "0f18a541cdfa5d44616152a5d22fa73c727f411d",
+  "expectedQuantizedBlockSha256": "343d0b59c369d6479c2f26f7e1ff720fec3a660be339d07f096e38105102083e",
+  "referencePixelSha256": "2bdcccf553031e79e520a6a2922469ec4a2512bea280f9171b8d0b07262cce4c",
+  "referencePngSha256": "3c3aef9879a06d76d651d1cf116eb0b7c18ae838a10a97a9ce248ffcd367515a",
+  "referenceProductSha": "8c06086a5b9a525879f5fa363bb60296b61abf38",
   "deterministicValidationRuns": [
-    35416199488
+    35418803108
   ],
-  "note": "Inspected ANEWON self-hosted Edge CDP WebGL composite. Wood Panel #3050000 is rendered from authoritative floor_tiles at roomIndex=0 tile (2,3), below the object domain and without entering itemMap. Gate compares the quantized 8x8 world signature."
+  "note": "Inspected ANEWON self-hosted Edge CDP WebGL composite. Wood Panel #3050000 is authoritative floor state at tile (2,3), rendered below objects with recovered default Wall2/WallCorner infrastructure. Gate compares the quantized 8x8 signature."
 }
