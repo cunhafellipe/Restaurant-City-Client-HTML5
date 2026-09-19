@@ -1206,11 +1206,13 @@ impl ProductAggregate {
                     if current.identity.service_id != service_id {
                         return Err(ProductStateStoreError::Corrupt);
                     }
-                    replay_active_service = Some(
-                        current
-                            .transition(event)
-                            .map_err(|_| ProductStateStoreError::Corrupt)?,
-                    );
+                    let (transitioned, effect) = current
+                        .transition(event)
+                        .map_err(|_| ProductStateStoreError::Corrupt)?;
+                    if effect.is_some() {
+                        return Err(ProductStateStoreError::Corrupt);
+                    }
+                    replay_active_service = Some(transitioned);
                 }
                 ServiceMutationOperation::Complete { service_id } => {
                     let current = replay_active_service.ok_or(ProductStateStoreError::Corrupt)?;
@@ -1718,9 +1720,12 @@ impl ProductAggregate {
         if current.identity.service_id != service_id {
             return Err(ProductServiceError::ActiveServiceIdMismatch);
         }
-        let transitioned = current
+        let (transitioned, effect) = current
             .transition(event)
             .map_err(ProductServiceError::ServiceLoopAuthority)?;
+        if effect.is_some() {
+            return Err(ProductServiceError::MealSettlementNotConnected);
+        }
 
         self.record_service_mutation(
             mutation_id,
@@ -2624,6 +2629,7 @@ pub enum ProductServiceError {
     ActiveServiceNotFound,
     ActiveServiceIdMismatch,
     ActiveServiceNotComplete,
+    MealSettlementNotConnected,
     WallpaperNotApplied {
         rotation: u8,
     },
