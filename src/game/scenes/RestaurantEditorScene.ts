@@ -977,6 +977,41 @@ export class RestaurantEditorScene extends Phaser.Scene {
         1,
       ),
     );
+    this.publishVisualProbeDiagnostics();
+  }
+
+  private publishVisualProbeDiagnostics(): void {
+    if (
+      typeof window === 'undefined' ||
+      !new URLSearchParams(window.location.search).has('visualProbe')
+    ) {
+      return;
+    }
+
+    const target = globalThis as typeof globalThis & {
+      __ANEWON_RC_VISUAL_DIAGNOSTICS__?: unknown;
+    };
+    target.__ANEWON_RC_VISUAL_DIAGNOSTICS__ = {
+      walls: this.wallSprites.map((sprite) => {
+        const bounds = sprite.getBounds();
+        return {
+          frame: sprite.frame.name,
+          x: sprite.x,
+          y: sprite.y,
+          depth: sprite.depth,
+          visible: sprite.visible,
+          alpha: sprite.alpha,
+          width: sprite.displayWidth,
+          height: sprite.displayHeight,
+          bounds: {
+            x: bounds.x,
+            y: bounds.y,
+            width: bounds.width,
+            height: bounds.height,
+          },
+        };
+      }),
+    };
   }
 
   private drawCommittedPlacements(): void {
