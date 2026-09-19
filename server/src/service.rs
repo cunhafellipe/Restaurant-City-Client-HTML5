@@ -1,5 +1,9 @@
+use crate::active_service::{ActiveServiceAssignment, ActiveServiceIdentity, ActiveServiceRecord};
 use crate::domain::{
     AuthorityError, Command, MutationId, MutationOutcome, PlayerPersistenceSnapshot, PlayerState,
+};
+use crate::gameplay::{
+    CustomerServiceState, OrderServiceState, ServiceLoopEvent, ServiceLoopState,
 };
 use crate::placement::{RoomDimensions, TilePoint};
 use crate::platform::{
@@ -15,7 +19,8 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 
-const PRODUCT_PERSISTENCE_SCHEMA_VERSION: u8 = 4;
+const PRODUCT_PERSISTENCE_SCHEMA_VERSION: u8 = 5;
+const WALLPAPER_PERSISTENCE_SCHEMA_VERSION: u8 = 4;
 const FLOOR_TILE_PERSISTENCE_SCHEMA_VERSION: u8 = 3;
 const JOURNALED_OBJECT_PERSISTENCE_SCHEMA_VERSION: u8 = 2;
 const LEGACY_PRODUCT_PERSISTENCE_SCHEMA_VERSION: u8 = 1;
@@ -37,6 +42,26 @@ pub enum FloorTileMutationOutcome {
 pub enum WallpaperMutationOutcome {
     Applied(AppliedWallpaper),
     Duplicate(AppliedWallpaper),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ActiveServiceMutationOutcome {
+    Applied(Option<ActiveServiceRecord>),
+    Duplicate(Option<ActiveServiceRecord>),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ServiceMutationOperation {
+    Start,
+    Transition(ServiceLoopEvent),
+    Complete { service_id: u64 },
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct ServiceMutationRecord {
+    sequence: u64,
+    operation: ServiceMutationOperation,
+    result: Option<ActiveServiceRecord>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -117,6 +142,10 @@ pub struct ProductAggregate {
     wallpapers: BTreeMap<WallpaperOrientation, AppliedWallpaper>,
     wallpaper_mutations: BTreeMap<MutationId, WallpaperMutationRecord>,
     next_wallpaper_mutation_sequence: u64,
+    active_service: Option<ActiveServiceRecord>,
+    service_mutations: BTreeMap<MutationId, ServiceMutationRecord>,
+    next_service_mutation_sequence: u64,
+    next_service_id: u64,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -140,6 +169,14 @@ struct PersistedAggregate {
     next_wallpaper_mutation_sequence: u64,
     #[serde(default)]
     wallpaper_mutations: Vec<PersistedWallpaperMutation>,
+    #[serde(default)]
+    active_service: Option<PersistedActiveService>,
+    #[serde(default)]
+    service_mutations: Vec<PersistedServiceMutation>,
+    #[serde(default)]
+    next_service_mutation_sequence: u64,
+    #[serde(default)]
+    next_service_id: u64,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -149,6 +186,39 @@ struct LegacyPersistedAggregate {
     player: PlayerPersistenceSnapshot,
     restaurant: PersistedRestaurant,
     placement_mutations: Vec<PersistedPlacementMutation>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PersistedActiveService {
+    service_id: u64,
+    customer_id: u64,
+    order_id: u64,
+    chair_instance_id: u64,
+    table_instance_id: u64,
+    chef_employee_id: u64,
+    kitchen_instance_id: u64,
+    waiter_employee_id: u64,
+    waiter_tile_x: i32,
+    waiter_tile_y: i32,
+    state: ServiceLoopState,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum PersistedServiceMutationOperation {
+    Start,
+    Transition { event: ServiceLoopEvent },
+    Complete { service_id: u64 },
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PersistedServiceMutation {
+    mutation_id: String,
+    sequence: u64,
+    operation: PersistedServiceMutationOperation,
+    result: Option<PersistedActiveService>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -298,6 +368,10 @@ impl ProductAggregate {
             wallpapers: BTreeMap::new(),
             wallpaper_mutations: BTreeMap::new(),
             next_wallpaper_mutation_sequence: 1,
+            active_service: None,
+            service_mutations: BTreeMap::new(),
+            next_service_mutation_sequence: 1,
+            next_service_id: 1,
         }
     }
 
