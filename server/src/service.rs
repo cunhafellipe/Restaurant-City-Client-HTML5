@@ -963,7 +963,9 @@ impl ProductAggregate {
     ) -> Result<PlacementMutationOutcome, ProductServiceError> {
         self.require_subject(session)?;
 
-        if self.floor_mutations.contains_key(&mutation_id) {
+        if self.floor_mutations.contains_key(&mutation_id)
+            || self.wallpaper_mutations.contains_key(&mutation_id)
+        {
             return Err(ProductServiceError::MutationIdConflict);
         }
         if let Some(existing) = self.restaurant_mutations.get(&mutation_id) {
@@ -1011,7 +1013,9 @@ impl ProductAggregate {
     ) -> Result<FloorTileMutationOutcome, ProductServiceError> {
         self.require_subject(session)?;
 
-        if self.restaurant_mutations.contains_key(&mutation_id) {
+        if self.restaurant_mutations.contains_key(&mutation_id)
+            || self.wallpaper_mutations.contains_key(&mutation_id)
+        {
             return Err(ProductServiceError::MutationIdConflict);
         }
         if let Some(existing) = self.floor_mutations.get(&mutation_id) {
@@ -1043,6 +1047,92 @@ impl ProductAggregate {
         Ok(FloorTileMutationOutcome::Applied(painted))
     }
 
+    pub fn apply_owned_wallpaper(
+        &mut self,
+        session: VerifiedProductSession,
+        catalog: &PlacementCatalog,
+        mutation_id: MutationId,
+        intent: WallpaperIntent,
+    ) -> Result<WallpaperMutationOutcome, ProductServiceError> {
+        self.require_subject(session)?;
+
+        if self.restaurant_mutations.contains_key(&mutation_id)
+            || self.floor_mutations.contains_key(&mutation_id)
+        {
+            return Err(ProductServiceError::MutationIdConflict);
+        }
+
+        let wallpaper = validate_wallpaper_intent(catalog, self.restaurant.room(), intent)
+            .map_err(ProductServiceError::RestaurantAuthority)?;
+
+        if let Some(existing) = self.wallpaper_mutations.get(&mutation_id) {
+            if existing.operation != WallpaperMutationOperation::Apply
+                || existing.wallpaper != wallpaper
+            {
+                return Err(ProductServiceError::MutationIdConflict);
+            }
+            return Ok(WallpaperMutationOutcome::Duplicate(existing.wallpaper));
+        }
+
+        let current = self.wallpapers.get(&wallpaper.orientation).copied();
+        if current.is_none_or(|existing| existing.item_id != wallpaper.item_id) {
+            let owned = self.player.inventory().quantity(wallpaper.item_id);
+            let placed = self.placed_count_for_item(wallpaper.item_id)?;
+            if placed >= owned {
+                return Err(ProductServiceError::ItemUnavailable {
+                    item_id: wallpaper.item_id,
+                    owned,
+                    placed,
+                });
+            }
+        }
+
+        self.wallpapers.insert(wallpaper.orientation, wallpaper);
+        self.record_wallpaper_mutation(
+            mutation_id,
+            WallpaperMutationOperation::Apply,
+            wallpaper,
+        )?;
+        Ok(WallpaperMutationOutcome::Applied(wallpaper))
+    }
+
+    pub fn remove_owned_wallpaper(
+        &mut self,
+        session: VerifiedProductSession,
+        mutation_id: MutationId,
+        orientation: WallpaperOrientation,
+    ) -> Result<WallpaperMutationOutcome, ProductServiceError> {
+        self.require_subject(session)?;
+
+        if self.restaurant_mutations.contains_key(&mutation_id)
+            || self.floor_mutations.contains_key(&mutation_id)
+        {
+            return Err(ProductServiceError::MutationIdConflict);
+        }
+        if let Some(existing) = self.wallpaper_mutations.get(&mutation_id) {
+            if existing.operation != WallpaperMutationOperation::Remove
+                || existing.wallpaper.orientation != orientation
+            {
+                return Err(ProductServiceError::MutationIdConflict);
+            }
+            return Ok(WallpaperMutationOutcome::Duplicate(existing.wallpaper));
+        }
+
+        let removed = self
+            .wallpapers
+            .remove(&orientation)
+            .ok_or(ProductServiceError::WallpaperNotApplied {
+                rotation: orientation.rotation(),
+            })?;
+
+        self.record_wallpaper_mutation(
+            mutation_id,
+            WallpaperMutationOperation::Remove,
+            removed,
+        )?;
+        Ok(WallpaperMutationOutcome::Applied(removed))
+    }
+
     pub fn transform_owned_item(
         &mut self,
         session: VerifiedProductSession,
@@ -1054,7 +1144,9 @@ impl ProductAggregate {
     ) -> Result<PlacementMutationOutcome, ProductServiceError> {
         self.require_subject(session)?;
 
-        if self.floor_mutations.contains_key(&mutation_id) {
+        if self.floor_mutations.contains_key(&mutation_id)
+            || self.wallpaper_mutations.contains_key(&mutation_id)
+        {
             return Err(ProductServiceError::MutationIdConflict);
         }
         if let Some(existing) = self.restaurant_mutations.get(&mutation_id) {
@@ -1094,7 +1186,9 @@ impl ProductAggregate {
     ) -> Result<PlacementMutationOutcome, ProductServiceError> {
         self.require_subject(session)?;
 
-        if self.floor_mutations.contains_key(&mutation_id) {
+        if self.floor_mutations.contains_key(&mutation_id)
+            || self.wallpaper_mutations.contains_key(&mutation_id)
+        {
             return Err(ProductServiceError::MutationIdConflict);
         }
         if let Some(existing) = self.restaurant_mutations.get(&mutation_id) {
@@ -1145,6 +1239,36 @@ impl ProductAggregate {
         Ok(())
     }
 
+    fn record_wallpaper_mutation(
+        &mut self,
+        mutation_id: MutationId,
+        operation: WallpaperMutationOperation,
+        wallpaper: AppliedWallpaper,
+    ) -> Result<(), ProductServiceError> {
+        let sequence = self.next_wallpaper_mutation_sequence;
+        let next_sequence = sequence
+            .checked_add(1)
+            .ok_or(ProductServiceError::WallpaperMutationSequenceExhausted)?;
+
+        if self
+            .wallpaper_mutations
+            .insert(
+                mutation_id,
+                WallpaperMutationRecord {
+                    sequence,
+                    operation,
+                    wallpaper,
+                },
+            )
+            .is_some()
+        {
+            return Err(ProductServiceError::Store(ProductStateStoreError::Corrupt));
+        }
+
+        self.next_wallpaper_mutation_sequence = next_sequence;
+        Ok(())
+    }
+
     fn record_floor_mutation(
         &mut self,
         mutation_id: MutationId,
@@ -1177,8 +1301,14 @@ impl ProductAggregate {
             .values()
             .filter(|tile| tile.item_id == item_id)
             .count();
+        let wallpaper_count = self
+            .wallpapers
+            .values()
+            .filter(|wallpaper| wallpaper.item_id == item_id)
+            .count();
         let total = object_count
             .checked_add(floor_count)
+            .and_then(|value| value.checked_add(wallpaper_count))
             .ok_or(ProductServiceError::Store(ProductStateStoreError::Corrupt))?;
         u32::try_from(total)
             .map_err(|_| ProductServiceError::Store(ProductStateStoreError::Corrupt))
@@ -1192,6 +1322,7 @@ impl ProductAggregate {
 
         let restaurant = self.restaurant.snapshot();
         let floor_tiles: Vec<_> = self.floor_tiles.values().copied().collect();
+        let wallpapers: Vec<_> = self.wallpapers.values().copied().collect();
         let mut placed_counts = BTreeMap::<u32, u32>::new();
         for item in &restaurant.items {
             let count = placed_counts.entry(item.item_id).or_default();
@@ -1201,6 +1332,12 @@ impl ProductAggregate {
         }
         for tile in &floor_tiles {
             let count = placed_counts.entry(tile.item_id).or_default();
+            *count = count
+                .checked_add(1)
+                .ok_or(ProductServiceError::Store(ProductStateStoreError::Corrupt))?;
+        }
+        for wallpaper in &wallpapers {
+            let count = placed_counts.entry(wallpaper.item_id).or_default();
             *count = count
                 .checked_add(1)
                 .ok_or(ProductServiceError::Store(ProductStateStoreError::Corrupt))?;
@@ -1230,6 +1367,7 @@ impl ProductAggregate {
         Ok(RestaurantProductSnapshot {
             restaurant,
             floor_tiles,
+            wallpapers,
             inventory,
         })
     }
@@ -1693,8 +1831,12 @@ pub enum ProductServiceError {
         placed: u32,
     },
     MutationIdConflict,
+    WallpaperNotApplied {
+        rotation: u8,
+    },
     RestaurantMutationSequenceExhausted,
     FloorMutationSequenceExhausted,
+    WallpaperMutationSequenceExhausted,
 }
 
 #[cfg(test)]
