@@ -9,6 +9,10 @@ import {
   recoveredPlacementFootprint,
   recoveredRoomItemGeometry,
 } from './recoveredRoomItemGeometry';
+import {
+  recoveredEnabledWallFloorFootprint,
+  recoveredWallFloorGeometry,
+} from './recoveredWallFloorGeometry';
 
 export interface RestaurantItemDefinition {
   readonly id: number;
@@ -115,9 +119,18 @@ export function buildRestaurantItemDefinition(
   const className = stringValue(item.attributes, 'className');
   const sourceFootprint = explicitFootprint(item);
   const recoveredFootprint =
-    sourceFootprint === null ? recoveredPlacementFootprint(id, className) : null;
+    sourceFootprint === null
+      ? recoveredPlacementFootprint(id, className) ??
+        recoveredEnabledWallFloorFootprint(id, className)
+      : null;
   const placementFootprint = sourceFootprint ?? recoveredFootprint;
-  const geometry = recoveredRoomItemGeometry(id, className);
+  const roomGeometry = recoveredRoomItemGeometry(id, className);
+  const wallFloorGeometry = recoveredWallFloorGeometry(id, className);
+  const itemHeightTwips =
+    roomGeometry?.itemHeightTwips ??
+    (wallFloorGeometry?.serverCatalogEnabled
+      ? wallFloorGeometry.itemHeightTwips
+      : null);
   const stackable =
     hasType(types, 'stackable') || booleanValue(item.attributes, 'stackable');
   const surface =
@@ -140,7 +153,7 @@ export function buildRestaurantItemDefinition(
         : recoveredFootprint !== null
           ? 'recovered'
           : null,
-    itemHeightTwips: geometry?.itemHeightTwips ?? null,
+    itemHeightTwips,
     placement: {
       wallItem:
         hasType(types, 'wallItem') ||
