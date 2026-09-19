@@ -989,57 +989,61 @@ export class RestaurantEditorScene extends Phaser.Scene {
       return;
     }
 
+    const describe = (sprite: Phaser.GameObjects.Sprite) => {
+      const bounds = sprite.getBounds();
+      const frame = sprite.frame as Phaser.Textures.Frame & {
+        glTexture?: unknown;
+      };
+      const source = sprite.texture.source[frame.sourceIndex];
+      return {
+        frame: frame.name,
+        textureKey: sprite.texture.key,
+        sourceIndex: frame.sourceIndex,
+        sourceLoaded: Boolean(source?.image),
+        sourceWidth: source?.width ?? null,
+        sourceHeight: source?.height ?? null,
+        sourceGlTexturePresent: Boolean(source?.glTexture),
+        frameGlTexturePresent: Boolean(frame.glTexture),
+        cutX: frame.cutX,
+        cutY: frame.cutY,
+        cutWidth: frame.cutWidth,
+        cutHeight: frame.cutHeight,
+        realWidth: frame.realWidth,
+        realHeight: frame.realHeight,
+        u0: frame.u0,
+        v0: frame.v0,
+        u1: frame.u1,
+        v1: frame.v1,
+        inSceneDisplayList: sprite.displayList === this.sys.displayList,
+        sceneChildrenContains: this.children.exists(sprite),
+        x: sprite.x,
+        y: sprite.y,
+        depth: sprite.depth,
+        visible: sprite.visible,
+        alpha: sprite.alpha,
+        active: sprite.active,
+        renderFlags: sprite.renderFlags,
+        cameraFilter: sprite.cameraFilter,
+        willRender: sprite.willRender(this.cameras.main),
+        blendMode: sprite.blendMode,
+        width: sprite.displayWidth,
+        height: sprite.displayHeight,
+        bounds: {
+          x: bounds.x,
+          y: bounds.y,
+          width: bounds.width,
+          height: bounds.height,
+        },
+      };
+    };
+
     const target = globalThis as typeof globalThis & {
       __ANEWON_RC_VISUAL_DIAGNOSTICS__?: unknown;
     };
     target.__ANEWON_RC_VISUAL_DIAGNOSTICS__ = {
-      walls: this.wallSprites.map((sprite) => {
-        const bounds = sprite.getBounds();
-        const frame = sprite.frame as Phaser.Textures.Frame & {
-          glTexture?: unknown;
-        };
-        const source = sprite.texture.source[frame.sourceIndex];
-        return {
-          frame: frame.name,
-          textureKey: sprite.texture.key,
-          sourceIndex: frame.sourceIndex,
-          sourceLoaded: Boolean(source?.image),
-          sourceWidth: source?.width ?? null,
-          sourceHeight: source?.height ?? null,
-          sourceGlTexturePresent: Boolean(source?.glTexture),
-          frameGlTexturePresent: Boolean(frame.glTexture),
-          cutX: frame.cutX,
-          cutY: frame.cutY,
-          cutWidth: frame.cutWidth,
-          cutHeight: frame.cutHeight,
-          realWidth: frame.realWidth,
-          realHeight: frame.realHeight,
-          u0: frame.u0,
-          v0: frame.v0,
-          u1: frame.u1,
-          v1: frame.v1,
-          inSceneDisplayList: sprite.displayList === this.sys.displayList,
-          sceneChildrenContains: this.children.exists(sprite),
-          x: sprite.x,
-          y: sprite.y,
-          depth: sprite.depth,
-          visible: sprite.visible,
-          alpha: sprite.alpha,
-          active: sprite.active,
-          renderFlags: sprite.renderFlags,
-          cameraFilter: sprite.cameraFilter,
-          willRender: sprite.willRender(this.cameras.main),
-          blendMode: sprite.blendMode,
-          width: sprite.displayWidth,
-          height: sprite.displayHeight,
-          bounds: {
-            x: bounds.x,
-            y: bounds.y,
-            width: bounds.width,
-            height: bounds.height,
-          },
-        };
-      }),
+      walls: this.wallSprites.map(describe),
+      committed: this.committedSprites.map(describe),
+      floor: this.floorSprites.map(describe),
     };
   }
 
@@ -1107,6 +1111,7 @@ export class RestaurantEditorScene extends Phaser.Scene {
       }
       this.committedSprites.push(sprite);
     }
+    this.publishVisualProbeDiagnostics();
   }
 
   private drawPreview(publishStatus = true): void {
