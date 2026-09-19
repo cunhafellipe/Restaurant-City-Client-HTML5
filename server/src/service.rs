@@ -730,6 +730,61 @@ impl From<PersistedServiceMutationOperation> for ServiceMutationOperation {
     }
 }
 
+fn persisted_active_service_uses_v7_authority(
+    service: PersistedActiveService,
+) -> bool {
+    service.customer_entrance_tile.is_some() || service.active_path.is_some()
+}
+
+fn persisted_service_mutation_uses_v7_authority(
+    entry: &PersistedServiceMutation,
+) -> bool {
+    let operation_uses_v7 = match entry.operation {
+        PersistedServiceMutationOperation::Start { assignment, .. } => {
+            assignment.customer_entrance_tile.is_some()
+        }
+        PersistedServiceMutationOperation::StartCustomerChairPath { .. }
+        | PersistedServiceMutationOperation::CompleteCustomerChairPath { .. } => true,
+        _ => false,
+    };
+    operation_uses_v7
+        || entry
+            .result
+            .is_some_and(persisted_active_service_uses_v7_authority)
+}
+
+fn persisted_active_service_uses_v6_authority(
+    service: PersistedActiveService,
+) -> bool {
+    service.timing_anchored
+        || service.customer_deadline_at_ms.is_some()
+        || service.order_deadline_at_ms.is_some()
+        || persisted_active_service_uses_v7_authority(service)
+}
+
+fn persisted_service_mutation_uses_v6_authority(
+    entry: &PersistedServiceMutation,
+) -> bool {
+    let operation_uses_v6 = match entry.operation {
+        PersistedServiceMutationOperation::Start {
+            effective_at_ms,
+            assignment,
+            ..
+        } => effective_at_ms.is_some() || assignment.customer_entrance_tile.is_some(),
+        PersistedServiceMutationOperation::AnchorTiming { .. } => true,
+        PersistedServiceMutationOperation::Transition {
+            effective_at_ms, ..
+        } => effective_at_ms.is_some(),
+        PersistedServiceMutationOperation::StartCustomerChairPath { .. }
+        | PersistedServiceMutationOperation::CompleteCustomerChairPath { .. } => true,
+        PersistedServiceMutationOperation::Complete { .. } => false,
+    };
+    operation_uses_v6
+        || entry
+            .result
+            .is_some_and(persisted_active_service_uses_v6_authority)
+}
+
 impl ProductAggregate {
     pub fn new(subject: AnewSubject, room: RoomDimensions) -> Self {
         Self {
@@ -1101,7 +1156,15 @@ impl ProductAggregate {
         catalog: &PlacementCatalog,
         mut persisted: PersistedAggregate,
     ) -> Result<Self, ProductStateStoreError> {
-        if persisted.schema_version != ACTIVE_SERVICE_PERSISTENCE_SCHEMA_VERSION {
+        if persisted.schema_version != ACTIVE_SERVICE_PERSISTENCE_SCHEMA_VERSION
+            || persisted
+                .active_service
+                .is_some_and(persisted_active_service_uses_v6_authority)
+            || persisted
+                .service_mutations
+                .iter()
+                .any(persisted_service_mutation_uses_v6_authority)
+        {
             return Err(ProductStateStoreError::Corrupt);
         }
 
@@ -1122,15 +1185,15 @@ impl ProductAggregate {
         }
 
         // V6 has authoritative wall-clock timing but predates persisted
-        // path authority. The serde-defaulted active_path remains absent; no
-        // legacy service is allowed to acquire a synthetic path during decode.
+        // entrance/path authority. New V7 fields/operations are rejected
+        // rather than silently accepted under an older schema number.
         if persisted
             .active_service
-            .is_some_and(|service| service.active_path.is_some())
+            .is_some_and(persisted_active_service_uses_v7_authority)
             || persisted
                 .service_mutations
                 .iter()
-                .any(|entry| entry.result.is_some_and(|service| service.active_path.is_some()))
+                .any(persisted_service_mutation_uses_v7_authority)
         {
             return Err(ProductStateStoreError::Corrupt);
         }
