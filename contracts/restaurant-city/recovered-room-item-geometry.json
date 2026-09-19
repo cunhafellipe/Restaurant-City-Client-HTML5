@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 3,
+  "schemaVersion": 4,
   "baseline": "0.9.143a",
   "source": {
     "canonicalArchiveSha256": "4493be9bc4c2f87ef80ca7afa5321e12bb94a7ec6ed2f0a673b4d48b19170ef4",
@@ -65,6 +65,31 @@
       "rustTests": 75,
       "browserLifecycle": "White Wall place -> select -> rotate -> move -> remove",
       "conclusion": "ALL_5_CANONICAL_WALL_DIVIDERS_PROMOTED_AS_ORDINARY_ITEMS"
+    },
+    "r16": {
+      "runId": 35446531261,
+      "artifactId": 10585855226,
+      "artifactSha256": "9abecdc874af5740d116f3ac76375d242af5cbc18e948ab1ef99ce25572a2415",
+      "indoorSymbols": 893,
+      "provenRuntimeAliases": 1,
+      "conclusion": "STOVE11_RUNTIME_ALIAS_PROVEN_FAIL_CLOSED"
+    },
+    "r42": {
+      "runId": 35447787527,
+      "artifactId": 10585816693,
+      "artifactSha256": "76d6e8ae89bb02f9f40bfa3d4f9d8eef393a93c9444922896088bc8670a9568e",
+      "items": 112,
+      "composites": 11,
+      "runtimeFrames": 323,
+      "conclusion": "ALL_CANONICAL_SERVICE_RUNTIME_FRAMES_AND_COMPOSITE_CELLS_RECOVERED"
+    },
+    "r43": {
+      "runId": 35446233379,
+      "artifactId": 10585124083,
+      "artifactSha256": "fde30553bdaba9b1e1cd2ab1ca2c1dd71a82416135eaaf9b0ad757309cfa5422",
+      "kitchens": 11,
+      "failures": 0,
+      "conclusion": "ALL_CANONICAL_SERVICE_PRIMARY_VECTOR_GEOMETRY_RECOVERED"
     }
   },
   "constructor": {
@@ -339,6 +364,1238 @@
       ],
       "placementFootprintEnabled": true,
       "note": "R36 proves this is an ordinary interior decor item tagged wallDivider, not wallItem. R37/R38 recover exact constructor geometry and frame origins; physical 12-frame Edge golden is frozen, so ordinary placement is enabled."
+    },
+    "Stove01": {
+      "itemIds": [
+        3070000
+      ],
+      "spriteId": 2112,
+      "runtimeClassName": "StoveRotations",
+      "runtimeSpriteId": 2111,
+      "footprint": {
+        "sizeX": 2,
+        "sizeY": 1
+      },
+      "itemHeightTwips": 74,
+      "rotationCount": 4,
+      "visualFrameCount": 4,
+      "effectiveTypes": [
+        "kitchen"
+      ],
+      "occupiedCellsByRotation": [
+        {
+          "rotation": 0,
+          "cells": [
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 1,
+              "y": 0
+            }
+          ]
+        },
+        {
+          "rotation": 1,
+          "cells": [
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 1
+            }
+          ]
+        },
+        {
+          "rotation": 2,
+          "cells": [
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": -1,
+              "y": 0
+            }
+          ]
+        },
+        {
+          "rotation": 3,
+          "cells": [
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": -1
+            }
+          ]
+        }
+      ],
+      "frames": [
+        {
+          "rotation": 0,
+          "visualFrameIndex": 0,
+          "frame": "indoor_asset/stoverotations/001",
+          "canvasOriginPx": {
+            "x": -48.8,
+            "y": -45.9
+          }
+        },
+        {
+          "rotation": 1,
+          "visualFrameIndex": 1,
+          "frame": "indoor_asset/stoverotations/002",
+          "canvasOriginPx": {
+            "x": -44.8,
+            "y": -46.9
+          }
+        },
+        {
+          "rotation": 2,
+          "visualFrameIndex": 2,
+          "frame": "indoor_asset/stoverotations/003",
+          "canvasOriginPx": {
+            "x": -46.75,
+            "y": -48.9
+          }
+        },
+        {
+          "rotation": 3,
+          "visualFrameIndex": 3,
+          "frame": "indoor_asset/stoverotations/004",
+          "canvasOriginPx": {
+            "x": -44.7,
+            "y": -42.9
+          }
+        }
+      ],
+      "placementFootprintEnabled": true,
+      "composite": true
+    },
+    "Stove02": {
+      "itemIds": [
+        3070001
+      ],
+      "spriteId": 2118,
+      "runtimeClassName": "StoveRedRotations",
+      "runtimeSpriteId": 2117,
+      "footprint": {
+        "sizeX": 2,
+        "sizeY": 1
+      },
+      "itemHeightTwips": 117,
+      "rotationCount": 4,
+      "visualFrameCount": 4,
+      "effectiveTypes": [
+        "kitchen"
+      ],
+      "occupiedCellsByRotation": [
+        {
+          "rotation": 0,
+          "cells": [
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 1,
+              "y": 0
+            }
+          ]
+        },
+        {
+          "rotation": 1,
+          "cells": [
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 1
+            }
+          ]
+        },
+        {
+          "rotation": 2,
+          "cells": [
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": -1,
+              "y": 0
+            }
+          ]
+        },
+        {
+          "rotation": 3,
+          "cells": [
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": -1
+            }
+          ]
+        }
+      ],
+      "frames": [
+        {
+          "rotation": 0,
+          "visualFrameIndex": 0,
+          "frame": "indoor_asset/stoveredrotations/001",
+          "canvasOriginPx": {
+            "x": -46,
+            "y": -51.9
+          }
+        },
+        {
+          "rotation": 1,
+          "visualFrameIndex": 1,
+          "frame": "indoor_asset/stoveredrotations/002",
+          "canvasOriginPx": {
+            "x": -46,
+            "y": -52.9
+          }
+        },
+        {
+          "rotation": 2,
+          "visualFrameIndex": 2,
+          "frame": "indoor_asset/stoveredrotations/003",
+          "canvasOriginPx": {
+            "x": -46,
+            "y": -49.9
+          }
+        },
+        {
+          "rotation": 3,
+          "visualFrameIndex": 3,
+          "frame": "indoor_asset/stoveredrotations/004",
+          "canvasOriginPx": {
+            "x": -46,
+            "y": -44.9
+          }
+        }
+      ],
+      "placementFootprintEnabled": true,
+      "composite": true
+    },
+    "Stove04": {
+      "itemIds": [
+        3070002
+      ],
+      "spriteId": 2068,
+      "runtimeClassName": "StoveRotations4",
+      "runtimeSpriteId": 2067,
+      "footprint": {
+        "sizeX": 2,
+        "sizeY": 1
+      },
+      "itemHeightTwips": -41,
+      "rotationCount": 4,
+      "visualFrameCount": 4,
+      "effectiveTypes": [
+        "kitchen"
+      ],
+      "occupiedCellsByRotation": [
+        {
+          "rotation": 0,
+          "cells": [
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 1,
+              "y": 0
+            }
+          ]
+        },
+        {
+          "rotation": 1,
+          "cells": [
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 1
+            }
+          ]
+        },
+        {
+          "rotation": 2,
+          "cells": [
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": -1,
+              "y": 0
+            }
+          ]
+        },
+        {
+          "rotation": 3,
+          "cells": [
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": -1
+            }
+          ]
+        }
+      ],
+      "frames": [
+        {
+          "rotation": 0,
+          "visualFrameIndex": 0,
+          "frame": "indoor_asset/stoverotations4/001",
+          "canvasOriginPx": {
+            "x": -40.1,
+            "y": -97.15
+          }
+        },
+        {
+          "rotation": 1,
+          "visualFrameIndex": 1,
+          "frame": "indoor_asset/stoverotations4/002",
+          "canvasOriginPx": {
+            "x": -39.7,
+            "y": -96.7
+          }
+        },
+        {
+          "rotation": 2,
+          "visualFrameIndex": 2,
+          "frame": "indoor_asset/stoverotations4/003",
+          "canvasOriginPx": {
+            "x": -39.7,
+            "y": -96.7
+          }
+        },
+        {
+          "rotation": 3,
+          "visualFrameIndex": 3,
+          "frame": "indoor_asset/stoverotations4/004",
+          "canvasOriginPx": {
+            "x": -35.3,
+            "y": -96.7
+          }
+        }
+      ],
+      "placementFootprintEnabled": true,
+      "composite": true
+    },
+    "Stove5": {
+      "itemIds": [
+        3070003
+      ],
+      "spriteId": 2057,
+      "runtimeClassName": "StoveRotations5",
+      "runtimeSpriteId": 2056,
+      "footprint": {
+        "sizeX": 2,
+        "sizeY": 1
+      },
+      "itemHeightTwips": -47,
+      "rotationCount": 4,
+      "visualFrameCount": 4,
+      "effectiveTypes": [
+        "kitchen"
+      ],
+      "occupiedCellsByRotation": [
+        {
+          "rotation": 0,
+          "cells": [
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 1,
+              "y": 0
+            }
+          ]
+        },
+        {
+          "rotation": 1,
+          "cells": [
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 1
+            }
+          ]
+        },
+        {
+          "rotation": 2,
+          "cells": [
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": -1,
+              "y": 0
+            }
+          ]
+        },
+        {
+          "rotation": 3,
+          "cells": [
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": -1
+            }
+          ]
+        }
+      ],
+      "frames": [
+        {
+          "rotation": 0,
+          "visualFrameIndex": 0,
+          "frame": "indoor_asset/stoverotations5/001",
+          "canvasOriginPx": {
+            "x": -40,
+            "y": -90.85
+          }
+        },
+        {
+          "rotation": 1,
+          "visualFrameIndex": 1,
+          "frame": "indoor_asset/stoverotations5/002",
+          "canvasOriginPx": {
+            "x": -40,
+            "y": -91.85
+          }
+        },
+        {
+          "rotation": 2,
+          "visualFrameIndex": 2,
+          "frame": "indoor_asset/stoverotations5/003",
+          "canvasOriginPx": {
+            "x": -40,
+            "y": -90.85
+          }
+        },
+        {
+          "rotation": 3,
+          "visualFrameIndex": 3,
+          "frame": "indoor_asset/stoverotations5/004",
+          "canvasOriginPx": {
+            "x": -35.6,
+            "y": -91
+          }
+        }
+      ],
+      "placementFootprintEnabled": true,
+      "composite": true
+    },
+    "Stove7": {
+      "itemIds": [
+        3070004
+      ],
+      "spriteId": 2023,
+      "runtimeClassName": "StoveRotations7",
+      "runtimeSpriteId": 2022,
+      "footprint": {
+        "sizeX": 2,
+        "sizeY": 1
+      },
+      "itemHeightTwips": -75,
+      "rotationCount": 4,
+      "visualFrameCount": 4,
+      "effectiveTypes": [
+        "kitchen"
+      ],
+      "occupiedCellsByRotation": [
+        {
+          "rotation": 0,
+          "cells": [
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 1,
+              "y": 0
+            }
+          ]
+        },
+        {
+          "rotation": 1,
+          "cells": [
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 1
+            }
+          ]
+        },
+        {
+          "rotation": 2,
+          "cells": [
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": -1,
+              "y": 0
+            }
+          ]
+        },
+        {
+          "rotation": 3,
+          "cells": [
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": -1
+            }
+          ]
+        }
+      ],
+      "frames": [
+        {
+          "rotation": 0,
+          "visualFrameIndex": 0,
+          "frame": "indoor_asset/stoverotations7/001",
+          "canvasOriginPx": {
+            "x": -44,
+            "y": -72.45
+          }
+        },
+        {
+          "rotation": 1,
+          "visualFrameIndex": 1,
+          "frame": "indoor_asset/stoverotations7/002",
+          "canvasOriginPx": {
+            "x": -44,
+            "y": -72.45
+          }
+        },
+        {
+          "rotation": 2,
+          "visualFrameIndex": 2,
+          "frame": "indoor_asset/stoverotations7/003",
+          "canvasOriginPx": {
+            "x": -44,
+            "y": -72.45
+          }
+        },
+        {
+          "rotation": 3,
+          "visualFrameIndex": 3,
+          "frame": "indoor_asset/stoverotations7/004",
+          "canvasOriginPx": {
+            "x": -39.6,
+            "y": -71.6
+          }
+        }
+      ],
+      "placementFootprintEnabled": true,
+      "composite": true
+    },
+    "Stove10": {
+      "itemIds": [
+        3070005
+      ],
+      "spriteId": 1994,
+      "runtimeClassName": "StoveRotations10",
+      "runtimeSpriteId": 1993,
+      "footprint": {
+        "sizeX": 2,
+        "sizeY": 1
+      },
+      "itemHeightTwips": 113,
+      "rotationCount": 4,
+      "visualFrameCount": 1,
+      "effectiveTypes": [
+        "kitchen"
+      ],
+      "occupiedCellsByRotation": [
+        {
+          "rotation": 0,
+          "cells": [
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 1,
+              "y": 0
+            }
+          ]
+        },
+        {
+          "rotation": 1,
+          "cells": [
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 1
+            }
+          ]
+        },
+        {
+          "rotation": 2,
+          "cells": [
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": -1,
+              "y": 0
+            }
+          ]
+        },
+        {
+          "rotation": 3,
+          "cells": [
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": -1
+            }
+          ]
+        }
+      ],
+      "frames": [
+        {
+          "rotation": 0,
+          "visualFrameIndex": 0,
+          "frame": "indoor_asset/stoverotations10/001",
+          "canvasOriginPx": {
+            "x": -31.4,
+            "y": -42.85
+          }
+        },
+        {
+          "rotation": 1,
+          "visualFrameIndex": 0,
+          "frame": "indoor_asset/stoverotations10/001",
+          "canvasOriginPx": {
+            "x": -31.4,
+            "y": -42.85
+          }
+        },
+        {
+          "rotation": 2,
+          "visualFrameIndex": 0,
+          "frame": "indoor_asset/stoverotations10/001",
+          "canvasOriginPx": {
+            "x": -31.4,
+            "y": -42.85
+          }
+        },
+        {
+          "rotation": 3,
+          "visualFrameIndex": 0,
+          "frame": "indoor_asset/stoverotations10/001",
+          "canvasOriginPx": {
+            "x": -31.4,
+            "y": -42.85
+          }
+        }
+      ],
+      "placementFootprintEnabled": true,
+      "composite": true
+    },
+    "Stove03": {
+      "itemIds": [
+        3070006
+      ],
+      "spriteId": 1981,
+      "runtimeClassName": "StoveRotations3",
+      "runtimeSpriteId": 1978,
+      "footprint": {
+        "sizeX": 2,
+        "sizeY": 1
+      },
+      "itemHeightTwips": -39,
+      "rotationCount": 4,
+      "visualFrameCount": 4,
+      "effectiveTypes": [
+        "kitchen"
+      ],
+      "occupiedCellsByRotation": [
+        {
+          "rotation": 0,
+          "cells": [
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 1,
+              "y": 0
+            }
+          ]
+        },
+        {
+          "rotation": 1,
+          "cells": [
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 1
+            }
+          ]
+        },
+        {
+          "rotation": 2,
+          "cells": [
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": -1,
+              "y": 0
+            }
+          ]
+        },
+        {
+          "rotation": 3,
+          "cells": [
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": -1
+            }
+          ]
+        }
+      ],
+      "frames": [
+        {
+          "rotation": 0,
+          "visualFrameIndex": 0,
+          "frame": "indoor_asset/stoverotations3/001",
+          "canvasOriginPx": {
+            "x": -46.1,
+            "y": -66.25
+          }
+        },
+        {
+          "rotation": 1,
+          "visualFrameIndex": 1,
+          "frame": "indoor_asset/stoverotations3/002",
+          "canvasOriginPx": {
+            "x": -46,
+            "y": -65.95
+          }
+        },
+        {
+          "rotation": 2,
+          "visualFrameIndex": 2,
+          "frame": "indoor_asset/stoverotations3/003",
+          "canvasOriginPx": {
+            "x": -46,
+            "y": -65.95
+          }
+        },
+        {
+          "rotation": 3,
+          "visualFrameIndex": 3,
+          "frame": "indoor_asset/stoverotations3/004",
+          "canvasOriginPx": {
+            "x": -41.6,
+            "y": -66.1
+          }
+        }
+      ],
+      "placementFootprintEnabled": true,
+      "composite": true
+    },
+    "HalloweenStove01": {
+      "itemIds": [
+        3070007
+      ],
+      "spriteId": 2075,
+      "runtimeClassName": "HalloweenStoveRotations",
+      "runtimeSpriteId": 2074,
+      "footprint": {
+        "sizeX": 2,
+        "sizeY": 1
+      },
+      "itemHeightTwips": -45,
+      "rotationCount": 4,
+      "visualFrameCount": 4,
+      "effectiveTypes": [
+        "kitchen"
+      ],
+      "occupiedCellsByRotation": [
+        {
+          "rotation": 0,
+          "cells": [
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 1,
+              "y": 0
+            }
+          ]
+        },
+        {
+          "rotation": 1,
+          "cells": [
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 1
+            }
+          ]
+        },
+        {
+          "rotation": 2,
+          "cells": [
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": -1,
+              "y": 0
+            }
+          ]
+        },
+        {
+          "rotation": 3,
+          "cells": [
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": -1
+            }
+          ]
+        }
+      ],
+      "frames": [
+        {
+          "rotation": 0,
+          "visualFrameIndex": 0,
+          "frame": "indoor_asset/halloweenstoverotations/001",
+          "canvasOriginPx": {
+            "x": -43.8,
+            "y": -89.95
+          }
+        },
+        {
+          "rotation": 1,
+          "visualFrameIndex": 1,
+          "frame": "indoor_asset/halloweenstoverotations/002",
+          "canvasOriginPx": {
+            "x": -40.8,
+            "y": -90
+          }
+        },
+        {
+          "rotation": 2,
+          "visualFrameIndex": 2,
+          "frame": "indoor_asset/halloweenstoverotations/003",
+          "canvasOriginPx": {
+            "x": -41.8,
+            "y": -90
+          }
+        },
+        {
+          "rotation": 3,
+          "visualFrameIndex": 3,
+          "frame": "indoor_asset/halloweenstoverotations/004",
+          "canvasOriginPx": {
+            "x": -39.75,
+            "y": -90
+          }
+        }
+      ],
+      "placementFootprintEnabled": true,
+      "composite": true
+    },
+    "Stove11": {
+      "itemIds": [
+        3070008
+      ],
+      "spriteId": 2089,
+      "runtimeClassName": "Stove11Rotations_485",
+      "runtimeSpriteId": 2088,
+      "footprint": {
+        "sizeX": 2,
+        "sizeY": 1
+      },
+      "itemHeightTwips": -86,
+      "rotationCount": 4,
+      "visualFrameCount": 4,
+      "effectiveTypes": [
+        "kitchen"
+      ],
+      "occupiedCellsByRotation": [
+        {
+          "rotation": 0,
+          "cells": [
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 1,
+              "y": 0
+            }
+          ]
+        },
+        {
+          "rotation": 1,
+          "cells": [
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 1
+            }
+          ]
+        },
+        {
+          "rotation": 2,
+          "cells": [
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": -1,
+              "y": 0
+            }
+          ]
+        },
+        {
+          "rotation": 3,
+          "cells": [
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": -1
+            }
+          ]
+        }
+      ],
+      "frames": [
+        {
+          "rotation": 0,
+          "visualFrameIndex": 0,
+          "frame": "indoor_asset/stove11rotations_485/001",
+          "canvasOriginPx": {
+            "x": -48.3,
+            "y": -97.9
+          }
+        },
+        {
+          "rotation": 1,
+          "visualFrameIndex": 1,
+          "frame": "indoor_asset/stove11rotations_485/002",
+          "canvasOriginPx": {
+            "x": -49.3,
+            "y": -97.9
+          }
+        },
+        {
+          "rotation": 2,
+          "visualFrameIndex": 2,
+          "frame": "indoor_asset/stove11rotations_485/003",
+          "canvasOriginPx": {
+            "x": -43.8,
+            "y": -96.75
+          }
+        },
+        {
+          "rotation": 3,
+          "visualFrameIndex": 3,
+          "frame": "indoor_asset/stove11rotations_485/004",
+          "canvasOriginPx": {
+            "x": -45.95,
+            "y": -96.75
+          }
+        }
+      ],
+      "placementFootprintEnabled": true,
+      "composite": true
+    },
+    "Stove13": {
+      "itemIds": [
+        3070009
+      ],
+      "spriteId": 2096,
+      "runtimeClassName": "Stove13Rotations",
+      "runtimeSpriteId": 2095,
+      "footprint": {
+        "sizeX": 2,
+        "sizeY": 1
+      },
+      "itemHeightTwips": 165,
+      "rotationCount": 4,
+      "visualFrameCount": 4,
+      "effectiveTypes": [
+        "kitchen"
+      ],
+      "occupiedCellsByRotation": [
+        {
+          "rotation": 0,
+          "cells": [
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 1,
+              "y": 0
+            }
+          ]
+        },
+        {
+          "rotation": 1,
+          "cells": [
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 1
+            }
+          ]
+        },
+        {
+          "rotation": 2,
+          "cells": [
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": -1,
+              "y": 0
+            }
+          ]
+        },
+        {
+          "rotation": 3,
+          "cells": [
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": -1
+            }
+          ]
+        }
+      ],
+      "frames": [
+        {
+          "rotation": 0,
+          "visualFrameIndex": 0,
+          "frame": "indoor_asset/stove13rotations/001",
+          "canvasOriginPx": {
+            "x": -36.45,
+            "y": -94.45
+          }
+        },
+        {
+          "rotation": 1,
+          "visualFrameIndex": 1,
+          "frame": "indoor_asset/stove13rotations/002",
+          "canvasOriginPx": {
+            "x": -36.3,
+            "y": -95.45
+          }
+        },
+        {
+          "rotation": 2,
+          "visualFrameIndex": 2,
+          "frame": "indoor_asset/stove13rotations/003",
+          "canvasOriginPx": {
+            "x": -36.75,
+            "y": -96.45
+          }
+        },
+        {
+          "rotation": 3,
+          "visualFrameIndex": 3,
+          "frame": "indoor_asset/stove13rotations/004",
+          "canvasOriginPx": {
+            "x": -36.45,
+            "y": -91.45
+          }
+        }
+      ],
+      "placementFootprintEnabled": true,
+      "composite": true
+    },
+    "Stove14": {
+      "itemIds": [
+        3070010
+      ],
+      "spriteId": 2039,
+      "runtimeClassName": "StoveRotations14",
+      "runtimeSpriteId": 2038,
+      "footprint": {
+        "sizeX": 2,
+        "sizeY": 1
+      },
+      "itemHeightTwips": -94,
+      "rotationCount": 4,
+      "visualFrameCount": 4,
+      "effectiveTypes": [
+        "kitchen"
+      ],
+      "occupiedCellsByRotation": [
+        {
+          "rotation": 0,
+          "cells": [
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 1,
+              "y": 0
+            }
+          ]
+        },
+        {
+          "rotation": 1,
+          "cells": [
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 1
+            }
+          ]
+        },
+        {
+          "rotation": 2,
+          "cells": [
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": -1,
+              "y": 0
+            }
+          ]
+        },
+        {
+          "rotation": 3,
+          "cells": [
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": -1
+            }
+          ]
+        }
+      ],
+      "frames": [
+        {
+          "rotation": 0,
+          "visualFrameIndex": 0,
+          "frame": "indoor_asset/stoverotations14/001",
+          "canvasOriginPx": {
+            "x": -39.5,
+            "y": -62.5
+          }
+        },
+        {
+          "rotation": 1,
+          "visualFrameIndex": 1,
+          "frame": "indoor_asset/stoverotations14/002",
+          "canvasOriginPx": {
+            "x": -40.5,
+            "y": -63.05
+          }
+        },
+        {
+          "rotation": 2,
+          "visualFrameIndex": 2,
+          "frame": "indoor_asset/stoverotations14/003",
+          "canvasOriginPx": {
+            "x": -39.5,
+            "y": -64.05
+          }
+        },
+        {
+          "rotation": 3,
+          "visualFrameIndex": 3,
+          "frame": "indoor_asset/stoverotations14/004",
+          "canvasOriginPx": {
+            "x": -35.1,
+            "y": -64.05
+          }
+        }
+      ],
+      "placementFootprintEnabled": true,
+      "composite": true
     }
   },
   "composites": {
@@ -373,5 +1630,5 @@
       ]
     }
   },
-  "releasePolicy": "Recovered ordinary-item geometry is promoted only after source-grounded constructor geometry and physical browser validation. The five canonical wallDivider items are proven ordinary interior decor (not wallItem), have exact R36/R37/R38 geometry and a frozen 12-frame Edge golden, and are enabled through the existing ordinary-item authority path; all other implicit-footprint surfaces remain fail-closed."
+  "releasePolicy": "Recovered ordinary-item geometry is promoted only after source-grounded constructor/runtime geometry and physical browser validation. The five canonical wallDivider items remain frozen from R36/R37/R38. The 11 canonical kitchen composites are promoted from R42/R43 with exact per-rotation occupied cells, runtime aliases, logical rotation counts, frame identities, canvas origins, and recovered item heights; all other implicit-footprint items remain fail-closed."
 }
