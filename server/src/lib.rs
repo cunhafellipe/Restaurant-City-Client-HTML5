@@ -4,6 +4,7 @@
 //! AnewPack cryptography or legacy RPC transport. Those concerns belong to
 //! ANEWON Platform, ANEWON Runtime, and compatibility adapters respectively.
 
+pub mod active_service;
 pub mod axum_adapter;
 pub mod domain;
 pub mod gameplay;
@@ -14,6 +15,10 @@ pub mod platform;
 pub mod restaurant;
 pub mod service;
 pub mod topology;
+
+pub use active_service::{
+    ActiveServiceAssignment, ActiveServiceError, ActiveServiceIdentity, ActiveServiceRecord,
+};
 
 pub use domain::{
     AuthorityError, Command, Inventory, MutationId, MutationOutcome, PlayerState, Wallet,
