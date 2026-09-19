@@ -54,6 +54,7 @@ import {
   type AuthoritativeInventoryAvailability,
   type AuthoritativePlacedItem,
   type AuthoritativeWallpaper,
+  type RestaurantActiveService,
   type RestaurantAuthority,
   type RestaurantAuthoritativeSnapshot,
   type RestaurantLayout,
@@ -140,6 +141,7 @@ export class RestaurantEditorScene extends Phaser.Scene {
   private authoritativeFloorTiles: readonly AuthoritativeFloorTile[] = [];
   private authoritativeWallpapers: readonly AuthoritativeWallpaper[] = [];
   private serviceTopology: RestaurantServiceTopology | null = null;
+  private activeService: RestaurantActiveService | null = null;
 
   private room: RoomDimensions = INITIAL_ROOM;
   private selectedIndex = 0;
@@ -356,8 +358,10 @@ export class RestaurantEditorScene extends Phaser.Scene {
     snapshot: RestaurantAuthoritativeSnapshot,
   ): void {
     this.serviceTopology = snapshot.topology;
+    this.activeService = snapshot.activeService;
     this.applyAuthoritativeLayout(snapshot.layout);
     this.publishServiceTopologyDiagnostics();
+    this.publishActiveServiceDiagnostics();
   }
 
   private publishServiceTopologyDiagnostics(): void {
@@ -389,6 +393,15 @@ export class RestaurantEditorScene extends Phaser.Scene {
       kitchens: topology.kitchens.map((kitchen) => ({ ...kitchen })),
       drinks: topology.drinks.map((drink) => ({ ...drink })),
     };
+  }
+
+  private publishActiveServiceDiagnostics(): void {
+    const target = globalThis as typeof globalThis & {
+      __ANEWON_RC_ACTIVE_SERVICE__?: unknown;
+    };
+    target.__ANEWON_RC_ACTIVE_SERVICE__ = this.activeService
+      ? { ...this.activeService }
+      : null;
   }
 
   private applyAuthoritativeLayout(layout: RestaurantLayout): void {
