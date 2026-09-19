@@ -7,14 +7,13 @@
     "height": 600
   },
   "blockSize": 8,
-  "expectedQuantizedBlockSha256": "101bf16d80a289a5c2ff8ba798838007c3ef19a8c1c70326609f99e81b0b1f24",
-  "referencePixelSha256": "f00a0a206cc38999ac6e6782471e91a3191a44afaf41f8faca2f9140f36b3736",
-  "referencePngSha256": "546046e8ba69ed8b6e38c8f68c596b3acac89a0766384337d6086639e7ec591e",
-  "referenceFullScreenshotSha256": "71a01d4cbd7559fb4993b3355a8b139b65c0907a8cf97a2a261d048d08be318a",
-  "referenceProductSha": "40cbc79d0b607b052cc9af5a6d25029dda7d7d29",
+  "expectedQuantizedBlockSha256": "2bd527cb776f39a8cd85f5b6ae1bec3b91316451345a339afe6a4d29e3c9e153",
+  "referencePixelSha256": "9e97846147b5b363cf94a760fd0743083c8f61b8bcd936c106f752253b5ce0ca",
+  "referencePngSha256": "4cc983df2ad933165b96cec54b837ad94aa2a535f17291d726f630b9867b2b5d",
+  "referenceFullScreenshotSha256": "28295cdf0838969088173cb9a0e43873900a9640a72d9613b5d3a756947e8bb3",
+  "referenceProductSha": "8c06086a5b9a525879f5fa363bb60296b61abf38",
   "deterministicValidationRuns": [
-    35351838009,
-    35352044954
+    35418803108
   ],
-  "note": "Inspected ANEWON self-hosted Edge CDP WebGL composite. Gate compares the quantized 8x8 world signature; exact pixel/PNG hashes are provenance diagnostics."
+  "note": "Inspected ANEWON self-hosted Edge CDP WebGL composite after R30/R31 default-wall origin recovery. Cannon #3020163 remains rotation 3 at tile (2,2); recovered Wall2/WallCorner infrastructure is now part of the deterministic world. Gate compares the quantized 8x8 signature."
 }
