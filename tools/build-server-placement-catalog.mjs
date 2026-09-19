@@ -493,6 +493,43 @@ if (promotedKitchenIds.size > 0) {
   }
 }
 
+const promotedChairIds = new Set(
+  Object.values(recoveredGeometry.classes ?? {})
+    .filter(
+      (entry) =>
+        entry?.placementFootprintEnabled === true &&
+        Array.isArray(entry?.effectiveTypes) &&
+        entry.effectiveTypes.includes('chairItem'),
+    )
+    .flatMap((entry) => entry.itemIds ?? []),
+);
+if (promotedChairIds.size > 0) {
+  const trustedChairs = definitions.filter(
+    (entry) =>
+      promotedChairIds.has(entry.itemId) &&
+      entry.chairItem === true &&
+      entry.toilet === false &&
+      entry.recoveredGeometrySource === 'room-item' &&
+      entry.sizeX === 1 &&
+      entry.sizeY === 1 &&
+      entry.rotationCount === 4,
+  );
+  const trustedChairIds = new Set(trustedChairs.map((entry) => entry.itemId));
+  const missingChairIds = [...promotedChairIds]
+    .filter((itemId) => !trustedChairIds.has(itemId))
+    .sort((a, b) => a - b);
+  if (
+    promotedChairIds.size !== 1 ||
+    !promotedChairIds.has(3040000) ||
+    trustedChairIds.size !== promotedChairIds.size ||
+    missingChairIds.length !== 0
+  ) {
+    throw new Error(
+      `Promoted meal-chair catalog coverage mismatch: contract=${promotedChairIds.size} trusted=${trustedChairIds.size} missing=${missingChairIds.join(',') || '<none>'}`,
+    );
+  }
+}
+
 if (recoveredWallpaperGeometry.serverCatalogEnabled === true) {
   const promotedWallpaperIds = new Set(
     (recoveredWallpaperGeometry.items ?? []).map((entry) => entry.itemId),
