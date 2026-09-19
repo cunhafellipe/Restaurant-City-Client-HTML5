@@ -40,6 +40,22 @@ const DOOR_LEFT_AUTH_META = path.join(
   WORK,
   'restaurant-door-left-authoritative.json',
 );
+const WALLPAPER_LEFT_SCREENSHOT = path.join(
+  WORK,
+  'restaurant-wallpaper-left-authoritative.png',
+);
+const WALLPAPER_LEFT_META = path.join(
+  WORK,
+  'restaurant-wallpaper-left-authoritative.json',
+);
+const WALLPAPER_TOP_SCREENSHOT = path.join(
+  WORK,
+  'restaurant-wallpaper-top-authoritative.png',
+);
+const WALLPAPER_TOP_META = path.join(
+  WORK,
+  'restaurant-wallpaper-top-authoritative.json',
+);
 const DOOR_PROBE_GOLDEN = path.join(
   REPO,
   'tests',
@@ -169,6 +185,26 @@ const doorLeftFixtureSeed = {
   wallpapers: [],
   inventory: [
     { item_id: 3010000, owned: 1, placed: 1, available: 0 },
+  ],
+};
+const wallpaperLeftFixtureSeed = {
+  room: { inside_x: 8, inside_y: 8, outside_x: 0, outside_y: 0 },
+  next_instance_id: 1,
+  items: [],
+  floor_tiles: [],
+  wallpapers: [{ item_id: 3060000, rotation: 0 }],
+  inventory: [
+    { item_id: 3060000, owned: 1, placed: 1, available: 0 },
+  ],
+};
+const wallpaperTopFixtureSeed = {
+  room: { inside_x: 8, inside_y: 8, outside_x: 0, outside_y: 0 },
+  next_instance_id: 1,
+  items: [],
+  floor_tiles: [],
+  wallpapers: [{ item_id: 3060000, rotation: 1 }],
+  inventory: [
+    { item_id: 3060000, owned: 1, placed: 1, available: 0 },
   ],
 };
 const wallFixtureSeed = {
@@ -1684,6 +1720,118 @@ try {
     DOOR_LEFT_AUTH_GOLDEN,
   );
 
+  async function captureAuthoritativeWallpaper(
+    seed,
+    fixture,
+    expectedRotation,
+    expectedFrame,
+    expectedWallFrame,
+    screenshotFile,
+    metadataFile,
+  ) {
+    fixtureState = structuredClone(seed);
+    await cdp.send('Page.navigate', { url });
+    const authorityState = await waitForRuntime(
+      cdp,
+      `(() => {
+        const status = document.querySelector('.rc-status');
+        const canvas = document.querySelector('#game-canvas-host canvas');
+        const wallpaper =
+          globalThis.__ANEWON_RC_WALLPAPER_DIAGNOSTICS__ ?? null;
+        return {
+          phase: status?.dataset.phase ?? null,
+          status: status?.textContent ?? '',
+          wallpaper,
+          canvas: canvas ? (() => {
+            const rect = canvas.getBoundingClientRect();
+            return {
+              width: canvas.width,
+              height: canvas.height,
+              x: rect.x,
+              y: rect.y,
+              cssWidth: rect.width,
+              cssHeight: rect.height,
+            };
+          })() : null,
+        };
+      })()`,
+      (value) =>
+        value?.phase === 'editing' &&
+        Array.isArray(value?.wallpaper) &&
+        value.wallpaper.length === 7 &&
+        value.wallpaper.every(
+          (entry) =>
+            entry?.itemId === 3060000 &&
+            entry?.rotation === expectedRotation &&
+            entry?.wallpaperFrame === expectedFrame &&
+            entry?.wallFrame === expectedWallFrame &&
+            entry?.wallpaperLocal?.x === 0 &&
+            entry?.wallpaperLocal?.y === 4,
+        ) &&
+        value?.canvas?.width === 760 &&
+        value?.canvas?.height === 600,
+      8000,
+      fixture,
+    );
+    await delay(300);
+
+    const shot = await cdp.send('Page.captureScreenshot', {
+      format: 'png',
+      fromSurface: true,
+      captureBeyondViewport: false,
+      clip: {
+        x: authorityState.canvas.x,
+        y: authorityState.canvas.y,
+        width: authorityState.canvas.cssWidth,
+        height: authorityState.canvas.cssHeight,
+        scale: 1,
+      },
+    });
+    if (typeof shot.data !== 'string' || shot.data.length === 0) {
+      throw new Error(`CDP did not return ${fixture} screenshot bytes`);
+    }
+    fs.writeFileSync(screenshotFile, Buffer.from(shot.data, 'base64'));
+    const png = PNG.sync.read(fs.readFileSync(screenshotFile));
+    const result = {
+      schemaVersion: 1,
+      fixture,
+      state: authorityState,
+      screenshot: path.relative(REPO, screenshotFile).replaceAll('\\\\', '/'),
+      pngSha256: sha256(screenshotFile),
+      pixelSha256: bufferSha256(png.data),
+      blockSize: 8,
+      quantizedBlockSha256: quantizedBlockSignature(png, 8),
+      goldenFrozen: false,
+    };
+    fs.writeFileSync(
+      metadataFile,
+      `${JSON.stringify(result, null, 2)}\n`,
+    );
+    console.log(
+      `WALLPAPER AUTHORITY CANDIDATE | fixture=${fixture} | rotation=${expectedRotation} | frame=${expectedFrame} | segments=${authorityState.wallpaper.length} | pixel=${result.pixelSha256} | png=${result.pngSha256} | block=${result.quantizedBlockSha256}`,
+    );
+    return result;
+  }
+
+  const wallpaperLeftMetadata = await captureAuthoritativeWallpaper(
+    wallpaperLeftFixtureSeed,
+    'green-wallpaper-3060000-authoritative-left',
+    0,
+    'indoor_asset/wall1/001',
+    'indoor_asset/wall2/001',
+    WALLPAPER_LEFT_SCREENSHOT,
+    WALLPAPER_LEFT_META,
+  );
+  const wallpaperTopMetadata = await captureAuthoritativeWallpaper(
+    wallpaperTopFixtureSeed,
+    'green-wallpaper-3060000-authoritative-top',
+    1,
+    'indoor_asset/wall1/002',
+    'indoor_asset/wall2/002',
+    WALLPAPER_TOP_SCREENSHOT,
+    WALLPAPER_TOP_META,
+  );
+
   const metadata = {
     schemaVersion: 2,
     browser,
@@ -1700,6 +1848,8 @@ try {
     doorLeftMaskProbeVisual: doorLeftMaskMetadata,
     doorAuthoritativeVisual: doorAuthoritativeMetadata,
     doorLeftAuthoritativeVisual: doorLeftAuthoritativeMetadata,
+    wallpaperLeftAuthoritativeVisual: wallpaperLeftMetadata,
+    wallpaperTopAuthoritativeVisual: wallpaperTopMetadata,
     interaction: {
       selected: selectedState.selection,
       rotated: rotatedState,
@@ -1740,7 +1890,7 @@ try {
   }
 
   console.log(
-    `BROWSER VISUAL GOLDEN + EDIT INTERACTION PASS | browser=${browser} | bytes=${stat.size} | sha256=${metadata.sha256} | worldPixel=${worldPixelSha256} | exactPixelMatch=${exactPixelMatch} | worldBlock=${worldQuantizedBlockSha256} | edit=select-transform-remove | floor=WoodPanel block=${floorQuantizedBlockSha256} frozen=${Boolean(floorGolden)} | window=SimpleWindow block=${wallQuantizedBlockSha256} frozen=${Boolean(wallGolden)} | stack=Table+Violin curHeight=25 block=${stackQuantizedBlockSha256} frozen=${Boolean(stackGolden)} | doorProbe=SimpleDoor block=${doorQuantizedBlockSha256} frozen=${Boolean(doorGolden)} | doorLeftMask block=${doorLeftMaskMetadata.quantizedBlockSha256} frozen=${doorLeftMaskMetadata.goldenFrozen} | doorAuthorityTop block=${doorAuthoritativeMetadata.quantizedBlockSha256} frozen=${doorAuthoritativeMetadata.goldenFrozen} | doorAuthorityLeft block=${doorLeftAuthoritativeMetadata.quantizedBlockSha256} frozen=${doorLeftAuthoritativeMetadata.goldenFrozen}`,
+    `BROWSER VISUAL GOLDEN + EDIT INTERACTION PASS | browser=${browser} | bytes=${stat.size} | sha256=${metadata.sha256} | worldPixel=${worldPixelSha256} | exactPixelMatch=${exactPixelMatch} | worldBlock=${worldQuantizedBlockSha256} | edit=select-transform-remove | floor=WoodPanel block=${floorQuantizedBlockSha256} frozen=${Boolean(floorGolden)} | window=SimpleWindow block=${wallQuantizedBlockSha256} frozen=${Boolean(wallGolden)} | stack=Table+Violin curHeight=25 block=${stackQuantizedBlockSha256} frozen=${Boolean(stackGolden)} | doorProbe=SimpleDoor block=${doorQuantizedBlockSha256} frozen=${Boolean(doorGolden)} | doorLeftMask block=${doorLeftMaskMetadata.quantizedBlockSha256} frozen=${doorLeftMaskMetadata.goldenFrozen} | doorAuthorityTop block=${doorAuthoritativeMetadata.quantizedBlockSha256} frozen=${doorAuthoritativeMetadata.goldenFrozen} | doorAuthorityLeft block=${doorLeftAuthoritativeMetadata.quantizedBlockSha256} frozen=${doorLeftAuthoritativeMetadata.goldenFrozen} | wallpaperLeft block=${wallpaperLeftMetadata.quantizedBlockSha256} frozen=false | wallpaperTop block=${wallpaperTopMetadata.quantizedBlockSha256} frozen=false`,
   );
 } finally {
   try {
