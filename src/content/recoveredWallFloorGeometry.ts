@@ -1,5 +1,17 @@
 import contract from '../../contracts/restaurant-city/recovered-wall-floor-geometry.json';
 
+export interface RecoveredDoorMaskRaster {
+  readonly frame: string;
+  readonly canvasOriginPx: {
+    readonly x: number;
+    readonly y: number;
+  };
+  readonly atlasSize: {
+    readonly width: number;
+    readonly height: number;
+  };
+}
+
 export interface RecoveredWallFloorGeometry {
   readonly className: string;
   readonly itemIds: readonly number[];
@@ -26,6 +38,7 @@ export interface RecoveredWallFloorGeometry {
       readonly y: number;
     };
   }[];
+  readonly maskRaster: RecoveredDoorMaskRaster | null;
 }
 
 interface ContractEntry {
@@ -53,6 +66,9 @@ interface ContractEntry {
       readonly y: number;
     };
   }[];
+  readonly mask?: {
+    readonly raster?: RecoveredDoorMaskRaster;
+  };
 }
 
 const entries = Object.entries(contract.classes) as ReadonlyArray<
@@ -87,6 +103,7 @@ export function recoveredWallFloorGeometry(
     runtimeGeometryEnabled: entry.runtimeGeometryEnabled === true,
     localBounds: entry.localBounds ?? null,
     rotationFrames: entry.rotationFrames ?? [],
+    maskRaster: entry.mask?.raster ?? null,
   };
 }
 
@@ -125,5 +142,19 @@ export function recoveredWallFloorFrameOffset(
     };
   }
   return null;
+}
+
+export function recoveredDoorMaskRaster(
+  itemId: number,
+  className: string | null,
+): RecoveredDoorMaskRaster | null {
+  const geometry = recoveredWallFloorGeometry(itemId, className);
+  if (
+    !geometry ||
+    (!geometry.runtimeGeometryEnabled && !geometry.serverCatalogEnabled)
+  ) {
+    return null;
+  }
+  return geometry.maskRaster;
 }
 
