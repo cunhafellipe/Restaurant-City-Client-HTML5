@@ -55,8 +55,8 @@ fn internal_service_mutation_id(
             .ok_or(ProductServiceError::Store(ProductStateStoreError::Corrupt))?,
         None => "none",
     };
-    MutationId::new(format!(
-        "__anewon_service_{kind}_{service_id}_{effective_at_ms}_{event_key}"
+    MutationId::new_internal(format!(
+        "__anewon_internal__:service:{kind}:{service_id}:{effective_at_ms}:{event_key}"
     ))
     .map_err(|_| ProductServiceError::Store(ProductStateStoreError::Corrupt))
 }
@@ -858,7 +858,7 @@ impl ProductAggregate {
 
         for entry in persisted.placement_mutations {
             let mutation_id =
-                MutationId::new(entry.mutation_id).map_err(|_| ProductStateStoreError::Corrupt)?;
+                MutationId::from_persisted(entry.mutation_id).map_err(|_| ProductStateStoreError::Corrupt)?;
             let placed = PlacedItem::from(entry.item);
 
             if authoritative_items.get(&placed.instance_id) != Some(&placed)
@@ -1035,7 +1035,7 @@ impl ProductAggregate {
 
         for entry in persisted.restaurant_mutations {
             let mutation_id =
-                MutationId::new(entry.mutation_id).map_err(|_| ProductStateStoreError::Corrupt)?;
+                MutationId::from_persisted(entry.mutation_id).map_err(|_| ProductStateStoreError::Corrupt)?;
             if entry.sequence == 0 || seen_sequences.insert(entry.sequence, ()).is_some() {
                 return Err(ProductStateStoreError::Corrupt);
             }
@@ -1117,7 +1117,7 @@ impl ProductAggregate {
         let mut seen_floor_sequences = BTreeMap::<u64, ()>::new();
         for entry in persisted.floor_mutations {
             let mutation_id =
-                MutationId::new(entry.mutation_id).map_err(|_| ProductStateStoreError::Corrupt)?;
+                MutationId::from_persisted(entry.mutation_id).map_err(|_| ProductStateStoreError::Corrupt)?;
             if restaurant_mutations.contains_key(&mutation_id)
                 || entry.sequence == 0
                 || seen_floor_sequences.insert(entry.sequence, ()).is_some()
@@ -1183,7 +1183,7 @@ impl ProductAggregate {
         let mut seen_wallpaper_sequences = BTreeMap::<u64, ()>::new();
         for entry in persisted.wallpaper_mutations {
             let mutation_id =
-                MutationId::new(entry.mutation_id).map_err(|_| ProductStateStoreError::Corrupt)?;
+                MutationId::from_persisted(entry.mutation_id).map_err(|_| ProductStateStoreError::Corrupt)?;
             if restaurant_mutations.contains_key(&mutation_id)
                 || floor_mutations.contains_key(&mutation_id)
                 || entry.sequence == 0
@@ -1258,7 +1258,7 @@ impl ProductAggregate {
 
         for entry in persisted.service_mutations {
             let mutation_id =
-                MutationId::new(entry.mutation_id).map_err(|_| ProductStateStoreError::Corrupt)?;
+                MutationId::from_persisted(entry.mutation_id).map_err(|_| ProductStateStoreError::Corrupt)?;
             if restaurant_mutations.contains_key(&mutation_id)
                 || floor_mutations.contains_key(&mutation_id)
                 || wallpaper_mutations.contains_key(&mutation_id)
