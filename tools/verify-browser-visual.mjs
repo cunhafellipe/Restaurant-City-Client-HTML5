@@ -201,6 +201,16 @@ const doorLeftFixtureSeed = {
     { item_id: 3010000, owned: 1, placed: 1, available: 0 },
   ],
 };
+const wallpaperEditorFixtureSeed = {
+  room: { inside_x: 8, inside_y: 8, outside_x: 0, outside_y: 0 },
+  next_instance_id: 1,
+  items: [],
+  floor_tiles: [],
+  wallpapers: [],
+  inventory: [
+    { item_id: 3060000, owned: 1, placed: 0, available: 1 },
+  ],
+};
 const wallpaperLeftFixtureSeed = {
   room: { inside_x: 8, inside_y: 8, outside_x: 0, outside_y: 0 },
   next_instance_id: 1,
@@ -863,7 +873,7 @@ try {
   }
   if (
     !state.status.includes(
-      'Loaded baseline 0.9.143a, 1 persisted object(s), and 0 authoritative floor tile(s).',
+      'Loaded baseline 0.9.143a, 1 persisted object(s), 0 floor tile(s), and 0 wallpaper slot(s).',
     )
   ) {
     throw new Error(`Unexpected editing status: ${state.status}`);
@@ -1148,7 +1158,7 @@ try {
     (value) =>
       value?.phase === 'editing' &&
       value?.status?.includes(
-        'Loaded baseline 0.9.143a, 0 persisted object(s), and 1 authoritative floor tile(s).',
+        'Loaded baseline 0.9.143a, 0 persisted object(s), 1 floor tile(s), and 0 wallpaper slot(s).',
       ) &&
       value?.canvas?.width === 760 &&
       value?.canvas?.height === 600,
@@ -1239,7 +1249,7 @@ try {
     (value) =>
       value?.phase === 'editing' &&
       value?.status?.includes(
-        'Loaded baseline 0.9.143a, 1 persisted object(s), and 0 authoritative floor tile(s).',
+        'Loaded baseline 0.9.143a, 1 persisted object(s), 0 floor tile(s), and 0 wallpaper slot(s).',
       ) &&
       value?.canvas?.width === 760 &&
       value?.canvas?.height === 600,
@@ -1330,7 +1340,7 @@ try {
     (value) =>
       value?.phase === 'editing' &&
       value?.status?.includes(
-        'Loaded baseline 0.9.143a, 2 persisted object(s), and 0 authoritative floor tile(s).',
+        'Loaded baseline 0.9.143a, 2 persisted object(s), 0 floor tile(s), and 0 wallpaper slot(s).',
       ) &&
       value?.canvas?.width === 760 &&
       value?.canvas?.height === 600,
@@ -1419,7 +1429,7 @@ try {
     (value) =>
       value?.phase === 'editing' &&
       value?.status?.includes(
-        'Loaded baseline 0.9.143a, 0 persisted object(s), and 0 authoritative floor tile(s).',
+        'Loaded baseline 0.9.143a, 0 persisted object(s), 0 floor tile(s), and 0 wallpaper slot(s).',
       ) &&
       value?.probe?.rotation === 1 &&
       value?.probe?.wallFrame === 'indoor_asset/wall2/002' &&
@@ -1652,7 +1662,7 @@ try {
       (value) =>
         value?.phase === 'editing' &&
         value?.status?.includes(
-          'Loaded baseline 0.9.143a, 1 persisted object(s), and 0 authoritative floor tile(s).',
+          'Loaded baseline 0.9.143a, 1 persisted object(s), 0 floor tile(s), and 0 wallpaper slot(s).',
         ) &&
         value?.committedFrame === expectedFrame &&
         value?.canvas?.width === 760 &&
