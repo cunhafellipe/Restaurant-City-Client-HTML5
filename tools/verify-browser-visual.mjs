@@ -24,6 +24,13 @@ const SERVICE_ACTOR_META = path.join(
   WORK,
   'restaurant-service-actors.json',
 );
+const SERVICE_ACTOR_GOLDEN = path.join(
+  REPO,
+  'tests',
+  'golden',
+  'm3',
+  'restaurant-service-actors.json',
+);
 const FLOOR_SCREENSHOT = path.join(WORK, 'restaurant-floor.png');
 const FLOOR_META = path.join(WORK, 'restaurant-floor.json');
 const WALL_SCREENSHOT = path.join(WORK, 'restaurant-window.png');
@@ -3097,6 +3104,28 @@ try {
     );
   }
 
+  const serviceActorBlock = quantizedBlockSignature(actorPng, 8);
+  const serviceActorPixel = bufferSha256(actorPng.data);
+  const serviceActorPng = sha256(SERVICE_ACTOR_SCREENSHOT);
+  const serviceActorGolden = fs.existsSync(SERVICE_ACTOR_GOLDEN)
+    ? JSON.parse(fs.readFileSync(SERVICE_ACTOR_GOLDEN, 'utf8'))
+    : null;
+  if (
+    !serviceActorGolden ||
+    serviceActorGolden.schemaVersion !== 1 ||
+    serviceActorGolden.baseline !== '0.9.143a' ||
+    serviceActorGolden.fixture !==
+      'authoritative-service-actors-waiting-for-food-cooking' ||
+    serviceActorGolden.canvas?.width !== actorPng.width ||
+    serviceActorGolden.canvas?.height !== actorPng.height ||
+    serviceActorGolden.blockSize !== 8 ||
+    serviceActorGolden.expectedQuantizedBlockSha256 !== serviceActorBlock
+  ) {
+    goldenFailures.push(
+      `service-actors expected=${serviceActorGolden?.expectedQuantizedBlockSha256 ?? '<missing>'} actual=${serviceActorBlock}`,
+    );
+  }
+
   const serviceActorMetadata = {
     schemaVersion: 1,
     fixture: 'authoritative-service-actors-waiting-for-food-cooking',
@@ -3105,22 +3134,22 @@ try {
     screenshot: path
       .relative(REPO, SERVICE_ACTOR_SCREENSHOT)
       .replaceAll('\\\\', '/'),
-    pngSha256: sha256(SERVICE_ACTOR_SCREENSHOT),
-    pixelSha256: bufferSha256(actorPng.data),
+    pngSha256: serviceActorPng,
+    pixelSha256: serviceActorPixel,
     blockSize: 8,
-    quantizedBlockSha256: quantizedBlockSignature(actorPng, 8),
+    quantizedBlockSha256: serviceActorBlock,
     changedPixelsVsNoActiveService: changedPixels,
     perActorChangedPixels,
     chairOverlay: actorState.actors.find((actor) => actor.role === 'customer')
       ?.chairOverlay ?? null,
-    goldenFrozen: false,
+    goldenFrozen: Boolean(serviceActorGolden),
   };
   fs.writeFileSync(
     SERVICE_ACTOR_META,
     `${JSON.stringify(serviceActorMetadata, null, 2)}\n`,
   );
   console.log(
-    `SERVICE ACTOR VISUAL CANDIDATE | frames=98 | roles=customer,chef,waiter | changedPixels=${changedPixels} | perActor=${JSON.stringify(perActorChangedPixels)} | pixel=${serviceActorMetadata.pixelSha256} | png=${serviceActorMetadata.pngSha256} | block=${serviceActorMetadata.quantizedBlockSha256}`,
+    `SERVICE ACTOR VISUAL GOLDEN | frames=98 | roles=customer,chef,waiter | changedPixels=${changedPixels} | perActor=${JSON.stringify(perActorChangedPixels)} | pixel=${serviceActorMetadata.pixelSha256} | png=${serviceActorMetadata.pngSha256} | block=${serviceActorMetadata.quantizedBlockSha256} | frozen=${serviceActorMetadata.goldenFrozen}`,
   );
   fixtureActiveService = null;
 
@@ -3205,7 +3234,7 @@ try {
   }
 
   console.log(
-    `BROWSER VISUAL GOLDEN + EDIT INTERACTION PASS | browser=${browser} | bytes=${stat.size} | sha256=${metadata.sha256} | worldPixel=${worldPixelSha256} | exactPixelMatch=${exactPixelMatch} | worldBlock=${worldQuantizedBlockSha256} | edit=select-transform-remove | dividerEdit=place-select-rotate-move-remove | wallpaperEdit=apply-select-remove | floor=WoodPanel block=${floorQuantizedBlockSha256} frozen=${Boolean(floorGolden)} | window=SimpleWindow block=${wallQuantizedBlockSha256} frozen=${Boolean(wallGolden)} | stack=Table+Violin curHeight=25 block=${stackQuantizedBlockSha256} frozen=${Boolean(stackGolden)} | doorProbe=SimpleDoor block=${doorQuantizedBlockSha256} frozen=${Boolean(doorGolden)} | doorLeftMask block=${doorLeftMaskMetadata.quantizedBlockSha256} frozen=${doorLeftMaskMetadata.goldenFrozen} | doorAuthorityTop block=${doorAuthoritativeMetadata.quantizedBlockSha256} frozen=${doorAuthoritativeMetadata.goldenFrozen} | doorAuthorityLeft block=${doorLeftAuthoritativeMetadata.quantizedBlockSha256} frozen=${doorLeftAuthoritativeMetadata.goldenFrozen} | wallpaperLeft block=${wallpaperLeftMetadata.quantizedBlockSha256} frozen=${wallpaperLeftMetadata.goldenFrozen} | wallpaperTop block=${wallpaperTopMetadata.quantizedBlockSha256} frozen=${wallpaperTopMetadata.goldenFrozen} | divider12 block=${dividerProbeMetadata.quantizedBlockSha256} frozen=${dividerProbeMetadata.goldenFrozen}`,
+    `BROWSER VISUAL GOLDEN + EDIT INTERACTION PASS | browser=${browser} | bytes=${stat.size} | sha256=${metadata.sha256} | worldPixel=${worldPixelSha256} | exactPixelMatch=${exactPixelMatch} | worldBlock=${worldQuantizedBlockSha256} | edit=select-transform-remove | dividerEdit=place-select-rotate-move-remove | wallpaperEdit=apply-select-remove | floor=WoodPanel block=${floorQuantizedBlockSha256} frozen=${Boolean(floorGolden)} | window=SimpleWindow block=${wallQuantizedBlockSha256} frozen=${Boolean(wallGolden)} | stack=Table+Violin curHeight=25 block=${stackQuantizedBlockSha256} frozen=${Boolean(stackGolden)} | doorProbe=SimpleDoor block=${doorQuantizedBlockSha256} frozen=${Boolean(doorGolden)} | doorLeftMask block=${doorLeftMaskMetadata.quantizedBlockSha256} frozen=${doorLeftMaskMetadata.goldenFrozen} | doorAuthorityTop block=${doorAuthoritativeMetadata.quantizedBlockSha256} frozen=${doorAuthoritativeMetadata.goldenFrozen} | doorAuthorityLeft block=${doorLeftAuthoritativeMetadata.quantizedBlockSha256} frozen=${doorLeftAuthoritativeMetadata.goldenFrozen} | wallpaperLeft block=${wallpaperLeftMetadata.quantizedBlockSha256} frozen=${wallpaperLeftMetadata.goldenFrozen} | wallpaperTop block=${wallpaperTopMetadata.quantizedBlockSha256} frozen=${wallpaperTopMetadata.goldenFrozen} | divider12 block=${dividerProbeMetadata.quantizedBlockSha256} frozen=${dividerProbeMetadata.goldenFrozen} | serviceActors block=${serviceActorMetadata.quantizedBlockSha256} frozen=${serviceActorMetadata.goldenFrozen}`,
   );
 } finally {
   try {
