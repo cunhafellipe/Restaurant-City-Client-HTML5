@@ -730,15 +730,11 @@ impl From<PersistedServiceMutationOperation> for ServiceMutationOperation {
     }
 }
 
-fn persisted_active_service_uses_v7_authority(
-    service: PersistedActiveService,
-) -> bool {
+fn persisted_active_service_uses_v7_authority(service: PersistedActiveService) -> bool {
     service.customer_entrance_tile.is_some() || service.active_path.is_some()
 }
 
-fn persisted_service_mutation_uses_v7_authority(
-    entry: &PersistedServiceMutation,
-) -> bool {
+fn persisted_service_mutation_uses_v7_authority(entry: &PersistedServiceMutation) -> bool {
     let operation_uses_v7 = match entry.operation {
         PersistedServiceMutationOperation::Start { assignment, .. } => {
             assignment.customer_entrance_tile.is_some()
@@ -753,18 +749,14 @@ fn persisted_service_mutation_uses_v7_authority(
             .is_some_and(persisted_active_service_uses_v7_authority)
 }
 
-fn persisted_active_service_uses_v6_authority(
-    service: PersistedActiveService,
-) -> bool {
+fn persisted_active_service_uses_v6_authority(service: PersistedActiveService) -> bool {
     service.timing_anchored
         || service.customer_deadline_at_ms.is_some()
         || service.order_deadline_at_ms.is_some()
         || persisted_active_service_uses_v7_authority(service)
 }
 
-fn persisted_service_mutation_uses_v6_authority(
-    entry: &PersistedServiceMutation,
-) -> bool {
+fn persisted_service_mutation_uses_v6_authority(entry: &PersistedServiceMutation) -> bool {
     let operation_uses_v6 = match entry.operation {
         PersistedServiceMutationOperation::Start {
             effective_at_ms,
@@ -2394,12 +2386,9 @@ impl ProductAggregate {
             ));
         }
 
-        let start_tile = current
-            .identity
-            .customer_entrance_tile
-            .ok_or(ProductServiceError::ServicePathAuthority(
-                ServicePathError::PathUnavailable,
-            ))?;
+        let start_tile = current.identity.customer_entrance_tile.ok_or(
+            ProductServiceError::ServicePathAuthority(ServicePathError::PathUnavailable),
+        )?;
         let layout = derive_service_layout(&self.restaurant.snapshot(), catalog).map_err(|_| {
             ProductServiceError::ServicePathAuthority(ServicePathError::PathUnavailable)
         })?;
@@ -2467,11 +2456,12 @@ impl ProductAggregate {
         if current.identity.service_id != service_id {
             return Err(ProductServiceError::ActiveServiceIdMismatch);
         }
-        let plan = current.active_path.ok_or(ProductServiceError::ServicePathAuthority(
-            ServicePathError::PathUnavailable,
-        ))?;
-        if plan.kind != ServicePathKind::CustomerToChair
-            || effective_at_ms != plan.completes_at_ms
+        let plan = current
+            .active_path
+            .ok_or(ProductServiceError::ServicePathAuthority(
+                ServicePathError::PathUnavailable,
+            ))?;
+        if plan.kind != ServicePathKind::CustomerToChair || effective_at_ms != plan.completes_at_ms
         {
             return Err(ProductServiceError::ServicePathAuthority(
                 ServicePathError::PathCompletionTimeMismatch,
@@ -2481,12 +2471,8 @@ impl ProductAggregate {
         let layout = derive_service_layout(&self.restaurant.snapshot(), catalog).map_err(|_| {
             ProductServiceError::ServicePathAuthority(ServicePathError::PathUnavailable)
         })?;
-        validate_customer_path_to_chair_plan(
-            &layout,
-            current.identity.chair_instance_id,
-            plan,
-        )
-        .map_err(ProductServiceError::ServicePathAuthority)?;
+        validate_customer_path_to_chair_plan(&layout, current.identity.chair_instance_id, plan)
+            .map_err(ProductServiceError::ServicePathAuthority)?;
 
         let (deciding, effect) = current
             .transition_at(ServiceLoopEvent::ReachChair, effective_at_ms)
