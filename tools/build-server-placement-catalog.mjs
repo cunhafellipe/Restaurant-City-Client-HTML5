@@ -337,6 +337,7 @@ for (const group of database.groups ?? []) {
       surface,
       stackable,
       wallDivider,
+      doorItem,
       chairItem,
       tableItem,
       kitchen,
@@ -421,7 +422,7 @@ const lines = [
   `# baseline=${manifest.baseline ?? 'unknown'}`,
   `# source_decoded_sha256=${source.decodedSha256 ?? ''}`,
   `# source_file=${source.source ?? ''}`,
-  'item_id\tsize_x\tsize_y\trotation_count\twall_item\twall_decoration_item\twallpaper_item\toutdoor\tfloor_tile_item\tsurface\tstackable\tchair_item\ttable_item\tkitchen\tdrink\ttoilet',
+  'item_id\tsize_x\tsize_y\trotation_count\twall_item\twall_decoration_item\twallpaper_item\toutdoor\tfloor_tile_item\tsurface\tstackable\tdoor_item\tchair_item\ttable_item\tkitchen\tdrink\ttoilet',
   ...definitions.map((entry) =>
     [
       entry.itemId,
@@ -435,6 +436,7 @@ const lines = [
       bool(entry.floorTileItem),
       bool(entry.surface),
       bool(entry.stackable),
+      bool(entry.doorItem),
       bool(entry.chairItem),
       bool(entry.tableItem),
       bool(entry.kitchen),
@@ -476,6 +478,7 @@ const meta = {
     surface: entry.surface,
     stackable: entry.stackable,
     wallDivider: entry.wallDivider,
+    doorItem: entry.doorItem,
     chairItem: entry.chairItem,
     tableItem: entry.tableItem,
     kitchen: entry.kitchen,
@@ -486,6 +489,7 @@ const meta = {
     (entry) => entry.footprintSource === 'recovered',
   ).length,
   serviceRoleCounts: {
+    doorItem: definitions.filter((entry) => entry.doorItem).length,
     chairItem: definitions.filter((entry) => entry.chairItem).length,
     tableItem: definitions.filter((entry) => entry.tableItem).length,
     kitchen: definitions.filter((entry) => entry.kitchen).length,
