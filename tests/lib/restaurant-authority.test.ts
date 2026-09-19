@@ -6,6 +6,7 @@ import {
   createPlacementMutationId,
   createRemoveMutationId,
   createTransformMutationId,
+  createWallpaperMutationId,
 } from '../../src/net/restaurantAuthority';
 
 function okJson(value: unknown): Response {
@@ -31,6 +32,8 @@ describe('HttpRestaurantAuthority', () => {
           next_instance_id: 1,
           items: [],
           floor_tiles: [],
+
+          wallpapers: [],
           inventory: [],
         }),
       );
@@ -79,6 +82,8 @@ describe('HttpRestaurantAuthority', () => {
           },
         ],
         floor_tiles: [],
+
+        wallpapers: [],
         inventory: [
           {
             item_id: 10,
@@ -120,6 +125,8 @@ describe('HttpRestaurantAuthority', () => {
           floor_tiles: [
             { item_id: 3050000, tile_x: 2, tile_y: 3, room_index: 0 },
           ],
+
+          wallpapers: [],
           inventory: [
             { item_id: 3050000, owned: 1, placed: 1, available: 0 },
           ],
@@ -130,6 +137,127 @@ describe('HttpRestaurantAuthority', () => {
     expect(layout.floorTiles).toEqual([
       { itemId: 3050000, tileX: 2, tileY: 3, roomIndex: 0 },
     ]);
+  });
+
+  it('loads wallpaper slots and counts them in authoritative inventory', async () => {
+    const authority = new HttpRestaurantAuthority(
+      '/api/v1',
+      async () =>
+        okJson({
+          room: { inside_x: 8, inside_y: 8, outside_x: 0, outside_y: 0 },
+          next_instance_id: 1,
+          items: [],
+          floor_tiles: [],
+          wallpapers: [
+            { item_id: 3060000, rotation: 0 },
+            { item_id: 3060001, rotation: 1 },
+          ],
+          inventory: [
+            { item_id: 3060000, owned: 1, placed: 1, available: 0 },
+            { item_id: 3060001, owned: 1, placed: 1, available: 0 },
+          ],
+        }),
+    );
+
+    const layout = await authority.loadRestaurant();
+    expect(layout.wallpapers).toEqual([
+      { itemId: 3060000, rotation: 0 },
+      { itemId: 3060001, rotation: 1 },
+    ]);
+  });
+
+  it('puts and deletes wallpaper slots with same-origin idempotency', async () => {
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(
+        okJson({
+          outcome: 'applied',
+          wallpaper: { item_id: 3060000, rotation: 0 },
+        }),
+      )
+      .mockResolvedValueOnce(
+        okJson({
+          outcome: 'applied',
+          wallpaper: { item_id: 3060000, rotation: 0 },
+        }),
+      );
+
+    const authority = new HttpRestaurantAuthority('/api/v1', fetcher);
+    const applied = await authority.applyWallpaper(
+      { itemId: 3060000, tileX: 0, tileY: 3 },
+      'rc-wallpaper-apply-1',
+    );
+    expect(applied.wallpaper).toEqual({ itemId: 3060000, rotation: 0 });
+
+    const [applyUrl, applyInit] = fetcher.mock.calls[0]!;
+    expect(applyUrl).toBe('/api/v1/restaurant/wallpapers');
+    expect(applyInit?.method).toBe('PUT');
+    expect(applyInit?.credentials).toBe('same-origin');
+    expect(new Headers(applyInit?.headers).get('Idempotency-Key')).toBe(
+      'rc-wallpaper-apply-1',
+    );
+    expect(JSON.parse(String(applyInit?.body))).toEqual({
+      item_id: 3060000,
+      tile_x: 0,
+      tile_y: 3,
+    });
+
+    const removed = await authority.removeWallpaper(
+      0,
+      'rc-wallpaper-remove-1',
+    );
+    expect(removed.wallpaper).toEqual({ itemId: 3060000, rotation: 0 });
+
+    const [removeUrl, removeInit] = fetcher.mock.calls[1]!;
+    expect(removeUrl).toBe('/api/v1/restaurant/wallpapers/0');
+    expect(removeInit?.method).toBe('DELETE');
+    expect(removeInit?.credentials).toBe('same-origin');
+    expect(new Headers(removeInit?.headers).get('Idempotency-Key')).toBe(
+      'rc-wallpaper-remove-1',
+    );
+    expect(removeInit?.body).toBeUndefined();
+  });
+
+  it('rejects malformed or duplicate wallpaper orientations locally', async () => {
+    const invalidRotation = new HttpRestaurantAuthority(
+      '/api/v1',
+      async () =>
+        okJson({
+          room: { inside_x: 8, inside_y: 8, outside_x: 0, outside_y: 0 },
+          next_instance_id: 1,
+          items: [],
+          floor_tiles: [],
+          wallpapers: [{ item_id: 3060000, rotation: 2 }],
+          inventory: [
+            { item_id: 3060000, owned: 1, placed: 1, available: 0 },
+          ],
+        }),
+    );
+    await expect(invalidRotation.loadRestaurant()).rejects.toThrow(
+      'wallpaper rotation',
+    );
+
+    const duplicateOrientation = new HttpRestaurantAuthority(
+      '/api/v1',
+      async () =>
+        okJson({
+          room: { inside_x: 8, inside_y: 8, outside_x: 0, outside_y: 0 },
+          next_instance_id: 1,
+          items: [],
+          floor_tiles: [],
+          wallpapers: [
+            { item_id: 3060000, rotation: 1 },
+            { item_id: 3060001, rotation: 1 },
+          ],
+          inventory: [
+            { item_id: 3060000, owned: 1, placed: 1, available: 0 },
+            { item_id: 3060001, owned: 1, placed: 1, available: 0 },
+          ],
+        }),
+    );
+    await expect(duplicateOrientation.loadRestaurant()).rejects.toThrow(
+      'duplicate wallpaper orientation',
+    );
   });
 
   it('puts strict floor-tile DTO with same-origin idempotency', async () => {
@@ -364,6 +492,8 @@ describe('HttpRestaurantAuthority', () => {
           next_instance_id: 1,
           items: [],
           floor_tiles: [],
+
+          wallpapers: [],
           inventory: [
             {
               item_id: 10,
@@ -406,6 +536,8 @@ describe('HttpRestaurantAuthority', () => {
             },
           ],
           floor_tiles: [],
+
+          wallpapers: [],
           inventory: [
             { item_id: 10, owned: 2, placed: 2, available: 0 },
           ],
@@ -432,6 +564,8 @@ describe('HttpRestaurantAuthority', () => {
             },
           ],
           floor_tiles: [],
+
+          wallpapers: [],
           inventory: [
             { item_id: 10, owned: 2, placed: 0, available: 2 },
           ],
@@ -460,6 +594,8 @@ describe('HttpRestaurantAuthority', () => {
             },
           ],
           floor_tiles: [],
+
+          wallpapers: [],
           inventory: [
             { item_id: 10, owned: 1, placed: 1, available: 0 },
           ],
@@ -486,6 +622,8 @@ describe('HttpRestaurantAuthority', () => {
             },
           ],
           floor_tiles: [],
+
+          wallpapers: [],
           inventory: [
             { item_id: 10, owned: 1, placed: 1, available: 0 },
           ],
@@ -523,6 +661,9 @@ describe('restaurant mutation ids', () => {
     );
     expect(createFloorTileMutationId(uuid)).toBe(
       'rc-floor-00000000-0000-4000-8000-000000000001',
+    );
+    expect(createWallpaperMutationId(uuid)).toBe(
+      'rc-wallpaper-00000000-0000-4000-8000-000000000001',
     );
     expect(createTransformMutationId(uuid)).toBe(
       'rc-transform-00000000-0000-4000-8000-000000000001',
