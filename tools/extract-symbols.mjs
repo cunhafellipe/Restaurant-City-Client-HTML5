@@ -38,6 +38,47 @@ function readPngSize(file) {
   return { w: buf.readUInt32BE(16), h: buf.readUInt32BE(20) };
 }
 
+function recoveredInternalSpritesFor(swfName) {
+  if (!fs.existsSync(INTERNAL_SPRITES_CONTRACT)) {
+    throw new Error(`recovered internal sprite contract missing: ${INTERNAL_SPRITES_CONTRACT}`);
+  }
+  const parsed = JSON.parse(fs.readFileSync(INTERNAL_SPRITES_CONTRACT, 'utf8'));
+  if (
+    parsed.schemaVersion !== 1 ||
+    parsed.baseline !== '0.9.143a' ||
+    typeof parsed.swfs !== 'object' ||
+    parsed.swfs === null
+  ) {
+    throw new Error('invalid recovered internal sprite contract header');
+  }
+
+  const entries = parsed.swfs[swfName] ?? [];
+  if (!Array.isArray(entries)) {
+    throw new Error(`invalid recovered internal sprite list for ${swfName}`);
+  }
+
+  const chids = new Set();
+  const names = new Set();
+  for (const entry of entries) {
+    if (
+      !Number.isInteger(entry?.chid) ||
+      entry.chid <= 0 ||
+      typeof entry?.name !== 'string' ||
+      entry.name.trim() === ''
+    ) {
+      throw new Error(`invalid recovered internal sprite entry for ${swfName}`);
+    }
+    if (chids.has(entry.chid) || names.has(entry.name)) {
+      throw new Error(
+        `duplicate recovered internal sprite entry for ${swfName}: chid=${entry.chid} name=${entry.name}`,
+      );
+    }
+    chids.add(entry.chid);
+    names.add(entry.name);
+  }
+  return entries;
+}
+
 /** Parse FFDec symbolClass CSV (chid;"Name" rows; may contain duplicates). */
 function parseSymbolCsv(text) {
   const byChid = new Map();
