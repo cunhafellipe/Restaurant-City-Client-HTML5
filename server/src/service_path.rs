@@ -31,6 +31,8 @@ pub enum ServicePathError {
     InvalidWorkPercent,
     InvalidSpeed,
     ArithmeticOverflow,
+    PathUnavailable,
+    PathPlanMismatch,
 }
 
 pub fn canonical_waiter_walk_speed_y(
@@ -186,6 +188,96 @@ pub fn path_duration_ms(
     Ok(total_ms)
 }
 
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ServicePathKind {
+    CustomerToChair,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ServicePathPlan {
+    pub kind: ServicePathKind,
+    pub start: TilePoint,
+    pub destination: TilePoint,
+    pub started_at_ms: u64,
+    pub completes_at_ms: u64,
+    pub step_count: u16,
+    pub movement_score: i32,
+    /// Deterministic FNV-1a signature over the exact historical tile sequence.
+    /// The path itself remains derived from the locked restaurant revision
+    /// rather than accepting arbitrary persisted/browser-provided waypoints.
+    pub tile_signature: u64,
+}
+
+impl ServicePathPlan {
+    pub fn is_complete_at(self, server_now_ms: u64) -> bool {
+        server_now_ms >= self.completes_at_ms
+    }
+
+    pub fn remaining_ms(self, server_now_ms: u64) -> u64 {
+        self.completes_at_ms.saturating_sub(server_now_ms)
+    }
+}
+
+pub fn historical_path_signature(path: &HistoricalPath) -> u64 {
+    let mut hash = 0xcbf29ce484222325_u64;
+    for tile in &path.tiles {
+        for byte in tile.x.to_le_bytes().into_iter().chain(tile.y.to_le_bytes()) {
+            hash ^= u64::from(byte);
+            hash = hash.wrapping_mul(0x100000001b3);
+        }
+    }
+    hash
+}
+
+pub fn plan_customer_path_to_chair(
+    layout: &ServiceLayoutSnapshot,
+    start: TilePoint,
+    chair_instance_id: u64,
+    started_at_ms: u64,
+) -> Result<ServicePathPlan, ServicePathError> {
+    let chair = layout
+        .chairs
+        .iter()
+        .find(|chair| chair.instance_id == chair_instance_id)
+        .ok_or(ServicePathError::PathUnavailable)?;
+    let path = customer_path_to_chair(layout, start, chair_instance_id)
+        .ok_or(ServicePathError::PathUnavailable)?;
+    let duration_ms = customer_path_duration_ms(start, &path)?;
+    let completes_at_ms = started_at_ms
+        .checked_add(duration_ms)
+        .ok_or(ServicePathError::ArithmeticOverflow)?;
+    let step_count =
+        u16::try_from(path.step_count()).map_err(|_| ServicePathError::ArithmeticOverflow)?;
+
+    Ok(ServicePathPlan {
+        kind: ServicePathKind::CustomerToChair,
+        start,
+        destination: chair.tile,
+        started_at_ms,
+        completes_at_ms,
+        step_count,
+        movement_score: path.movement_score,
+        tile_signature: historical_path_signature(&path),
+    })
+}
+
+pub fn validate_customer_path_to_chair_plan(
+    layout: &ServiceLayoutSnapshot,
+    chair_instance_id: u64,
+    plan: ServicePathPlan,
+) -> Result<(), ServicePathError> {
+    if plan.kind != ServicePathKind::CustomerToChair {
+        return Err(ServicePathError::PathPlanMismatch);
+    }
+    let expected =
+        plan_customer_path_to_chair(layout, plan.start, chair_instance_id, plan.started_at_ms)?;
+    if expected != plan {
+        return Err(ServicePathError::PathPlanMismatch);
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -315,4 +407,33 @@ mod tests {
             2001
         );
     }
+    #[test]
+    fn customer_path_plan_is_fixed_size_and_rederivable_from_locked_layout() {
+        let layout = layout();
+        let plan =
+            plan_customer_path_to_chair(&layout, TilePoint { x: 1, y: 4 }, 11, 50_000).unwrap();
+
+        assert_eq!(plan.kind, ServicePathKind::CustomerToChair);
+        assert_eq!(plan.destination, TilePoint { x: 2, y: 2 });
+        assert!(plan.completes_at_ms > plan.started_at_ms);
+        assert!(!plan.is_complete_at(plan.completes_at_ms - 1));
+        assert!(plan.is_complete_at(plan.completes_at_ms));
+        assert_eq!(plan.remaining_ms(plan.started_at_ms), plan.completes_at_ms - 50_000);
+        validate_customer_path_to_chair_plan(&layout, 11, plan).unwrap();
+    }
+
+    #[test]
+    fn path_plan_tampering_fails_closed() {
+        let layout = layout();
+        let mut plan =
+            plan_customer_path_to_chair(&layout, TilePoint { x: 1, y: 4 }, 11, 50_000).unwrap();
+        plan.tile_signature ^= 1;
+
+        assert_eq!(
+            validate_customer_path_to_chair_plan(&layout, 11, plan),
+            Err(ServicePathError::PathPlanMismatch)
+        );
+    }
+
+
 }
