@@ -154,9 +154,9 @@ function waiterAnimation(
     case 'empty-plate':
     case 'settled':
       return {
-        animation: 'idle',
-        anchor: 'waiter-tile',
-        requiresAuthoritativePath: false,
+        animation: 'hidden',
+        anchor: 'hidden',
+        requiresAuthoritativePath: true,
       };
   }
 }
