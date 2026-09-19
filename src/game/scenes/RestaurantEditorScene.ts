@@ -81,6 +81,8 @@ export class RestaurantEditorScene extends Phaser.Scene {
   private committedSprites: Phaser.GameObjects.Sprite[] = [];
   private floorSprites: Phaser.GameObjects.Sprite[] = [];
   private wallSprites: Phaser.GameObjects.Sprite[] = [];
+  private wallCutoutTextures: Phaser.GameObjects.RenderTexture[] = [];
+  private wallCutoutSources: Phaser.GameObjects.Sprite[] = [];
   private doorProbeWall: Phaser.GameObjects.RenderTexture | null = null;
   private doorProbeDoor: Phaser.GameObjects.Sprite | null = null;
   private previewSprite: Phaser.GameObjects.Sprite | null = null;
@@ -385,7 +387,7 @@ export class RestaurantEditorScene extends Phaser.Scene {
   ): boolean {
     const footprint = item.placementFootprint;
     return (
-      item.id === SIMPLE_WINDOW_ITEM_ID &&
+      (item.id === SIMPLE_WINDOW_ITEM_ID || item.id === SIMPLE_DOOR_ITEM_ID) &&
       footprint?.sizeX === 1 &&
       footprint.sizeY === 1 &&
       item.placement.wallDecorationItem === true &&
@@ -936,6 +938,7 @@ export class RestaurantEditorScene extends Phaser.Scene {
   }
 
   private drawDefaultWalls(): void {
+    this.clearAuthoritativeWallCutouts();
     for (const sprite of this.wallSprites) sprite.destroy();
     this.wallSprites = [];
 
@@ -986,14 +989,146 @@ export class RestaurantEditorScene extends Phaser.Scene {
     );
 
 
-    this.drawDoorEraseProbe(wall, wallVisual);
+    this.drawDoorEraseProbe();
     this.publishVisualProbeDiagnostics();
   }
 
-  private drawDoorEraseProbe(
-    wall: RestaurantItemDefinition,
-    wallVisual: RestaurantItemVisual,
-  ): void {
+  private clearAuthoritativeWallCutouts(): void {
+    for (const source of this.wallCutoutSources) {
+      if (source.active) source.setVisible(true);
+    }
+    for (const texture of this.wallCutoutTextures) texture.destroy();
+    this.wallCutoutSources = [];
+    this.wallCutoutTextures = [];
+  }
+
+  private renderDoorWallComposition(
+    door: RestaurantItemDefinition,
+    doorVisual: RestaurantItemVisual,
+    rotation: number,
+    tile: TilePoint,
+    alpha: number,
+    includeDoor: boolean,
+  ): {
+    wallTexture: Phaser.GameObjects.RenderTexture;
+    sourceWall: Phaser.GameObjects.Sprite;
+    doorSprite: Phaser.GameObjects.Sprite | null;
+    wallFrame: string;
+    maskFrame: string;
+    maskLocal: { x: number; y: number };
+  } {
+    if (rotation !== 0 && rotation !== 1) {
+      throw new Error(`Recovered Simple Door rotation is unsupported: ${rotation}`);
+    }
+
+    const wall = this.catalogById.get(DEFAULT_WALL_ITEM_ID);
+    if (!wall?.placementFootprint) {
+      throw new Error('Recovered default wall geometry is unavailable');
+    }
+    const wallVisual = this.itemVisual(wall);
+    const mask = recoveredDoorMaskRaster(door.id, door.className);
+    if (
+      !wallVisual ||
+      wallVisual.frames.length < 2 ||
+      !door.placementFootprint ||
+      doorVisual.frames.length !== 2 ||
+      !mask
+    ) {
+      throw new Error('Recovered Simple Door composition contract is unavailable');
+    }
+
+    const wallFrameName = frameForRestaurantItemRotation(wallVisual, rotation);
+    const wallFrame = this.textures.getFrame(wallVisual.atlasId, wallFrameName);
+    const wallOffset = recoveredWallFloorFrameOffset(
+      wall.id,
+      wall.className,
+      rotation,
+    );
+    if (!wallFrame || !wallOffset) {
+      throw new Error('Recovered Door wall frame/origin is unavailable');
+    }
+
+    const projected = projectTile(tile);
+    const wallX = ORIGIN.x + projected.x + wallOffset.x;
+    const wallY = ORIGIN.y + projected.y + wallOffset.y;
+    const sourceWall = this.wallSprites.find(
+      (candidate) =>
+        candidate.frame.name === wallFrameName &&
+        Math.abs(candidate.x - wallX) < 0.01 &&
+        Math.abs(candidate.y - wallY) < 0.01,
+    );
+    if (!sourceWall) {
+      throw new Error(
+        `Simple Door could not resolve default wall at ${tile.x},${tile.y}`,
+      );
+    }
+    sourceWall.setVisible(false);
+
+    const wallStamp = this.make
+      .image({
+        x: 0,
+        y: 0,
+        key: wallVisual.atlasId,
+        frame: wallFrameName,
+        add: false,
+      })
+      .setOrigin(0, 0);
+    const maskStamp = this.make
+      .image({
+        x: 0,
+        y: 0,
+        key: wallVisual.atlasId,
+        frame: mask.frame,
+        add: false,
+      })
+      .setOrigin(0, 0);
+
+    // WorldRestaurant.placeRoomItem clones mc_mask into the target wall,
+    // translates it by the negative tile/sub-item screen offset and applies
+    // BlendMode.ERASE while the wall is BlendMode.LAYER. For this 1x1 Door
+    // the recovered raster origins reduce that composition to this exact local
+    // offset inside the matching Wall2 frame.
+    const maskX = mask.canvasOriginPx.x - wallOffset.x;
+    const maskY = mask.canvasOriginPx.y - wallOffset.y;
+    const wallTexture = this.add
+      .renderTexture(wallX, wallY, wallFrame.width, wallFrame.height)
+      .setOrigin(0, 0)
+      .setDepth(sourceWall.depth);
+    wallTexture.draw(wallStamp, 0, 0);
+    wallTexture.erase(maskStamp, maskX, maskY);
+    wallStamp.destroy();
+    maskStamp.destroy();
+
+    let doorSprite: Phaser.GameObjects.Sprite | null = null;
+    if (includeDoor) {
+      doorSprite = this.createItemSprite(
+        door,
+        doorVisual,
+        rotation,
+        tile,
+        alpha,
+      );
+      // Exact WorldRestaurant.placeRoomItem door branch:
+      // rot0 => getTileDrawPriority(x + 1, y) - 1
+      // rot1 => getTileDrawPriority(x - 1, y + 1)
+      doorSprite.setDepth(
+        rotation === 0
+          ? this.itemDrawPriority({ x: tile.x + 1, y: tile.y }) - 1
+          : this.itemDrawPriority({ x: tile.x - 1, y: tile.y + 1 }),
+      );
+    }
+
+    return {
+      wallTexture,
+      sourceWall,
+      doorSprite,
+      wallFrame: wallFrameName,
+      maskFrame: mask.frame,
+      maskLocal: { x: maskX, y: maskY },
+    };
+  }
+
+  private drawDoorEraseProbe(): void {
     this.doorProbeWall?.destroy();
     this.doorProbeDoor?.destroy();
     this.doorProbeWall = null;
@@ -1020,79 +1155,17 @@ export class RestaurantEditorScene extends Phaser.Scene {
     const rotation = requestedRotation === 0 ? 0 : 1;
     const tile: TilePoint =
       rotation === 0 ? { x: 0, y: 2 } : { x: 2, y: 0 };
-    const wallFrameName = frameForRestaurantItemRotation(wallVisual, rotation);
-    const wallFrame = this.textures.getFrame(wallVisual.atlasId, wallFrameName);
-    const wallOffset = recoveredWallFloorFrameOffset(
-      wall.id,
-      wall.className,
-      rotation,
-    );
-    if (!wallFrame || !wallOffset) {
-      throw new Error('Recovered Door probe wall frame/origin is unavailable');
-    }
-
-    const projected = projectTile(tile);
-    const wallX = ORIGIN.x + projected.x + wallOffset.x;
-    const wallY = ORIGIN.y + projected.y + wallOffset.y;
-    const sourceWall = this.wallSprites.find(
-      (candidate) =>
-        candidate.frame.name === wallFrameName &&
-        Math.abs(candidate.x - wallX) < 0.01 &&
-        Math.abs(candidate.y - wallY) < 0.01,
-    );
-    if (!sourceWall) {
-      throw new Error('Door probe could not resolve its derived wall segment');
-    }
-    sourceWall.setVisible(false);
-
-    const wallStamp = this.make
-      .image({
-        x: 0,
-        y: 0,
-        key: wallVisual.atlasId,
-        frame: wallFrameName,
-        add: false,
-      })
-      .setOrigin(0, 0);
-    const maskStamp = this.make
-      .image({
-        x: 0,
-        y: 0,
-        key: wallVisual.atlasId,
-        frame: mask.frame,
-        add: false,
-      })
-      .setOrigin(0, 0);
-
-    const maskX = mask.canvasOriginPx.x - wallOffset.x;
-    const maskY = mask.canvasOriginPx.y - wallOffset.y;
-    const rt = this.add
-      .renderTexture(wallX, wallY, wallFrame.width, wallFrame.height)
-      .setOrigin(0, 0)
-      .setDepth(sourceWall.depth);
-    rt.draw(wallStamp, 0, 0);
-    rt.erase(maskStamp, maskX, maskY);
-    wallStamp.destroy();
-    maskStamp.destroy();
-    this.doorProbeWall = rt;
-
     const maskOnly = probeParams.has('doorMaskOnly');
-    let doorSprite: Phaser.GameObjects.Sprite | null = null;
-    if (!maskOnly) {
-      doorSprite = this.createItemSprite(
-        door,
-        doorVisual,
-        rotation,
-        tile,
-        1,
-      );
-      // WorldRestaurant.placeRoomItem: door rotation 1 uses
-      // getTileDrawPriority(x - 1, y + 1).
-      doorSprite.setDepth(
-        this.itemDrawPriority({ x: tile.x - 1, y: tile.y + 1 }),
-      );
-      this.doorProbeDoor = doorSprite;
-    }
+    const composition = this.renderDoorWallComposition(
+      door,
+      doorVisual,
+      rotation,
+      tile,
+      1,
+      !maskOnly,
+    );
+    this.doorProbeWall = composition.wallTexture;
+    this.doorProbeDoor = composition.doorSprite;
 
     const target = globalThis as typeof globalThis & {
       __ANEWON_RC_DOOR_PROBE__?: unknown;
@@ -1101,18 +1174,20 @@ export class RestaurantEditorScene extends Phaser.Scene {
       tile,
       rotation,
       maskOnly,
-      wallFrame: wallFrameName,
-      wallCanvas: { width: wallFrame.width, height: wallFrame.height },
-      wallWorld: { x: wallX, y: wallY, depth: sourceWall.depth },
-      maskFrame: mask.frame,
-      maskLocal: { x: maskX, y: maskY },
-      maskCanvas: mask.atlasSize,
-      doorFrame: doorSprite?.frame.name ?? null,
-      doorWorld: doorSprite
+      wallFrame: composition.wallFrame,
+      wallWorld: {
+        x: composition.wallTexture.x,
+        y: composition.wallTexture.y,
+        depth: composition.wallTexture.depth,
+      },
+      maskFrame: composition.maskFrame,
+      maskLocal: composition.maskLocal,
+      doorFrame: composition.doorSprite?.frame.name ?? null,
+      doorWorld: composition.doorSprite
         ? {
-            x: doorSprite.x,
-            y: doorSprite.y,
-            depth: doorSprite.depth,
+            x: composition.doorSprite.x,
+            y: composition.doorSprite.y,
+            depth: composition.doorSprite.depth,
           }
         : null,
     };
@@ -1196,6 +1271,7 @@ export class RestaurantEditorScene extends Phaser.Scene {
   }
 
   private drawCommittedPlacements(): void {
+    this.clearAuthoritativeWallCutouts();
     this.committedGraphics.clear();
     for (const sprite of this.committedSprites) sprite.destroy();
     this.committedSprites = [];
@@ -1234,14 +1310,33 @@ export class RestaurantEditorScene extends Phaser.Scene {
         );
       }
 
-      const sprite = this.createItemSprite(
-        definition,
-        visual,
-        placed.rotation,
-        { x: placed.tileX, y: placed.tileY },
-        selected ? 0.35 : 1,
-        curHeights.get(placed.instanceId) ?? 0,
-      );
+      const alpha = selected ? 0.35 : 1;
+      const sprite =
+        definition.id === SIMPLE_DOOR_ITEM_ID
+          ? (() => {
+              const composition = this.renderDoorWallComposition(
+                definition,
+                visual,
+                placed.rotation,
+                { x: placed.tileX, y: placed.tileY },
+                alpha,
+                true,
+              );
+              if (!composition.doorSprite) {
+                throw new Error('Authoritative Simple Door sprite was not created');
+              }
+              this.wallCutoutTextures.push(composition.wallTexture);
+              this.wallCutoutSources.push(composition.sourceWall);
+              return composition.doorSprite;
+            })()
+          : this.createItemSprite(
+              definition,
+              visual,
+              placed.rotation,
+              { x: placed.tileX, y: placed.tileY },
+              alpha,
+              curHeights.get(placed.instanceId) ?? 0,
+            );
       if (this.isOrdinaryPlaceable(definition)) {
         sprite.setInteractive({ useHandCursor: true });
         sprite.on(
