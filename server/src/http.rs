@@ -953,8 +953,7 @@ mod tests {
                 .unwrap();
         }
 
-        let body =
-            handle_load_service_topology(&service, context(Some("session"), None)).unwrap();
+        let body = handle_load_service_topology(&service, context(Some("session"), None)).unwrap();
         let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
 
         assert_eq!(json["source"]["items"].as_array().unwrap().len(), 3);
