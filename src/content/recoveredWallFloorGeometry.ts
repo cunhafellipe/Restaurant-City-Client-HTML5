@@ -18,6 +18,14 @@ export interface RecoveredWallFloorGeometry {
     readonly widthPx: number;
     readonly heightPx: number;
   } | null;
+  readonly rotationFrames: readonly {
+    readonly rotation: number;
+    readonly frame: string;
+    readonly canvasOriginPx: {
+      readonly x: number;
+      readonly y: number;
+    };
+  }[];
 }
 
 interface ContractEntry {
@@ -37,6 +45,14 @@ interface ContractEntry {
     readonly widthPx: number;
     readonly heightPx: number;
   } | null;
+  readonly rotationFrames?: readonly {
+    readonly rotation: number;
+    readonly frame: string;
+    readonly canvasOriginPx: {
+      readonly x: number;
+      readonly y: number;
+    };
+  }[];
 }
 
 const entries = Object.entries(contract.classes) as ReadonlyArray<
@@ -70,6 +86,7 @@ export function recoveredWallFloorGeometry(
     serverCatalogEnabled: entry.serverCatalogEnabled === true,
     runtimeGeometryEnabled: entry.runtimeGeometryEnabled === true,
     localBounds: entry.localBounds ?? null,
+    rotationFrames: entry.rotationFrames ?? [],
   };
 }
 
@@ -86,19 +103,27 @@ export function recoveredEnabledWallFloorFootprint(
 export function recoveredWallFloorFrameOffset(
   itemId: number,
   className: string | null,
+  rotation: number,
 ): { readonly x: number; readonly y: number } | null {
   const geometry = recoveredWallFloorGeometry(itemId, className);
   if (
     !geometry ||
-    (!geometry.runtimeGeometryEnabled && !geometry.serverCatalogEnabled) ||
-    !geometry.localBounds
+    (!geometry.runtimeGeometryEnabled && !geometry.serverCatalogEnabled)
   ) {
     return null;
   }
 
-  return {
-    x: geometry.localBounds.leftPx,
-    y: geometry.localBounds.topPx,
-  };
+  const frame = geometry.rotationFrames.find(
+    (candidate) => candidate.rotation === rotation,
+  );
+  if (frame) return frame.canvasOriginPx;
+
+  if (rotation === 0 && geometry.localBounds) {
+    return {
+      x: geometry.localBounds.leftPx,
+      y: geometry.localBounds.topPx,
+    };
+  }
+  return null;
 }
 
