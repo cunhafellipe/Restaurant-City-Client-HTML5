@@ -58,6 +58,7 @@ const INITIAL_ROOM: RoomDimensions = {
 };
 
 const ORIGIN = { x: 380, y: 105 };
+const SIMPLE_WINDOW_ITEM_ID = 3000001;
 
 type EditorPlacementValidation =
   | ReturnType<typeof validateStructuralPlacement>
@@ -306,7 +307,11 @@ export class RestaurantEditorScene extends Phaser.Scene {
 
     for (const placed of layout.items) {
       const definition = this.catalogById.get(placed.itemId);
-      if (!definition || !this.isOrdinaryPlaceable(definition)) {
+      if (
+        !definition ||
+        (!this.isOrdinaryPlaceable(definition) &&
+          !this.isAuthoritativeWallAttachment(definition))
+      ) {
         throw new Error(
           `Authoritative layout references unsupported item #${placed.itemId}`,
         );
@@ -360,6 +365,22 @@ export class RestaurantEditorScene extends Phaser.Scene {
       !item.placement.wallItem &&
       !item.placement.wallDecorationItem &&
       !item.placement.wallpaperItem &&
+      !item.placement.outdoor
+    );
+  }
+
+  private isAuthoritativeWallAttachment(
+    item: RestaurantItemDefinition,
+  ): boolean {
+    const footprint = item.placementFootprint;
+    return (
+      item.id === SIMPLE_WINDOW_ITEM_ID &&
+      footprint?.sizeX === 1 &&
+      footprint.sizeY === 1 &&
+      item.placement.wallDecorationItem === true &&
+      !item.placement.wallItem &&
+      !item.placement.wallpaperItem &&
+      !item.placement.floorTileItem &&
       !item.placement.outdoor
     );
   }
@@ -950,19 +971,21 @@ export class RestaurantEditorScene extends Phaser.Scene {
         selected ? 0.35 : 1,
         curHeights.get(placed.instanceId) ?? 0,
       );
-      sprite.setInteractive({ useHandCursor: true });
-      sprite.on(
-        'pointerdown',
-        (
-          _pointer: Phaser.Input.Pointer,
-          _localX: number,
-          _localY: number,
-          event: Phaser.Types.Input.EventData,
-        ) => {
-          event.stopPropagation();
-          this.selectPlacedItem(placed.instanceId);
-        },
-      );
+      if (this.isOrdinaryPlaceable(definition)) {
+        sprite.setInteractive({ useHandCursor: true });
+        sprite.on(
+          'pointerdown',
+          (
+            _pointer: Phaser.Input.Pointer,
+            _localX: number,
+            _localY: number,
+            event: Phaser.Types.Input.EventData,
+          ) => {
+            event.stopPropagation();
+            this.selectPlacedItem(placed.instanceId);
+          },
+        );
+      }
       this.committedSprites.push(sprite);
     }
   }
