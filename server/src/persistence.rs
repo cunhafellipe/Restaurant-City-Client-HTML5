@@ -224,8 +224,18 @@ mod tests {
             },
         );
         for (item_id, grant, place, tile) in [
-            (11_u32, "grant-chair", "place-chair", TilePoint { x: 2, y: 2 }),
-            (12_u32, "grant-table", "place-table", TilePoint { x: 3, y: 2 }),
+            (
+                11_u32,
+                "grant-chair",
+                "place-chair",
+                TilePoint { x: 2, y: 2 },
+            ),
+            (
+                12_u32,
+                "grant-table",
+                "place-table",
+                TilePoint { x: 3, y: 2 },
+            ),
             (
                 13_u32,
                 "grant-kitchen",
