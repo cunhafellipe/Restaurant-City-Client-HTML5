@@ -1119,6 +1119,19 @@
     "leftGolden": "b06a0a5e6acfedd0dc8dc2a9a04c57e6e30d89fbb401d41e661437e996fcb5c0",
     "topGolden": "b28c10ab42522c31d9f00cb94a59ef226b9b194dca4700d676c519714d234a14",
     "canonicalActionScriptCommit": "d552cfa4767fe4fb5b7899493c30bfb375afc2c1",
-    "setWallPaperSemantics": "wallpaper MovieClip is addChildAt(...,1) on every default wall whose getRotationCount() matches the selected target wall; corner is excluded"
+    "setWallPaperSemantics": "wallpaper MovieClip is addChildAt(...,1) on every default wall whose getRotationCount() matches the selected target wall; corner is excluded",
+    "playablePromotionRun": 35424279934,
+    "trustedCatalogDefinitions": 87,
+    "wallpaperDefinitions": 48,
+    "itemAtlasMapping": {
+      "authoritative": 87,
+      "unique": 87,
+      "ambiguous": 0,
+      "missing": 0
+    },
+    "browserEditorFlow": "browse -> wall-target preview -> PUT apply -> authoritative reload -> rendered slot selection -> DELETE remove -> authoritative reload",
+    "typescriptTests": 88,
+    "rustTests": 75,
+    "webNativeRuntime": true
   }
 }
