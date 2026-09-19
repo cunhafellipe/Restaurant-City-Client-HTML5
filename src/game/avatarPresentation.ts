@@ -13,6 +13,25 @@ export type RecoveredAvatarAnimationName =
   | 'waitor-working'
   | 'hidden';
 
+const ITEM_ROTATION_TO_ACTOR_DIRECTION = [1, 7, 5, 3] as const;
+
+export function actorDirectionFromItemRotation(rotation: number): number {
+  if (!Number.isInteger(rotation) || rotation < 0 || rotation > 3) {
+    throw new Error('item rotation must be an integer in [0, 3]');
+  }
+  const direction = ITEM_ROTATION_TO_ACTOR_DIRECTION[rotation];
+  if (direction === undefined) {
+    throw new Error('recovered actor direction map is incomplete');
+  }
+  return direction;
+}
+
+export function chefDirectionFromKitchenRotation(rotation: number): number {
+  return (actorDirectionFromItemRotation(rotation) + 4) % 8;
+}
+
+export const RECOVERED_WAITER_INITIAL_DIRECTION = 0 as const;
+
 export interface RecoveredAvatarAnimationDefinition {
   readonly id: number;
   readonly frameStart: number;
