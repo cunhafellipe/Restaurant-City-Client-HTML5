@@ -20,9 +20,11 @@ pub use domain::{
 pub use gameplay::{
     CHEF_COOK_MAX_MS, CHEF_COOK_MIN_MS, CUSTOMER_DECISION_MS, CUSTOMER_EATING_MS,
     CUSTOMER_PAYING_MS, CUSTOMER_WAIT_FOOD_MS, CUSTOMER_WAIT_ORDER_MS,
-    CUSTOMERS_PER_MINUTE_PER_DEMAND, GameplayRuleError, MAX_DEMAND, MealReward,
-    WAITER_ACTION_MAX_MS, WAITER_ACTION_MIN_MS, canonical_chef_base_cook_duration_ms,
-    canonical_customer_spawn_delay_ms, canonical_meal_reward,
+    CUSTOMERS_PER_MINUTE_PER_DEMAND, CustomerServiceState, GameplayRuleError, MAX_DEMAND,
+    MealReward, OrderServiceState, ServiceLoopEffect, ServiceLoopError, ServiceLoopEvent,
+    ServiceLoopState, ServiceLoopTransition, WAITER_ACTION_MAX_MS, WAITER_ACTION_MIN_MS,
+    canonical_chef_base_cook_duration_ms, canonical_customer_spawn_delay_ms,
+    canonical_meal_reward, transition_service_loop,
 };
 pub use platform::{
     AnewSubject, PRODUCT_ID, PlatformSessionError, PlatformSessionVerifier, ProductSessionId,
