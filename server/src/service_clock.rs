@@ -41,6 +41,7 @@ pub struct TimedServiceCatchUp {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ServiceTimingError {
     Reducer(ServiceLoopError),
+    TimingUnanchored,
     MissingCustomerDeadline,
     MissingOrderDeadline,
     UnexpectedCustomerDeadline,
