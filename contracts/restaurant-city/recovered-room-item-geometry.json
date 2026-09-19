@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 4,
+  "schemaVersion": 5,
   "baseline": "0.9.143a",
   "source": {
     "canonicalArchiveSha256": "4493be9bc4c2f87ef80ca7afa5321e12bb94a7ec6ed2f0a673b4d48b19170ef4",
@@ -90,6 +90,16 @@
       "kitchens": 11,
       "failures": 0,
       "conclusion": "ALL_CANONICAL_SERVICE_PRIMARY_VECTOR_GEOMETRY_RECOVERED"
+    },
+    "r48": {
+      "runId": 35456384651,
+      "artifactId": 10588347863,
+      "artifactSha256": "f4bfc00ebe8b02e0fc67ba419b8e4a9f35f2554194a5fe01a94256b165432ecb",
+      "items": [
+        3030000,
+        3040000
+      ],
+      "conclusion": "OAK_CHAIR_AND_SIMPLE_TABLE_GEOMETRY_PROVEN"
     }
   },
   "constructor": {
@@ -1596,6 +1606,65 @@
       ],
       "placementFootprintEnabled": true,
       "composite": true
+    },
+    "Chair01": {
+      "itemIds": [
+        3040000
+      ],
+      "spriteId": 1227,
+      "runtimeClassName": "Chair01",
+      "runtimeSpriteId": 1227,
+      "footprint": {
+        "sizeX": 1,
+        "sizeY": 1
+      },
+      "itemHeightTwips": 809,
+      "rotationCount": 4,
+      "visualFrameCount": 4,
+      "effectiveTypes": [
+        "chairItem"
+      ],
+      "frames": [
+        {
+          "rotation": 0,
+          "visualFrameIndex": 0,
+          "frame": "indoor_asset/chair01/001",
+          "canvasOriginPx": {
+            "x": -22.7,
+            "y": -30.3
+          }
+        },
+        {
+          "rotation": 1,
+          "visualFrameIndex": 1,
+          "frame": "indoor_asset/chair01/002",
+          "canvasOriginPx": {
+            "x": -22.7,
+            "y": -30.3
+          }
+        },
+        {
+          "rotation": 2,
+          "visualFrameIndex": 2,
+          "frame": "indoor_asset/chair01/003",
+          "canvasOriginPx": {
+            "x": -22.45,
+            "y": -30.25
+          }
+        },
+        {
+          "rotation": 3,
+          "visualFrameIndex": 3,
+          "frame": "indoor_asset/chair01/004",
+          "canvasOriginPx": {
+            "x": -22.8,
+            "y": -30
+          }
+        }
+      ],
+      "placementFootprintEnabled": true,
+      "composite": false,
+      "note": "R39-R42 recover the canonical Oak Chair service role, source symbol, 1x1 constructor footprint and four exact atlas rotations. R48 narrows and revalidates those inputs for first live service actor rendering."
     }
   },
   "composites": {
@@ -1630,5 +1699,5 @@
       ]
     }
   },
-  "releasePolicy": "Recovered ordinary-item geometry is promoted only after source-grounded constructor/runtime geometry and physical browser validation. The five canonical wallDivider items remain frozen from R36/R37/R38. The 11 canonical kitchen composites are promoted from R42/R43 with exact per-rotation occupied cells, runtime aliases, logical rotation counts, frame identities, canvas origins, and recovered item heights; all other implicit-footprint items remain fail-closed."
+  "releasePolicy": "Recovered ordinary-item geometry is promoted only after source-grounded constructor/runtime geometry and physical browser validation. The five canonical wallDivider items remain frozen from R36/R37/R38. The 11 canonical kitchen composites are promoted from R42/R43 with exact per-rotation occupied cells, runtime aliases, logical rotation counts, frame identities, canvas origins, and recovered item heights. Oak Chair 3040000 is promoted from R39-R42 and revalidated by R48 as the first canonical meal seat; all other implicit-footprint items remain fail-closed."
 }
