@@ -670,8 +670,10 @@ mod tests {
             TilePoint { x: 1, y: 1 },
             TilePoint { x: 2, y: 2 },
             false,
-        );
-        assert!(path.is_none());
+        )
+        .expect("historical A* may detour around the blocked corner");
+        assert_ne!(path.tiles, vec![TilePoint { x: 2, y: 2 }]);
+        assert!(path.movement_score > DIAGONAL_SCORE);
     }
 
     #[test]
@@ -822,9 +824,10 @@ mod tests {
         assert_eq!(open.waiter_chairs, vec![(40, vec![10])]);
         assert_eq!(open.chef_chairs, vec![(30, vec![10])]);
 
-        // Split the room with an impenetrable occupied column between waiter
-        // and kitchen. Chair reachability alone remains insufficient.
-        for y in 1..10 {
+        // Split the complete historical room shape, including its outside
+        // strip, with an impenetrable occupied column between waiter and
+        // kitchen. Chair reachability alone remains insufficient.
+        for y in 0..14 {
             grid.set_cell(
                 TilePoint { x: 6, y },
                 TopologyCell {
