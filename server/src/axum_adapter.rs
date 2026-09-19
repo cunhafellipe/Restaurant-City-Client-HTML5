@@ -672,7 +672,7 @@ mod tests {
         assert_eq!(response.status(), StatusCode::OK);
         assert_eq!(response.headers()[CACHE_CONTROL], "no-store");
 
-        let body = to_bytes(response.into_body(), MAX_REQUEST_BODY_BYTES)
+        let body = to_bytes(response.into_body(), 64 * 1024)
             .await
             .unwrap();
         let value: serde_json::Value = serde_json::from_slice(&body).unwrap();
