@@ -20,6 +20,7 @@ use crate::service::{
     WallpaperMutationOutcome,
 };
 use crate::service_clock::remaining_ms;
+use crate::service_path::{ServicePathKind, ServicePathSegmentProjection};
 use crate::topology::{
     MAX_NUM_TILES_X, MAX_NUM_TILES_Y, ServiceLayoutSnapshot, facing_tile, is_meal_seat,
     is_table_free, table_for_chair,
@@ -224,6 +225,22 @@ pub struct ServiceTopologyResponse {
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Eq, PartialEq)]
+pub struct ActiveServicePathResponse {
+    pub kind: &'static str,
+    pub from_tile_x: i32,
+    pub from_tile_y: i32,
+    pub to_tile_x: i32,
+    pub to_tile_y: i32,
+    pub step_index: u16,
+    pub step_count: u16,
+    pub segment_started_at_ms: u64,
+    pub segment_completes_at_ms: u64,
+    pub path_started_at_ms: u64,
+    pub path_completes_at_ms: u64,
+    pub path_remaining_ms: u64,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Eq, PartialEq)]
 pub struct ActiveServiceResponse {
     pub service_id: u64,
     pub restaurant_mutation_sequence: u64,
@@ -244,6 +261,7 @@ pub struct ActiveServiceResponse {
     pub order_deadline_at_ms: Option<u64>,
     pub customer_remaining_ms: Option<u64>,
     pub order_remaining_ms: Option<u64>,
+    pub path: Option<ActiveServicePathResponse>,
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Eq, PartialEq)]
@@ -312,9 +330,9 @@ where
     let snapshot = service
         .load_active_service_read(session_token)
         .map_err(map_service_error)?;
-    let active = snapshot
-        .active
-        .map(|record| active_service_response(record, snapshot.server_now_ms));
+    let active = snapshot.active.map(|record| {
+        active_service_response(record, snapshot.server_now_ms, snapshot.path_segment)
+    });
     json_bytes(&ActiveServiceEnvelopeResponse {
         server_now_ms: snapshot.server_now_ms,
         active,
@@ -742,6 +760,7 @@ fn floor_tile_response(tile: PaintedFloorTile) -> FloorTileResponse {
 fn active_service_response(
     record: ActiveServiceRecord,
     server_now_ms: u64,
+    path_segment: Option<ServicePathSegmentProjection>,
 ) -> ActiveServiceResponse {
     ActiveServiceResponse {
         service_id: record.identity.service_id,
@@ -766,6 +785,28 @@ fn active_service_response(
             server_now_ms,
         ),
         order_remaining_ms: remaining_ms(record.deadlines.order_deadline_at_ms, server_now_ms),
+        path: path_segment.map(active_service_path_response),
+    }
+}
+
+fn active_service_path_response(
+    path: ServicePathSegmentProjection,
+) -> ActiveServicePathResponse {
+    ActiveServicePathResponse {
+        kind: match path.kind {
+            ServicePathKind::CustomerToChair => "customer-to-chair",
+        },
+        from_tile_x: path.from.x,
+        from_tile_y: path.from.y,
+        to_tile_x: path.to.x,
+        to_tile_y: path.to.y,
+        step_index: path.step_index,
+        step_count: path.step_count,
+        segment_started_at_ms: path.segment_started_at_ms,
+        segment_completes_at_ms: path.segment_completes_at_ms,
+        path_started_at_ms: path.path_started_at_ms,
+        path_completes_at_ms: path.path_completes_at_ms,
+        path_remaining_ms: path.path_remaining_ms,
     }
 }
 
@@ -859,6 +900,7 @@ fn map_service_error(error: ProductServiceError) -> PublicProductError {
         | ProductServiceError::MutationIdConflict
         | ProductServiceError::WallpaperNotApplied { .. } => PublicProductError::Conflict,
         ProductServiceError::ServiceTimingAuthority(_)
+        | ProductServiceError::ServicePathAuthority(_)
         | ProductServiceError::MealSettlementNotConnected
         | ProductServiceError::RestaurantMutationSequenceExhausted
         | ProductServiceError::FloorMutationSequenceExhausted
@@ -1167,6 +1209,7 @@ mod tests {
         assert!(json["active"]["order_deadline_at_ms"].is_null());
         assert!(json["active"]["customer_remaining_ms"].is_null());
         assert!(json["active"]["order_remaining_ms"].is_null());
+        assert!(json["active"]["path"].is_null());
 
         let empty = topology_service();
         let empty_body =
