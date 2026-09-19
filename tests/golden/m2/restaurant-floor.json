@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "baseline": "0.9.143a",
+  "fixture": "wood-panel-3050000-at-2-3",
+  "canvas": {
+    "width": 760,
+    "height": 600
+  },
+  "blockSize": 8,
+  "expectedQuantizedBlockSha256": "7352914dc1d7264b2dd5d496ca2bdc8100d3bfb6e294086222b5a24d2764e369",
+  "referencePixelSha256": "e3bcdc5967f3af4cdc9100c3ac82cea1ce69af7e098800e607df45e107d575b1",
+  "referenceProductSha": "0f18a541cdfa5d44616152a5d22fa73c727f411d",
+  "deterministicValidationRuns": [
+    35416199488
+  ],
+  "note": "Inspected ANEWON self-hosted Edge CDP WebGL composite. Wood Panel #3050000 is rendered from authoritative floor_tiles at roomIndex=0 tile (2,3), below the object domain and without entering itemMap. Gate compares the quantized 8x8 world signature."
+}
