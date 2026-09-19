@@ -738,11 +738,21 @@ fn map_service_error(error: ProductServiceError) -> PublicProductError {
             crate::restaurant::RestaurantAuthorityError::CorruptStackOrder { .. },
         ) => PublicProductError::Internal,
         ProductServiceError::RestaurantAuthority(_) => PublicProductError::Unprocessable,
-        ProductServiceError::MutationIdConflict
+        ProductServiceError::ActiveServiceAuthority(_)
+        | ProductServiceError::ServiceLoopAuthority(_)
+        | ProductServiceError::ActiveServiceInProgress
+        | ProductServiceError::ActiveServiceLayoutLocked
+        | ProductServiceError::ActiveServiceNotFound
+        | ProductServiceError::ActiveServiceIdMismatch
+        | ProductServiceError::ActiveServiceNotComplete
+        | ProductServiceError::MutationIdConflict
         | ProductServiceError::WallpaperNotApplied { .. } => PublicProductError::Conflict,
-        ProductServiceError::RestaurantMutationSequenceExhausted
+        ProductServiceError::MealSettlementNotConnected
+        | ProductServiceError::RestaurantMutationSequenceExhausted
         | ProductServiceError::FloorMutationSequenceExhausted
-        | ProductServiceError::WallpaperMutationSequenceExhausted => PublicProductError::Internal,
+        | ProductServiceError::WallpaperMutationSequenceExhausted
+        | ProductServiceError::ServiceMutationSequenceExhausted
+        | ProductServiceError::ServiceIdExhausted => PublicProductError::Internal,
     }
 }
 
