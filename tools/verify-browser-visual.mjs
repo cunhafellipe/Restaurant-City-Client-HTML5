@@ -534,6 +534,10 @@ function serviceActorFixture() {
       order_state: 'cooking',
       customer_timer_ms: 120000,
       order_timer_ms: 16000,
+      customer_deadline_at_ms: 1_120_000,
+      order_deadline_at_ms: 1_016_000,
+      customer_remaining_ms: 120000,
+      order_remaining_ms: 16000,
     },
   };
 }
@@ -994,7 +998,12 @@ const server = http.createServer(async (req, res) => {
       'Content-Type': 'application/json; charset=utf-8',
       'Cache-Control': 'no-store',
     });
-    res.end(JSON.stringify({ active: fixtureActiveService }));
+    res.end(
+      JSON.stringify({
+        server_now_ms: 1_000_000,
+        active: fixtureActiveService,
+      }),
+    );
     return;
   }
 
@@ -2991,6 +3000,11 @@ try {
         value?.phase !== 'editing' ||
         value?.active?.customerState !== 'waiting-for-food' ||
         value?.active?.orderState !== 'cooking' ||
+        value?.active?.serverNowMs !== 1_000_000 ||
+        value?.active?.customerDeadlineAtMs !== 1_120_000 ||
+        value?.active?.orderDeadlineAtMs !== 1_016_000 ||
+        value?.active?.customerRemainingMs !== 120000 ||
+        value?.active?.orderRemainingMs !== 16000 ||
         !Array.isArray(value?.actors) ||
         value.actors.length !== 3 ||
         value?.canvas?.width !== 760 ||
