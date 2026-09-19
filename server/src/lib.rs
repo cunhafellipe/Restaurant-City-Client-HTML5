@@ -65,9 +65,9 @@ pub use service::{
 
 pub use service_clock::{
     DueServiceEvent, ServiceDeadlines, ServiceTimeSource, ServiceTimingError,
-    SystemServiceTimeSource, TimedServiceCatchUp, TimedServiceTransition,
-    anchor_service_deadlines, catch_up_timed_service, due_service_event, remaining_ms,
-    transition_timed_service, validate_service_deadlines,
+    SystemServiceTimeSource, TimedServiceCatchUp, TimedServiceTransition, anchor_service_deadlines,
+    catch_up_timed_service, due_service_event, remaining_ms, transition_timed_service,
+    validate_service_deadlines,
 };
 
 pub use persistence::RedbProductStateStore;
