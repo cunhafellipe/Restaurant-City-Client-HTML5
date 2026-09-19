@@ -151,6 +151,92 @@ pub struct PaintedFloorTile {
     pub room_index: u8,
 }
 
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+pub enum WallpaperOrientation {
+    Left,
+    Top,
+}
+
+impl WallpaperOrientation {
+    pub const fn rotation(self) -> u8 {
+        match self {
+            Self::Left => 0,
+            Self::Top => 1,
+        }
+    }
+
+    pub const fn from_rotation(rotation: u8) -> Option<Self> {
+        match rotation {
+            0 => Some(Self::Left),
+            1 => Some(Self::Top),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct WallpaperIntent {
+    pub item_id: u32,
+    pub wall_tile: TilePoint,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct AppliedWallpaper {
+    pub item_id: u32,
+    pub orientation: WallpaperOrientation,
+}
+
+pub fn validate_wallpaper_intent(
+    catalog: &PlacementCatalog,
+    room: RoomDimensions,
+    intent: WallpaperIntent,
+) -> Result<AppliedWallpaper, RestaurantAuthorityError> {
+    let definition = *catalog
+        .get(intent.item_id)
+        .ok_or(RestaurantAuthorityError::UnknownItem {
+            item_id: intent.item_id,
+        })?;
+
+    if !definition.flags.wallpaper_item {
+        return Err(RestaurantAuthorityError::NotWallpaper {
+            item_id: definition.item_id,
+        });
+    }
+    if definition.footprint
+        != (Footprint {
+            size_x: 1,
+            size_y: 1,
+        })
+    {
+        return Err(RestaurantAuthorityError::UnsupportedWallpaperFootprint {
+            item_id: definition.item_id,
+        });
+    }
+
+    let rotation = default_wall_attachment_rotation(intent.wall_tile, room).ok_or(
+        RestaurantAuthorityError::NoWallpaperTarget {
+            item_id: definition.item_id,
+            tile: intent.wall_tile,
+        },
+    )?;
+    let orientation = WallpaperOrientation::from_rotation(rotation).ok_or(
+        RestaurantAuthorityError::NoWallpaperTarget {
+            item_id: definition.item_id,
+            tile: intent.wall_tile,
+        },
+    )?;
+    if rotation >= definition.rotation_count {
+        return Err(RestaurantAuthorityError::InvalidDefinition {
+            item_id: definition.item_id,
+        });
+    }
+
+    Ok(AppliedWallpaper {
+        item_id: definition.item_id,
+        orientation,
+    })
+}
+
 pub fn validate_floor_tile_intent(
     catalog: &PlacementCatalog,
     room: RoomDimensions,
@@ -599,6 +685,16 @@ pub enum RestaurantAuthorityError {
     NotFloorTile {
         item_id: u32,
     },
+    NotWallpaper {
+        item_id: u32,
+    },
+    UnsupportedWallpaperFootprint {
+        item_id: u32,
+    },
+    NoWallpaperTarget {
+        item_id: u32,
+        tile: TilePoint,
+    },
     UnsupportedFloorTileFootprint {
         item_id: u32,
     },
@@ -770,6 +866,76 @@ mod tests {
                 reason: StructuralPlacement::OutOfBounds,
                 ..
             })
+        ));
+    }
+
+    #[test]
+    fn wallpaper_orientation_is_derived_from_default_wall() {
+        let wallpaper_catalog = PlacementCatalog::new([ItemPlacementDefinition {
+            item_id: 70,
+            footprint: Footprint {
+                size_x: 1,
+                size_y: 1,
+            },
+            rotation_count: 2,
+            flags: PlacementFlags {
+                wallpaper_item: true,
+                ..PlacementFlags::default()
+            },
+        }])
+        .unwrap();
+
+        assert_eq!(
+            validate_wallpaper_intent(
+                &wallpaper_catalog,
+                room(),
+                WallpaperIntent {
+                    item_id: 70,
+                    wall_tile: TilePoint { x: 0, y: 3 },
+                },
+            )
+            .unwrap(),
+            AppliedWallpaper {
+                item_id: 70,
+                orientation: WallpaperOrientation::Left,
+            }
+        );
+        assert_eq!(
+            validate_wallpaper_intent(
+                &wallpaper_catalog,
+                room(),
+                WallpaperIntent {
+                    item_id: 70,
+                    wall_tile: TilePoint { x: 4, y: 0 },
+                },
+            )
+            .unwrap(),
+            AppliedWallpaper {
+                item_id: 70,
+                orientation: WallpaperOrientation::Top,
+            }
+        );
+        assert!(matches!(
+            validate_wallpaper_intent(
+                &wallpaper_catalog,
+                room(),
+                WallpaperIntent {
+                    item_id: 70,
+                    wall_tile: TilePoint { x: 0, y: 0 },
+                },
+            ),
+            Err(RestaurantAuthorityError::NoWallpaperTarget { .. })
+        ));
+        assert!(matches!(
+            validate_wallpaper_intent(
+                &wallpaper_catalog,
+                room(),
+                WallpaperIntent {
+                    item_id: 70,
+                    wall_tile: TilePoint { x: 2, y: 2 },
+                },
+            ),
+            Err(RestaurantAuthorityError::NoWallpaperTarget { .. })
         ));
     }
 
