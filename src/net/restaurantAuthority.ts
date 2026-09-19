@@ -42,6 +42,60 @@ export interface RestaurantLayout {
   readonly inventory: readonly AuthoritativeInventoryAvailability[];
 }
 
+export interface AuthoritativeServiceTopologyCell {
+  readonly tileX: number;
+  readonly tileY: number;
+  readonly wall: boolean;
+  readonly itemCount: number;
+  readonly hasDoor: boolean;
+  readonly walkable: boolean;
+}
+
+export interface AuthoritativeServiceChair {
+  readonly instanceId: number;
+  readonly tileX: number;
+  readonly tileY: number;
+  readonly rotation: number;
+  readonly toilet: boolean;
+  readonly mealSeat: boolean;
+  readonly facingTileX: number;
+  readonly facingTileY: number;
+  readonly tableInstanceId: number | null;
+}
+
+export interface AuthoritativeServiceTable {
+  readonly instanceId: number;
+  readonly tileX: number;
+  readonly tileY: number;
+  readonly itemCountOnTile: number;
+  readonly hasTableTopOrder: boolean;
+  readonly free: boolean;
+}
+
+export interface AuthoritativeServiceKitchen {
+  readonly instanceId: number;
+  readonly tileX: number;
+  readonly tileY: number;
+}
+
+export interface AuthoritativeServiceDrink {
+  readonly instanceId: number;
+  readonly tileX: number;
+  readonly tileY: number;
+}
+
+export interface RestaurantServiceTopology {
+  readonly source: {
+    readonly room: AuthoritativeRoom;
+    readonly items: readonly AuthoritativePlacedItem[];
+  };
+  readonly cells: readonly AuthoritativeServiceTopologyCell[];
+  readonly chairs: readonly AuthoritativeServiceChair[];
+  readonly tables: readonly AuthoritativeServiceTable[];
+  readonly kitchens: readonly AuthoritativeServiceKitchen[];
+  readonly drinks: readonly AuthoritativeServiceDrink[];
+}
+
 export interface PlacementCommand {
   readonly itemId: number;
   readonly tileX: number;
@@ -84,6 +138,7 @@ export interface WallpaperCommit {
 
 export interface RestaurantAuthority {
   loadRestaurant(): Promise<RestaurantLayout>;
+  loadServiceTopology(): Promise<RestaurantServiceTopology>;
   placeItem(
     command: PlacementCommand,
     mutationId: string,
@@ -180,6 +235,26 @@ export class HttpRestaurantAuthority implements RestaurantAuthority {
     }
 
     return parseRestaurantLayout(await response.json());
+  }
+
+  async loadServiceTopology(): Promise<RestaurantServiceTopology> {
+    const response = await this.fetcher(
+      `${this.basePath}/restaurant/topology`,
+      {
+        method: 'GET',
+        credentials: 'same-origin',
+        cache: 'no-store',
+        headers: {
+          Accept: 'application/json',
+        },
+      },
+    );
+
+    if (!response.ok) {
+      throw await authorityError(response);
+    }
+
+    return parseServiceTopology(await response.json());
   }
 
   async placeItem(
@@ -495,6 +570,134 @@ async function authorityError(
   return new RestaurantAuthorityError(response.status, code);
 }
 
+function parseServiceTopology(value: unknown): RestaurantServiceTopology {
+  if (
+    !isObject(value) ||
+    !isObject(value.source) ||
+    !isObject(value.source.room) ||
+    !Array.isArray(value.source.items) ||
+    !Array.isArray(value.cells) ||
+    !Array.isArray(value.chairs) ||
+    !Array.isArray(value.tables) ||
+    !Array.isArray(value.kitchens) ||
+    !Array.isArray(value.drinks)
+  ) {
+    throw new Error('Malformed authoritative service topology');
+  }
+
+  const sourceRoom = {
+    insideX: requireUInt(value.source.room.inside_x, 'topology.source.room.inside_x'),
+    insideY: requireUInt(value.source.room.inside_y, 'topology.source.room.inside_y'),
+    outsideX: requireUInt(value.source.room.outside_x, 'topology.source.room.outside_x'),
+    outsideY: requireUInt(value.source.room.outside_y, 'topology.source.room.outside_y'),
+  };
+  if (sourceRoom.insideX === 0 || sourceRoom.insideY === 0) {
+    throw new Error('Malformed authoritative service topology room');
+  }
+
+  const sourceItems = value.source.items.map(parsePlacedItem);
+  const sourceInstanceIds = new Set<number>();
+  for (const item of sourceItems) {
+    if (sourceInstanceIds.has(item.instanceId)) {
+      throw new Error('Malformed authoritative service topology source items');
+    }
+    sourceInstanceIds.add(item.instanceId);
+  }
+
+  const cells = value.cells.map((cell) => {
+    if (!isObject(cell)) {
+      throw new Error('Malformed authoritative service topology cell');
+    }
+    return {
+      tileX: requireSafeInt(cell.tile_x, 'topology.cell.tile_x'),
+      tileY: requireSafeInt(cell.tile_y, 'topology.cell.tile_y'),
+      wall: requireBoolean(cell.wall, 'topology.cell.wall'),
+      itemCount: requireUInt(cell.item_count, 'topology.cell.item_count'),
+      hasDoor: requireBoolean(cell.has_door, 'topology.cell.has_door'),
+      walkable: requireBoolean(cell.walkable, 'topology.cell.walkable'),
+    };
+  });
+  const cellKeys = new Set<string>();
+  for (const cell of cells) {
+    const key = `${cell.tileX}:${cell.tileY}`;
+    if (cellKeys.has(key)) {
+      throw new Error('Malformed authoritative duplicate service topology cell');
+    }
+    cellKeys.add(key);
+  }
+
+  const chairs = value.chairs.map((chair) => {
+    if (!isObject(chair)) {
+      throw new Error('Malformed authoritative service chair');
+    }
+    return {
+      instanceId: requireSafeUInt(chair.instance_id, 'topology.chair.instance_id'),
+      tileX: requireSafeInt(chair.tile_x, 'topology.chair.tile_x'),
+      tileY: requireSafeInt(chair.tile_y, 'topology.chair.tile_y'),
+      rotation: requireUInt(chair.rotation, 'topology.chair.rotation'),
+      toilet: requireBoolean(chair.toilet, 'topology.chair.toilet'),
+      mealSeat: requireBoolean(chair.meal_seat, 'topology.chair.meal_seat'),
+      facingTileX: requireSafeInt(chair.facing_tile_x, 'topology.chair.facing_tile_x'),
+      facingTileY: requireSafeInt(chair.facing_tile_y, 'topology.chair.facing_tile_y'),
+      tableInstanceId: requireNullableSafeUInt(
+        chair.table_instance_id,
+        'topology.chair.table_instance_id',
+      ),
+    };
+  });
+
+  const tables = value.tables.map((table) => {
+    if (!isObject(table)) {
+      throw new Error('Malformed authoritative service table');
+    }
+    return {
+      instanceId: requireSafeUInt(table.instance_id, 'topology.table.instance_id'),
+      tileX: requireSafeInt(table.tile_x, 'topology.table.tile_x'),
+      tileY: requireSafeInt(table.tile_y, 'topology.table.tile_y'),
+      itemCountOnTile: requireUInt(
+        table.item_count_on_tile,
+        'topology.table.item_count_on_tile',
+      ),
+      hasTableTopOrder: requireBoolean(
+        table.has_table_top_order,
+        'topology.table.has_table_top_order',
+      ),
+      free: requireBoolean(table.free, 'topology.table.free'),
+    };
+  });
+
+  const kitchens = value.kitchens.map((kitchen) => {
+    if (!isObject(kitchen)) {
+      throw new Error('Malformed authoritative service kitchen');
+    }
+    return {
+      instanceId: requireSafeUInt(kitchen.instance_id, 'topology.kitchen.instance_id'),
+      tileX: requireSafeInt(kitchen.tile_x, 'topology.kitchen.tile_x'),
+      tileY: requireSafeInt(kitchen.tile_y, 'topology.kitchen.tile_y'),
+    };
+  });
+
+  const drinks = value.drinks.map((drink) => {
+    if (!isObject(drink)) {
+      throw new Error('Malformed authoritative service drink');
+    }
+    return {
+      instanceId: requireSafeUInt(drink.instance_id, 'topology.drink.instance_id'),
+      tileX: requireSafeInt(drink.tile_x, 'topology.drink.tile_x'),
+      tileY: requireSafeInt(drink.tile_y, 'topology.drink.tile_y'),
+    };
+  });
+
+  return {
+    source: { room: sourceRoom, items: sourceItems },
+    cells,
+    chairs,
+    tables,
+    kitchens,
+    drinks,
+  };
+}
+
 function parseRestaurantLayout(value: unknown): RestaurantLayout {
   if (
     !isObject(value) ||
@@ -734,6 +937,18 @@ function requireSafeInt(value: unknown, field: string): number {
   return value;
 }
 
+
+function requireBoolean(value: unknown, field: string): boolean {
+  if (typeof value !== 'boolean') {
+    throw new Error(`Malformed authoritative field: ${field}`);
+  }
+  return value;
+}
+
+function requireNullableSafeUInt(value: unknown, field: string): number | null {
+  if (value === null) return null;
+  return requireSafeUInt(value, field);
+}
 
 function requireRoomIndex(value: unknown): number {
   const roomIndex = requireUInt(value, 'item.room_index');
