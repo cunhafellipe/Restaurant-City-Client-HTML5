@@ -1,8 +1,10 @@
 use crate::http::{
-    ProductHttpContext, PublicProductError, handle_load_restaurant,
+    ProductHttpContext, PublicProductError,
+    handle_apply_wallpaper as handle_apply_wallpaper_contract, handle_load_restaurant,
     handle_paint_floor_tile as handle_paint_floor_tile_contract,
     handle_place_item as handle_place_item_contract,
     handle_remove_item as handle_remove_item_contract,
+    handle_remove_wallpaper as handle_remove_wallpaper_contract,
     handle_transform_item as handle_transform_item_contract,
 };
 use crate::platform::PlatformSessionVerifier;
@@ -16,7 +18,7 @@ use axum::{
         header::{CACHE_CONTROL, CONTENT_TYPE, COOKIE, ORIGIN},
     },
     response::{IntoResponse, Response},
-    routing::{get, patch, post, put},
+    routing::{delete, get, patch, post, put},
 };
 use serde::Serialize;
 use std::sync::Arc;
@@ -62,6 +64,14 @@ where
         .route(
             "/api/v1/restaurant/floor-tiles",
             put(paint_floor_tile::<V, S>),
+        )
+        .route(
+            "/api/v1/restaurant/wallpapers",
+            put(apply_wallpaper::<V, S>),
+        )
+        .route(
+            "/api/v1/restaurant/wallpapers/{rotation}",
+            delete(remove_wallpaper::<V, S>),
         )
         .route(
             "/api/v1/restaurant/placements/{instance_id}",
@@ -155,6 +165,70 @@ where
             mutation_id,
         },
         &body,
+    ) {
+        Ok(response) => success_response(StatusCode::OK, response),
+        Err(error) => error_response(error),
+    }
+}
+
+async fn apply_wallpaper<V, S>(
+    State(state): State<AppState<V, S>>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Response
+where
+    V: PlatformSessionVerifier + Send + Sync + 'static,
+    S: ProductStateStore + 'static,
+{
+    if let Err(error) = validate_request_security(&headers, &state.expected_origin, true) {
+        return error_response(error);
+    }
+
+    let session_token = match product_session_token(&headers) {
+        Ok(token) => token,
+        Err(error) => return error_response(error),
+    };
+    let mutation_id = header_value(&headers, &IDEMPOTENCY_KEY);
+
+    match handle_apply_wallpaper_contract(
+        state.service.as_ref(),
+        ProductHttpContext {
+            session_token: Some(session_token),
+            mutation_id,
+        },
+        &body,
+    ) {
+        Ok(response) => success_response(StatusCode::OK, response),
+        Err(error) => error_response(error),
+    }
+}
+
+async fn remove_wallpaper<V, S>(
+    State(state): State<AppState<V, S>>,
+    Path(rotation): Path<u8>,
+    headers: HeaderMap,
+) -> Response
+where
+    V: PlatformSessionVerifier + Send + Sync + 'static,
+    S: ProductStateStore + 'static,
+{
+    if let Err(error) = validate_request_security(&headers, &state.expected_origin, true) {
+        return error_response(error);
+    }
+
+    let session_token = match product_session_token(&headers) {
+        Ok(token) => token,
+        Err(error) => return error_response(error),
+    };
+    let mutation_id = header_value(&headers, &IDEMPOTENCY_KEY);
+
+    match handle_remove_wallpaper_contract(
+        state.service.as_ref(),
+        ProductHttpContext {
+            session_token: Some(session_token),
+            mutation_id,
+        },
+        rotation,
     ) {
         Ok(response) => success_response(StatusCode::OK, response),
         Err(error) => error_response(error),
