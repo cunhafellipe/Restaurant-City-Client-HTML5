@@ -114,6 +114,15 @@ enum ServiceMutationOperation {
         event: ServiceLoopEvent,
         effective_at_ms: Option<u64>,
     },
+    StartCustomerChairPath {
+        service_id: u64,
+        start_tile: TilePoint,
+        effective_at_ms: u64,
+    },
+    CompleteCustomerChairPath {
+        service_id: u64,
+        effective_at_ms: u64,
+    },
     Complete {
         service_id: u64,
     },
@@ -311,6 +320,16 @@ enum PersistedServiceMutationOperation {
         event: ServiceLoopEvent,
         #[serde(default)]
         effective_at_ms: Option<u64>,
+    },
+    StartCustomerChairPath {
+        service_id: u64,
+        start_tile_x: i32,
+        start_tile_y: i32,
+        effective_at_ms: u64,
+    },
+    CompleteCustomerChairPath {
+        service_id: u64,
+        effective_at_ms: u64,
     },
     Complete {
         service_id: u64,
@@ -597,6 +616,23 @@ impl From<ServiceMutationOperation> for PersistedServiceMutationOperation {
                 event,
                 effective_at_ms,
             },
+            ServiceMutationOperation::StartCustomerChairPath {
+                service_id,
+                start_tile,
+                effective_at_ms,
+            } => Self::StartCustomerChairPath {
+                service_id,
+                start_tile_x: start_tile.x,
+                start_tile_y: start_tile.y,
+                effective_at_ms,
+            },
+            ServiceMutationOperation::CompleteCustomerChairPath {
+                service_id,
+                effective_at_ms,
+            } => Self::CompleteCustomerChairPath {
+                service_id,
+                effective_at_ms,
+            },
             ServiceMutationOperation::Complete { service_id } => Self::Complete { service_id },
         }
     }
@@ -628,6 +664,26 @@ impl From<PersistedServiceMutationOperation> for ServiceMutationOperation {
             } => Self::Transition {
                 service_id,
                 event,
+                effective_at_ms,
+            },
+            PersistedServiceMutationOperation::StartCustomerChairPath {
+                service_id,
+                start_tile_x,
+                start_tile_y,
+                effective_at_ms,
+            } => Self::StartCustomerChairPath {
+                service_id,
+                start_tile: TilePoint {
+                    x: start_tile_x,
+                    y: start_tile_y,
+                },
+                effective_at_ms,
+            },
+            PersistedServiceMutationOperation::CompleteCustomerChairPath {
+                service_id,
+                effective_at_ms,
+            } => Self::CompleteCustomerChairPath {
+                service_id,
                 effective_at_ms,
             },
             PersistedServiceMutationOperation::Complete { service_id } => {
