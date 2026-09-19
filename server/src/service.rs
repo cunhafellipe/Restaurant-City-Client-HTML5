@@ -1492,6 +1492,74 @@ impl ProductAggregate {
                     }
                     replay_active_service = Some(transitioned);
                 }
+                ServiceMutationOperation::StartCustomerChairPath {
+                    service_id,
+                    start_tile,
+                    effective_at_ms,
+                } => {
+                    let current = replay_active_service.ok_or(ProductStateStoreError::Corrupt)?;
+                    if current.identity.service_id != service_id || current.active_path.is_some() {
+                        return Err(ProductStateStoreError::Corrupt);
+                    }
+                    let source_restaurant = restaurant_snapshots_by_sequence
+                        .get(&current.identity.restaurant_mutation_sequence)
+                        .ok_or(ProductStateStoreError::Corrupt)?;
+                    let layout = derive_service_layout(source_restaurant, catalog)
+                        .map_err(|_| ProductStateStoreError::Corrupt)?;
+                    let plan = plan_customer_path_to_chair(
+                        &layout,
+                        start_tile,
+                        current.identity.chair_instance_id,
+                        effective_at_ms,
+                    )
+                    .map_err(|_| ProductStateStoreError::Corrupt)?;
+                    let (walking, effect) = current
+                        .transition_at(ServiceLoopEvent::StartChairWalk, effective_at_ms)
+                        .map_err(|_| ProductStateStoreError::Corrupt)?;
+                    if effect.is_some() {
+                        return Err(ProductStateStoreError::Corrupt);
+                    }
+                    replay_active_service = Some(ActiveServiceRecord {
+                        active_path: Some(plan),
+                        ..walking
+                    });
+                }
+                ServiceMutationOperation::CompleteCustomerChairPath {
+                    service_id,
+                    effective_at_ms,
+                } => {
+                    let current = replay_active_service.ok_or(ProductStateStoreError::Corrupt)?;
+                    if current.identity.service_id != service_id {
+                        return Err(ProductStateStoreError::Corrupt);
+                    }
+                    let plan = current.active_path.ok_or(ProductStateStoreError::Corrupt)?;
+                    if plan.kind != ServicePathKind::CustomerToChair
+                        || plan.completes_at_ms != effective_at_ms
+                    {
+                        return Err(ProductStateStoreError::Corrupt);
+                    }
+                    let source_restaurant = restaurant_snapshots_by_sequence
+                        .get(&current.identity.restaurant_mutation_sequence)
+                        .ok_or(ProductStateStoreError::Corrupt)?;
+                    let layout = derive_service_layout(source_restaurant, catalog)
+                        .map_err(|_| ProductStateStoreError::Corrupt)?;
+                    validate_customer_path_to_chair_plan(
+                        &layout,
+                        current.identity.chair_instance_id,
+                        plan,
+                    )
+                    .map_err(|_| ProductStateStoreError::Corrupt)?;
+                    let (deciding, effect) = current
+                        .transition_at(ServiceLoopEvent::ReachChair, effective_at_ms)
+                        .map_err(|_| ProductStateStoreError::Corrupt)?;
+                    if effect.is_some() {
+                        return Err(ProductStateStoreError::Corrupt);
+                    }
+                    replay_active_service = Some(ActiveServiceRecord {
+                        active_path: None,
+                        ..deciding
+                    });
+                }
                 ServiceMutationOperation::Complete { service_id } => {
                     let current = replay_active_service.ok_or(ProductStateStoreError::Corrupt)?;
                     if current.identity.service_id != service_id
