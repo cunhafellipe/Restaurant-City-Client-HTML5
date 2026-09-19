@@ -2022,7 +2022,7 @@ try {
     !dividerProbeGolden ||
     dividerProbeGolden.schemaVersion !== 1 ||
     dividerProbeGolden.fixture !==
-      'canonical-wall-divider-5-items-12-frames-fail-closed' ||
+      'canonical-wall-divider-5-items-12-frames' ||
     dividerProbeGolden.canvas?.width !== dividerProbePng.width ||
     dividerProbeGolden.canvas?.height !== dividerProbePng.height ||
     dividerProbeGolden.blockSize !== 8 ||
@@ -2034,7 +2034,7 @@ try {
   }
   const dividerProbeMetadata = {
     schemaVersion: 1,
-    fixture: 'canonical-wall-divider-5-items-12-frames-fail-closed',
+    fixture: 'canonical-wall-divider-5-items-12-frames',
     state: dividerProbeState,
     screenshot: path
       .relative(REPO, DIVIDER_PROBE_SCREENSHOT)
@@ -2050,7 +2050,7 @@ try {
     `${JSON.stringify(dividerProbeMetadata, null, 2)}\n`,
   );
   console.log(
-    `DIVIDER 12-FRAME GOLDEN CANDIDATE | fixture=canonical-wall-divider-5-items-12-frames-fail-closed | pixel=${dividerProbeMetadata.pixelSha256} | png=${dividerProbeMetadata.pngSha256} | block=${dividerProbeMetadata.quantizedBlockSha256} | frames=${dividerProbeState.probe.length}`,
+    `DIVIDER 12-FRAME GOLDEN CANDIDATE | fixture=canonical-wall-divider-5-items-12-frames | pixel=${dividerProbeMetadata.pixelSha256} | png=${dividerProbeMetadata.pngSha256} | block=${dividerProbeMetadata.quantizedBlockSha256} | frames=${dividerProbeState.probe.length}`,
   );
 
   async function captureAuthoritativeDoor(
