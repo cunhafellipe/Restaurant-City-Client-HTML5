@@ -24,7 +24,10 @@ import {
   type RestaurantItemVisual,
   type RestaurantItemVisualIndex,
 } from '../../content/itemVisual';
-import { recoveredWallFloorFrameOffset } from '../../content/recoveredWallFloorGeometry';
+import {
+  recoveredDoorMaskRaster,
+  recoveredWallFloorFrameOffset,
+} from '../../content/recoveredWallFloorGeometry';
 import {
   loadGeneratedItemDatabase,
   loadRuntimeManifest,
@@ -60,6 +63,7 @@ const INITIAL_ROOM: RoomDimensions = {
 
 const ORIGIN = { x: 380, y: 105 };
 const SIMPLE_WINDOW_ITEM_ID = 3000001;
+const SIMPLE_DOOR_ITEM_ID = 3010000;
 const DEFAULT_WALL_ITEM_ID = 3090000;
 const DEFAULT_WALL_CORNER_ITEM_ID = 3090001;
 
@@ -77,6 +81,8 @@ export class RestaurantEditorScene extends Phaser.Scene {
   private committedSprites: Phaser.GameObjects.Sprite[] = [];
   private floorSprites: Phaser.GameObjects.Sprite[] = [];
   private wallSprites: Phaser.GameObjects.Sprite[] = [];
+  private doorProbeWall: Phaser.GameObjects.RenderTexture | null = null;
+  private doorProbeDoor: Phaser.GameObjects.Sprite | null = null;
   private previewSprite: Phaser.GameObjects.Sprite | null = null;
   private visualIndex: RestaurantItemVisualIndex | null = null;
   private authority!: RestaurantAuthority;
@@ -980,7 +986,125 @@ export class RestaurantEditorScene extends Phaser.Scene {
     );
 
 
+    this.drawDoorEraseProbe(wall, wallVisual);
     this.publishVisualProbeDiagnostics();
+  }
+
+  private drawDoorEraseProbe(
+    wall: RestaurantItemDefinition,
+    wallVisual: RestaurantItemVisual,
+  ): void {
+    this.doorProbeWall?.destroy();
+    this.doorProbeDoor?.destroy();
+    this.doorProbeWall = null;
+    this.doorProbeDoor = null;
+
+    if (
+      typeof window === 'undefined' ||
+      !new URLSearchParams(window.location.search).has('doorProbe')
+    ) {
+      return;
+    }
+
+    const door = this.catalogById.get(SIMPLE_DOOR_ITEM_ID);
+    if (!door?.placementFootprint) {
+      throw new Error('Recovered Simple Door geometry is unavailable');
+    }
+    const doorVisual = this.itemVisual(door);
+    const mask = recoveredDoorMaskRaster(door.id, door.className);
+    if (!doorVisual || doorVisual.frames.length !== 2 || !mask) {
+      throw new Error('Recovered Simple Door raster contract is unavailable');
+    }
+
+    const tile: TilePoint = { x: 2, y: 0 };
+    const rotation = 1;
+    const wallFrameName = frameForRestaurantItemRotation(wallVisual, rotation);
+    const wallFrame = this.textures.getFrame(wallVisual.atlasId, wallFrameName);
+    const wallOffset = recoveredWallFloorFrameOffset(
+      wall.id,
+      wall.className,
+      rotation,
+    );
+    if (!wallFrame || !wallOffset) {
+      throw new Error('Recovered Door probe wall frame/origin is unavailable');
+    }
+
+    const projected = projectTile(tile);
+    const wallX = ORIGIN.x + projected.x + wallOffset.x;
+    const wallY = ORIGIN.y + projected.y + wallOffset.y;
+    const sourceWall = this.wallSprites.find(
+      (candidate) =>
+        candidate.frame.name === wallFrameName &&
+        Math.abs(candidate.x - wallX) < 0.01 &&
+        Math.abs(candidate.y - wallY) < 0.01,
+    );
+    if (!sourceWall) {
+      throw new Error('Door probe could not resolve its derived wall segment');
+    }
+    sourceWall.setVisible(false);
+
+    const wallStamp = this.make
+      .image({
+        x: 0,
+        y: 0,
+        key: wallVisual.atlasId,
+        frame: wallFrameName,
+        add: false,
+      })
+      .setOrigin(0, 0);
+    const maskStamp = this.make
+      .image({
+        x: 0,
+        y: 0,
+        key: wallVisual.atlasId,
+        frame: mask.frame,
+        add: false,
+      })
+      .setOrigin(0, 0);
+
+    const maskX = mask.canvasOriginPx.x - wallOffset.x;
+    const maskY = mask.canvasOriginPx.y - wallOffset.y;
+    const rt = this.add
+      .renderTexture(wallX, wallY, wallFrame.width, wallFrame.height)
+      .setOrigin(0, 0)
+      .setDepth(sourceWall.depth);
+    rt.draw(wallStamp, 0, 0);
+    rt.erase(maskStamp, maskX, maskY);
+    wallStamp.destroy();
+    maskStamp.destroy();
+    this.doorProbeWall = rt;
+
+    const doorSprite = this.createItemSprite(
+      door,
+      doorVisual,
+      rotation,
+      tile,
+      1,
+    );
+    // WorldRestaurant.placeRoomItem: door rotation 1 uses
+    // getTileDrawPriority(x - 1, y + 1).
+    doorSprite.setDepth(this.itemDrawPriority({ x: tile.x - 1, y: tile.y + 1 }));
+    this.doorProbeDoor = doorSprite;
+
+    const target = globalThis as typeof globalThis & {
+      __ANEWON_RC_DOOR_PROBE__?: unknown;
+    };
+    target.__ANEWON_RC_DOOR_PROBE__ = {
+      tile,
+      rotation,
+      wallFrame: wallFrameName,
+      wallCanvas: { width: wallFrame.width, height: wallFrame.height },
+      wallWorld: { x: wallX, y: wallY, depth: sourceWall.depth },
+      maskFrame: mask.frame,
+      maskLocal: { x: maskX, y: maskY },
+      maskCanvas: mask.atlasSize,
+      doorFrame: doorSprite.frame.name,
+      doorWorld: {
+        x: doorSprite.x,
+        y: doorSprite.y,
+        depth: doorSprite.depth,
+      },
+    };
   }
 
   private publishVisualProbeDiagnostics(): void {
