@@ -1678,6 +1678,9 @@ try {
       `White Wall removal reconciliation mismatch: items=${JSON.stringify(fixtureState.items)} inventory=${JSON.stringify(fixtureState.inventory[0])}`,
     );
   }
+  const dividerInventoryAfterRemove = structuredClone(
+    fixtureState.inventory[0],
+  );
 
   fixtureState = structuredClone(floorFixtureSeed);
   await cdp.send('Page.reload', { ignoreCache: true });
@@ -2588,7 +2591,7 @@ try {
         moveTile: dividerMoveTile,
         movedStatus: dividerMovedStatus,
         removedStatus: dividerRemovedStatus,
-        finalInventory: fixtureState.inventory[0] ?? null,
+        finalInventory: dividerInventoryAfterRemove,
         passed: true,
       },
       wallpaper: {
