@@ -1,5 +1,6 @@
 use crate::http::{
     ProductHttpContext, PublicProductError, handle_load_restaurant,
+    handle_paint_floor_tile as handle_paint_floor_tile_contract,
     handle_place_item as handle_place_item_contract,
     handle_remove_item as handle_remove_item_contract,
     handle_transform_item as handle_transform_item_contract,
@@ -15,7 +16,7 @@ use axum::{
         header::{CACHE_CONTROL, CONTENT_TYPE, COOKIE, ORIGIN},
     },
     response::{IntoResponse, Response},
-    routing::{get, patch, post},
+    routing::{get, patch, post, put},
 };
 use serde::Serialize;
 use std::sync::Arc;
@@ -58,6 +59,10 @@ where
     Router::new()
         .route("/api/v1/restaurant", get(load_restaurant::<V, S>))
         .route("/api/v1/restaurant/placements", post(place_item::<V, S>))
+        .route(
+            "/api/v1/restaurant/floor-tiles",
+            put(paint_floor_tile::<V, S>),
+        )
         .route(
             "/api/v1/restaurant/placements/{instance_id}",
             patch(transform_item::<V, S>).delete(remove_item::<V, S>),
@@ -112,6 +117,38 @@ where
     let mutation_id = header_value(&headers, &IDEMPOTENCY_KEY);
 
     match handle_place_item_contract(
+        state.service.as_ref(),
+        ProductHttpContext {
+            session_token: Some(session_token),
+            mutation_id,
+        },
+        &body,
+    ) {
+        Ok(response) => success_response(StatusCode::OK, response),
+        Err(error) => error_response(error),
+    }
+}
+
+async fn paint_floor_tile<V, S>(
+    State(state): State<AppState<V, S>>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Response
+where
+    V: PlatformSessionVerifier + Send + Sync + 'static,
+    S: ProductStateStore + 'static,
+{
+    if let Err(error) = validate_request_security(&headers, &state.expected_origin, true) {
+        return error_response(error);
+    }
+
+    let session_token = match product_session_token(&headers) {
+        Ok(token) => token,
+        Err(error) => return error_response(error),
+    };
+    let mutation_id = header_value(&headers, &IDEMPOTENCY_KEY);
+
+    match handle_paint_floor_tile_contract(
         state.service.as_ref(),
         ProductHttpContext {
             session_token: Some(session_token),
