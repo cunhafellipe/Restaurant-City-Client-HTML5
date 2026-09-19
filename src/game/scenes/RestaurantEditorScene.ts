@@ -428,6 +428,14 @@ export class RestaurantEditorScene extends Phaser.Scene {
         this.rotation = 0;
       }
     }
+    if (
+      this.selectedWallpaperRotation !== null &&
+      !this.authoritativeWallpapers.some(
+        (wallpaper) => wallpaper.rotation === this.selectedWallpaperRotation,
+      )
+    ) {
+      this.selectedWallpaperRotation = null;
+    }
 
     this.drawFloor();
     this.drawDefaultWalls();
@@ -526,6 +534,8 @@ export class RestaurantEditorScene extends Phaser.Scene {
       ...state,
       selectedItem: this.selectedItemUi(),
       selectedPlacedItem: this.selectedPlacedItemUi(),
+      selectedWallpaper: this.selectedWallpaperUi(),
+      selectedWallpaper: this.selectedWallpaperUi(),
     });
   }
 
@@ -547,7 +557,10 @@ export class RestaurantEditorScene extends Phaser.Scene {
       name: item.name,
       group: item.group,
       footprint: `${item.placementFootprint.sizeX}×${item.placementFootprint.sizeY}`,
-      rotation: this.rotation,
+      rotation:
+        this.isAuthoritativeWallpaper(item) && this.hoverTile
+          ? (defaultWallAttachmentRotation(this.hoverTile, this.room) ?? 0)
+          : this.rotation,
       inventory: inventory
         ? {
             owned: inventory.owned,
@@ -581,9 +594,32 @@ export class RestaurantEditorScene extends Phaser.Scene {
     };
   }
 
+  private selectedWallpaper(): AuthoritativeWallpaper | null {
+    if (this.selectedWallpaperRotation === null) return null;
+    return (
+      this.authoritativeWallpapers.find(
+        (wallpaper) => wallpaper.rotation === this.selectedWallpaperRotation,
+      ) ?? null
+    );
+  }
+
+  private selectedWallpaperUi(): GameUiState['selectedWallpaper'] {
+    const wallpaper = this.selectedWallpaper();
+    if (!wallpaper) return undefined;
+    const definition = this.catalogById.get(wallpaper.itemId);
+    return {
+      itemId: wallpaper.itemId,
+      name: definition?.name ?? `item #${wallpaper.itemId}`,
+      rotation: wallpaper.rotation,
+      orientation: wallpaper.rotation === 0 ? 'left' : 'top',
+    };
+  }
+
   private currentDefinition(): RestaurantItemDefinition | null {
     const placed = this.selectedPlacedItem();
     if (placed) return this.catalogById.get(placed.itemId) ?? null;
+    const wallpaper = this.selectedWallpaper();
+    if (wallpaper) return this.catalogById.get(wallpaper.itemId) ?? null;
     return this.candidates[this.selectedIndex] ?? null;
   }
 
@@ -594,9 +630,11 @@ export class RestaurantEditorScene extends Phaser.Scene {
     );
     if (!placed) return;
 
+    this.selectedWallpaperRotation = null;
     this.selectedPlacedInstanceId = placed.instanceId;
     this.rotation = placed.rotation;
     this.hoverTile = { x: placed.tileX, y: placed.tileY };
+    this.drawDefaultWalls();
     this.drawCommittedPlacements();
     this.drawPreview(false);
     this.publishUi(
@@ -605,15 +643,46 @@ export class RestaurantEditorScene extends Phaser.Scene {
     );
   }
 
-  private cancelPlacedEdit(): void {
-    if (this.placementInFlight || this.selectedPlacedInstanceId === null) return;
-    const instanceId = this.selectedPlacedInstanceId;
+  private selectWallpaperSlot(rotation: 0 | 1): void {
+    if (this.placementInFlight || !this.authoritySynchronized) return;
+    const wallpaper = this.authoritativeWallpapers.find(
+      (entry) => entry.rotation === rotation,
+    );
+    if (!wallpaper) return;
+
     this.selectedPlacedInstanceId = null;
-    this.rotation = 0;
+    this.selectedWallpaperRotation = rotation;
+    this.rotation = rotation;
+    this.drawDefaultWalls();
     this.drawCommittedPlacements();
     this.drawPreview(false);
     this.publishUi(
-      `Cancelled edit for placed #${instanceId}. No authoritative state was changed.`,
+      `Editing ${rotation === 0 ? 'left' : 'top'} wallpaper slot. Remove clears the whole orientation; choosing another wallpaper replaces it.`,
+      null,
+    );
+  }
+
+  private cancelSelectedEdit(): void {
+    if (
+      this.placementInFlight ||
+      (this.selectedPlacedInstanceId === null &&
+        this.selectedWallpaperRotation === null)
+    ) {
+      return;
+    }
+
+    const placedInstanceId = this.selectedPlacedInstanceId;
+    const wallpaperRotation = this.selectedWallpaperRotation;
+    this.selectedPlacedInstanceId = null;
+    this.selectedWallpaperRotation = null;
+    this.rotation = 0;
+    this.drawDefaultWalls();
+    this.drawCommittedPlacements();
+    this.drawPreview(false);
+    this.publishUi(
+      placedInstanceId !== null
+        ? `Cancelled edit for placed #${placedInstanceId}. No authoritative state was changed.`
+        : `Cancelled ${wallpaperRotation === 0 ? 'left' : 'top'} wallpaper edit. No authoritative state was changed.`,
       this.currentValidation(),
     );
   }
