@@ -1078,6 +1078,10 @@ export class RestaurantEditorScene extends Phaser.Scene {
       layer.texture.destroy();
     }
     this.wallpaperWallLayers.clear();
+    const target = globalThis as typeof globalThis & {
+      __ANEWON_RC_WALLPAPER_DIAGNOSTICS__?: unknown;
+    };
+    target.__ANEWON_RC_WALLPAPER_DIAGNOSTICS__ = [];
   }
 
   private wallpaperForRotation(rotation: number): AuthoritativeWallpaper | null {
@@ -1141,6 +1145,9 @@ export class RestaurantEditorScene extends Phaser.Scene {
   ): {
     readonly texture: Phaser.GameObjects.RenderTexture;
     readonly sourceWall: Phaser.GameObjects.Sprite;
+    readonly wallpaperFrame: string;
+    readonly wallpaperLocal: { readonly x: number; readonly y: number };
+    readonly wallFrame: string;
   } {
     const wall = this.catalogById.get(DEFAULT_WALL_ITEM_ID);
     if (!wall?.placementFootprint) {
@@ -1195,20 +1202,42 @@ export class RestaurantEditorScene extends Phaser.Scene {
       .setOrigin(0, 0)
       .setDepth(sourceWall.depth);
     texture.draw(wallStamp, 0, 0);
+    const wallpaperLocal = {
+      x: wallpaperStamp.offset.x - wallOffset.x,
+      y: wallpaperStamp.offset.y - wallOffset.y,
+    };
     texture.draw(
       wallpaperStamp.stamp,
-      wallpaperStamp.offset.x - wallOffset.x,
-      wallpaperStamp.offset.y - wallOffset.y,
+      wallpaperLocal.x,
+      wallpaperLocal.y,
     );
 
     wallStamp.destroy();
     wallpaperStamp.stamp.destroy();
     sourceWall.setVisible(false);
-    return { texture, sourceWall };
+    return {
+      texture,
+      sourceWall,
+      wallpaperFrame: wallpaperStamp.frameName,
+      wallpaperLocal,
+      wallFrame: wallFrameName,
+    };
   }
 
   private drawAuthoritativeWallpapers(): void {
-    if (this.authoritativeWallpapers.length === 0) return;
+    const diagnostics: Array<{
+      readonly itemId: number;
+      readonly rotation: number;
+      readonly tile: TilePoint;
+      readonly wallpaperFrame: string;
+      readonly wallFrame: string;
+      readonly wallpaperLocal: { readonly x: number; readonly y: number };
+      readonly wallWorld: {
+        readonly x: number;
+        readonly y: number;
+        readonly depth: number;
+      };
+    }> = [];
 
     for (const wallpaper of this.authoritativeWallpapers) {
       const tiles: TilePoint[] = [];
@@ -1230,8 +1259,26 @@ export class RestaurantEditorScene extends Phaser.Scene {
           wallpaper,
           tile,
         });
+        diagnostics.push({
+          itemId: wallpaper.itemId,
+          rotation: wallpaper.rotation,
+          tile,
+          wallpaperFrame: composed.wallpaperFrame,
+          wallFrame: composed.wallFrame,
+          wallpaperLocal: composed.wallpaperLocal,
+          wallWorld: {
+            x: composed.texture.x,
+            y: composed.texture.y,
+            depth: composed.texture.depth,
+          },
+        });
       }
     }
+
+    const target = globalThis as typeof globalThis & {
+      __ANEWON_RC_WALLPAPER_DIAGNOSTICS__?: unknown;
+    };
+    target.__ANEWON_RC_WALLPAPER_DIAGNOSTICS__ = diagnostics;
   }
 
   private renderDoorWallComposition(
