@@ -1,0 +1,45 @@
+{
+  "schemaVersion": 1,
+  "baseline": "0.9.143a",
+  "fixture": "authoritative-service-actors-waiting-for-food-cooking",
+  "canvas": {
+    "width": 760,
+    "height": 600
+  },
+  "blockSize": 8,
+  "expectedQuantizedBlockSha256": "c228300c562553d1a30157730628b8a3e539d3d315e3cb20ed6db6aa7106e2d4",
+  "referencePixelSha256": "f812265100ef4f1f58c437b9ee724ef85656fb262bfa56b91ebdb1cd88bd3be7",
+  "referencePngSha256": "40173756da4d1a36119ae38d416c794622277430c03ca189cebc902a28b97116",
+  "referenceProductSha": "3e9a64ad630db0e493808f2070d4d8cb765d5ed0",
+  "referenceVisualRunId": 35457217777,
+  "referenceChangedPixelsVsNoActiveService": 1410,
+  "referencePerActorChangedPixels": {
+    "customer": 502,
+    "chef": 466,
+    "waiter": 442
+  },
+  "provenance": {
+    "r47RunId": 35455267290,
+    "r47ArtifactId": 10588131602,
+    "r47ArtifactSha256": "8e1be414de502b04c4c3e9898c8c1451e79f763f9a0d336bbe8e59a1c2c00102",
+    "r48RunId": 35456384651,
+    "r48ArtifactId": 10588347863,
+    "r48ArtifactSha256": "f4bfc00ebe8b02e0fc67ba419b8e4a9f35f2554194a5fe01a94256b165432ecb",
+    "r49RunId": 35457046701,
+    "r49ArtifactId": 10588553551,
+    "r49ArtifactSha256": "f6bcfb9280574eafbc1d803179ed74b29dca5755765fa9d5ed2722ec7f3e5dac",
+    "chairItemId": 3040000,
+    "chairRotation": 2,
+    "chairOverlayFrame": "indoor_asset/chair01overlay/003",
+    "customerTile": {
+      "x": 2,
+      "y": 3
+    },
+    "tableFacingTile": {
+      "x": 1,
+      "y": 3
+    },
+    "semantics": "Customer path reaches the chair tile with PathFinder stopNextToDestTile=false. sitOnChair keeps that position, sets direction from chair rotation, switches to sit animation, and adds Chair01Overlay at rotation+1."
+  },
+  "note": "Frozen physical Edge CDP/WebGL A/B proof for the first authoritative customer+chef+waiter presentation. The comparison uses the same room with active service absent versus waiting-for-food/cooking active service, and requires real framebuffer differences around every actor plus the recovered visible Chair01Overlay."
+}
