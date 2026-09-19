@@ -7,13 +7,13 @@
     "height": 600
   },
   "blockSize": 8,
-  "expectedQuantizedBlockSha256": "3ff6f0af4834e779c86d56815da02b84194899f551449ca33d3dc8895a1a1ee1",
-  "referencePixelSha256": "559f5c12e1f57ac802163e3121b237862030f1cbd5188c46d2e84be82142d99d",
-  "referencePngSha256": "2a27edb90bd95cfa3863bdeeb563c2a0e0b85e363dfac449537901f904663151",
+  "expectedQuantizedBlockSha256": "fc4e1c90af3a51d62a8485f6db68a10f6c04bf81fb702003d1bf99efb48152d4",
+  "referencePixelSha256": "ebd4577bee9e310dc5a769f0ad8b28dd778aadbfb3a8e90e35fe9c21653e864d",
+  "referencePngSha256": "cb4b1a5c290b9d2373232d169fcb3e0600d8ba63157789c747a5b581722f1278",
   "expectedHistoricalCurHeightPx": 25,
-  "referenceProductSha": "61c888f219c838fdf747800a67a4ee97055d30ad",
+  "referenceProductSha": "8c06086a5b9a525879f5fa363bb60296b61abf38",
   "deterministicValidationRuns": [
-    35396953377
+    35418803108
   ],
-  "note": "Inspected ANEWON self-hosted Edge CDP WebGL composite. Table #3030000 is the recovered 1x1 surface; Violin Case #3020179 renders above it using historical int curHeight=25. Gate compares the quantized 8x8 world signature."
+  "note": "Inspected ANEWON self-hosted Edge CDP WebGL composite. Table #3030000 remains the recovered 1x1 surface; Violin Case #3020179 renders above it using historical int curHeight=25, with recovered default walls now present. Gate compares the quantized 8x8 signature."
 }
