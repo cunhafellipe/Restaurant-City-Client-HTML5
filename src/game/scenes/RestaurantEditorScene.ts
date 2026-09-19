@@ -721,6 +721,8 @@ export class RestaurantEditorScene extends Phaser.Scene {
   }
 
   private currentValidation(): EditorPlacementValidation | null {
+    if (this.selectedWallpaperRotation !== null) return null;
+
     const shape = this.currentShape();
     const tile = this.hoverTile;
     const item = this.currentDefinition();
@@ -728,6 +730,26 @@ export class RestaurantEditorScene extends Phaser.Scene {
 
     if (this.authorityLoaded && !this.authoritySynchronized) {
       return { ok: false, reason: 'authority-desynced' };
+    }
+
+    if (this.isAuthoritativeWallpaper(item)) {
+      const targetRotation = defaultWallAttachmentRotation(tile, this.room);
+      if (targetRotation !== 0 && targetRotation !== 1) {
+        return { ok: false, reason: 'wall-required' };
+      }
+
+      const current = this.authoritativeWallpapers.find(
+        (wallpaper) => wallpaper.rotation === targetRotation,
+      );
+      if (
+        this.authorityLoaded &&
+        current?.itemId !== item.id &&
+        this.availableFor(item.id) <= 0
+      ) {
+        return { ok: false, reason: 'unavailable' };
+      }
+
+      return { ok: true, roomIndex: 0 };
     }
 
     const structural = validateStructuralPlacement(shape, tile, this.room);
