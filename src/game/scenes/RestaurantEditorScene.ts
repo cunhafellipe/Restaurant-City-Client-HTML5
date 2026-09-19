@@ -55,7 +55,9 @@ import {
   type AuthoritativePlacedItem,
   type AuthoritativeWallpaper,
   type RestaurantAuthority,
+  type RestaurantAuthoritativeSnapshot,
   type RestaurantLayout,
+  type RestaurantServiceTopology,
 } from '../../net/restaurantAuthority';
 import {
   gameUiBridge,
@@ -137,6 +139,7 @@ export class RestaurantEditorScene extends Phaser.Scene {
   private authoritativeItems: readonly AuthoritativePlacedItem[] = [];
   private authoritativeFloorTiles: readonly AuthoritativeFloorTile[] = [];
   private authoritativeWallpapers: readonly AuthoritativeWallpaper[] = [];
+  private serviceTopology: RestaurantServiceTopology | null = null;
 
   private room: RoomDimensions = INITIAL_ROOM;
   private selectedIndex = 0;
@@ -322,8 +325,9 @@ export class RestaurantEditorScene extends Phaser.Scene {
         },
       });
 
-      const layout = await this.authority.loadRestaurant();
-      this.applyAuthoritativeLayout(layout);
+      const snapshot = await this.authority.loadRestaurantSnapshot();
+      const layout = snapshot.layout;
+      this.applyAuthoritativeSnapshot(snapshot);
 
       const firstAvailable = this.candidates.findIndex(
         (item) => this.availableFor(item.id) > 0,
@@ -346,6 +350,45 @@ export class RestaurantEditorScene extends Phaser.Scene {
     } catch (error) {
       this.publishInitializationError(error);
     }
+  }
+
+  private applyAuthoritativeSnapshot(
+    snapshot: RestaurantAuthoritativeSnapshot,
+  ): void {
+    this.serviceTopology = snapshot.topology;
+    this.applyAuthoritativeLayout(snapshot.layout);
+    this.publishServiceTopologyDiagnostics();
+  }
+
+  private publishServiceTopologyDiagnostics(): void {
+    const topology = this.serviceTopology;
+    if (!topology) return;
+
+    const target = globalThis as typeof globalThis & {
+      __ANEWON_RC_SERVICE_TOPOLOGY__?: unknown;
+    };
+    target.__ANEWON_RC_SERVICE_TOPOLOGY__ = {
+      sourceItems: topology.source.items.map((item) => ({
+        instanceId: item.instanceId,
+        itemId: item.itemId,
+        tileX: item.tileX,
+        tileY: item.tileY,
+        rotation: item.rotation,
+        roomIndex: item.roomIndex,
+      })),
+      cells: topology.cells.map((cell) => ({
+        tileX: cell.tileX,
+        tileY: cell.tileY,
+        wall: cell.wall,
+        itemCount: cell.itemCount,
+        hasDoor: cell.hasDoor,
+        walkable: cell.walkable,
+      })),
+      chairs: topology.chairs.map((chair) => ({ ...chair })),
+      tables: topology.tables.map((table) => ({ ...table })),
+      kitchens: topology.kitchens.map((kitchen) => ({ ...kitchen })),
+      drinks: topology.drinks.map((drink) => ({ ...drink })),
+    };
   }
 
   private applyAuthoritativeLayout(layout: RestaurantLayout): void {
@@ -974,7 +1017,8 @@ export class RestaurantEditorScene extends Phaser.Scene {
         },
         mutationId,
       );
-      const layout = await this.authority.loadRestaurant();
+      const snapshot = await this.authority.loadRestaurantSnapshot();
+      const layout = snapshot.layout;
       const persisted = layout.wallpapers.some(
         (wallpaper) =>
           wallpaper.itemId === commit.wallpaper.itemId &&
@@ -987,7 +1031,7 @@ export class RestaurantEditorScene extends Phaser.Scene {
       }
 
       this.rotation = commit.wallpaper.rotation;
-      this.applyAuthoritativeLayout(layout);
+      this.applyAuthoritativeSnapshot(snapshot);
       this.drawPreview(false);
       this.publishUi(
         commit.outcome === 'duplicate'
@@ -1048,8 +1092,8 @@ export class RestaurantEditorScene extends Phaser.Scene {
         mutationId,
       );
 
-      const layout = await this.authority.loadRestaurant();
-      this.applyAuthoritativeLayout(layout);
+      const snapshot = await this.authority.loadRestaurantSnapshot();
+      const layout = snapshot.layout;
 
       const persisted = layout.items.some(
         (placed) =>
@@ -1066,6 +1110,7 @@ export class RestaurantEditorScene extends Phaser.Scene {
         );
       }
 
+      this.applyAuthoritativeSnapshot(snapshot);
       this.drawPreview(false);
       this.publishUi(
         commit.outcome === 'duplicate'
@@ -1139,8 +1184,8 @@ export class RestaurantEditorScene extends Phaser.Scene {
         mutationId,
       );
 
-      const layout = await this.authority.loadRestaurant();
-      this.applyAuthoritativeLayout(layout);
+      const snapshot = await this.authority.loadRestaurantSnapshot();
+      const layout = snapshot.layout;
 
       const persisted = layout.items.some(
         (placed) =>
@@ -1157,6 +1202,7 @@ export class RestaurantEditorScene extends Phaser.Scene {
         );
       }
 
+      this.applyAuthoritativeSnapshot(snapshot);
       this.selectedPlacedInstanceId = commit.item.instanceId;
       this.hoverTile = { x: commit.item.tileX, y: commit.item.tileY };
       this.rotation = commit.item.rotation;
@@ -1205,7 +1251,8 @@ export class RestaurantEditorScene extends Phaser.Scene {
         selected.rotation,
         mutationId,
       );
-      const layout = await this.authority.loadRestaurant();
+      const snapshot = await this.authority.loadRestaurantSnapshot();
+      const layout = snapshot.layout;
       if (
         layout.wallpapers.some(
           (wallpaper) => wallpaper.rotation === commit.wallpaper.rotation,
@@ -1218,7 +1265,7 @@ export class RestaurantEditorScene extends Phaser.Scene {
 
       this.selectedWallpaperRotation = null;
       this.rotation = 0;
-      this.applyAuthoritativeLayout(layout);
+      this.applyAuthoritativeSnapshot(snapshot);
       this.drawPreview(false);
       this.publishUi(
         commit.outcome === 'duplicate'
@@ -1255,7 +1302,8 @@ export class RestaurantEditorScene extends Phaser.Scene {
         selected.instanceId,
         mutationId,
       );
-      const layout = await this.authority.loadRestaurant();
+      const snapshot = await this.authority.loadRestaurantSnapshot();
+      const layout = snapshot.layout;
 
       if (
         layout.items.some(
@@ -1269,7 +1317,7 @@ export class RestaurantEditorScene extends Phaser.Scene {
 
       this.selectedPlacedInstanceId = null;
       this.rotation = 0;
-      this.applyAuthoritativeLayout(layout);
+      this.applyAuthoritativeSnapshot(snapshot);
       this.drawPreview(false);
       this.publishUi(
         commit.outcome === 'duplicate'
@@ -1313,8 +1361,9 @@ export class RestaurantEditorScene extends Phaser.Scene {
     );
 
     try {
-      const layout = await this.authority.loadRestaurant();
-      this.applyAuthoritativeLayout(layout);
+      const snapshot = await this.authority.loadRestaurantSnapshot();
+      const layout = snapshot.layout;
+      this.applyAuthoritativeSnapshot(snapshot);
       this.drawPreview(false);
       this.publishUi(
         `Authoritative state resynchronized: ${layout.items.length} object(s), ${layout.floorTiles.length} floor tile(s), ${layout.wallpapers.length} wallpaper slot(s).`,
