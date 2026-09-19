@@ -322,6 +322,7 @@ mod tests {
                     kitchen_instance_id: 3,
                     waiter_employee_id: 201,
                     waiter_tile: TilePoint { x: 4, y: 4 },
+                    customer_entrance_tile: None,
                 },
             )
             .unwrap();
