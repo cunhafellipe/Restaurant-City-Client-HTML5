@@ -481,8 +481,7 @@ impl ProductAggregate {
             next_instance_id,
             items: items.into_iter().map(PlacedItem::from).collect(),
         };
-        let expected_floor_tiles =
-            Self::decode_persisted_floor_tiles(catalog, room, floor_tiles)?;
+        let expected_floor_tiles = Self::decode_persisted_floor_tiles(catalog, room, floor_tiles)?;
         let mut restaurant_mutations = BTreeMap::new();
         let mut ordered = Vec::new();
         let mut seen_sequences = BTreeMap::<u64, ()>::new();
@@ -1240,8 +1239,12 @@ where
 
         for _ in 0..MAX_STORE_RETRIES {
             let (expected_revision, mut state) = self.load_or_initialize(session.subject)?;
-            let outcome =
-                state.paint_owned_floor_tile(session, &self.catalog, mutation_id.clone(), intent)?;
+            let outcome = state.paint_owned_floor_tile(
+                session,
+                &self.catalog,
+                mutation_id.clone(),
+                intent,
+            )?;
 
             if matches!(outcome, FloorTileMutationOutcome::Duplicate(_)) {
                 return Ok(outcome);
