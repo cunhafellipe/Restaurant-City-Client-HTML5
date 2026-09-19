@@ -24,6 +24,7 @@ import {
   type RestaurantItemVisual,
   type RestaurantItemVisualIndex,
 } from '../../content/itemVisual';
+import { recoveredWallFloorFrameOffset } from '../../content/recoveredWallFloorGeometry';
 import {
   loadGeneratedItemDatabase,
   loadRuntimeManifest,
@@ -1256,11 +1257,17 @@ export class RestaurantEditorScene extends Phaser.Scene {
     }
 
     const footprint = rotateFootprint(definition.placementFootprint, rotation);
-    const offset = historicalRoomItemFrameOffset(
-      footprint,
-      atlasFrame.width,
-      atlasFrame.height,
-    );
+    const offset =
+      recoveredWallFloorFrameOffset(
+        definition.id,
+        definition.className,
+        rotation,
+      ) ??
+      historicalRoomItemFrameOffset(
+        footprint,
+        atlasFrame.width,
+        atlasFrame.height,
+      );
     const projected = projectTile(tile);
 
     return this.add
