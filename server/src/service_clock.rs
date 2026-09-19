@@ -80,6 +80,18 @@ fn deadline_at(
         .transpose()
 }
 
+pub fn anchor_service_deadlines(
+    state: ServiceLoopState,
+    effective_at_ms: u64,
+) -> Result<ServiceDeadlines, ServiceTimingError> {
+    let deadlines = ServiceDeadlines {
+        customer_deadline_at_ms: deadline_at(effective_at_ms, state.customer_timer_ms)?,
+        order_deadline_at_ms: deadline_at(effective_at_ms, state.order_timer_ms)?,
+    };
+    validate_service_deadlines(state, deadlines)?;
+    Ok(deadlines)
+}
+
 pub fn validate_service_deadlines(
     state: ServiceLoopState,
     deadlines: ServiceDeadlines,
@@ -279,6 +291,23 @@ mod tests {
         assert_eq!(next.effect, None);
         *state = next.state;
         *deadlines = next.deadlines;
+    }
+
+    #[test]
+    fn legacy_timer_state_can_be_anchored_only_from_an_explicit_server_time() {
+        let state = ServiceLoopState {
+            customer: CustomerServiceState::WaitingForFood,
+            order: OrderServiceState::Cooking,
+            customer_timer_ms: Some(120_000),
+            order_timer_ms: Some(24_000),
+        };
+        assert_eq!(
+            anchor_service_deadlines(state, 1_000).unwrap(),
+            ServiceDeadlines {
+                customer_deadline_at_ms: Some(121_000),
+                order_deadline_at_ms: Some(25_000),
+            }
+        );
     }
 
     #[test]
