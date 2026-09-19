@@ -1633,12 +1633,18 @@ mod tests {
             .as_object_mut()
             .unwrap()
             .remove("floor_tiles");
-        value.as_object_mut().unwrap().remove("next_floor_mutation_sequence");
+        value
+            .as_object_mut()
+            .unwrap()
+            .remove("next_floor_mutation_sequence");
         value.as_object_mut().unwrap().remove("floor_mutations");
         let legacy_v2 = serde_json::to_vec(&value).unwrap();
 
         let restored = ProductAggregate::decode_persisted(&catalog, &legacy_v2).unwrap();
-        assert_eq!(restored.restaurant.snapshot(), aggregate.restaurant.snapshot());
+        assert_eq!(
+            restored.restaurant.snapshot(),
+            aggregate.restaurant.snapshot()
+        );
         assert!(restored.floor_tiles.is_empty());
         assert!(restored.floor_mutations.is_empty());
         assert_eq!(restored.next_floor_mutation_sequence, 1);
@@ -1703,8 +1709,16 @@ mod tests {
         let snapshot = service.load_restaurant("valid-product-session").unwrap();
         assert_eq!(snapshot.floor_tiles.len(), 1);
         assert_eq!(snapshot.floor_tiles[0].item_id, 31);
-        let a = snapshot.inventory.iter().find(|entry| entry.item_id == 30).unwrap();
-        let b = snapshot.inventory.iter().find(|entry| entry.item_id == 31).unwrap();
+        let a = snapshot
+            .inventory
+            .iter()
+            .find(|entry| entry.item_id == 30)
+            .unwrap();
+        let b = snapshot
+            .inventory
+            .iter()
+            .find(|entry| entry.item_id == 31)
+            .unwrap();
         assert_eq!((a.placed, a.available), (0, 1));
         assert_eq!((b.placed, b.available), (1, 0));
     }
