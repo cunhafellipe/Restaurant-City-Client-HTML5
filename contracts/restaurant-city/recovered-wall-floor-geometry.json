@@ -1,0 +1,122 @@
+{
+  "schemaVersion": 1,
+  "baseline": "0.9.143a",
+  "source": {
+    "canonicalArchiveSha256": "4493be9bc4c2f87ef80ca7afa5321e12bb94a7ec6ed2f0a673b4d48b19170ef4",
+    "canonicalActionScriptCommit": "d552cfa4767fe4fb5b7899493c30bfb375afc2c1"
+  },
+  "evidence": {
+    "r25": {
+      "runId": 35398112287,
+      "artifactId": 10570215657,
+      "artifactSha256": "260782560cac9da62a89b4577af07c2662e42321a164c23ff51e7ffd3e606ef0",
+      "conclusion": "WALL_FLOOR_SENTINEL_TIMELINES_RECOVERED"
+    }
+  },
+  "historicalSemantics": {
+    "floorTiles": {
+      "persistedAs": "Floor.tiles[tileIndex] per floorIndex/roomIndex",
+      "tileIndex": "y * 20 + x",
+      "borderRule": "x != 0 && y != 0",
+      "objectMap": false,
+      "replacementReturnsPreviousTileToInventory": true,
+      "savePath": "saveRestaurantFloor/saveFloors"
+    },
+    "wallDecoration": {
+      "editorTargeting": "hit-test real wall, copy wall tile and rotation",
+      "requiresWallMap": true,
+      "usesEraseMask": true
+    },
+    "wallpaper": {
+      "objectMap": false,
+      "appliesToMatchingWallRotation": true
+    }
+  },
+  "classes": {
+    "Wall2": {
+      "itemIds": [
+        3090000
+      ],
+      "domain": "wallItem",
+      "spriteId": 737,
+      "rotationCount": 2,
+      "footprint": {
+        "sizeX": 1,
+        "sizeY": 1
+      },
+      "itemHeightTwips": 2020,
+      "serverCatalogEnabled": false
+    },
+    "WallCorner": {
+      "itemIds": [
+        3090001
+      ],
+      "domain": "wallItem",
+      "spriteId": 734,
+      "rotationCount": 1,
+      "footprint": {
+        "sizeX": 1,
+        "sizeY": 1
+      },
+      "itemHeightTwips": 1690,
+      "serverCatalogEnabled": false
+    },
+    "Wall1": {
+      "itemIds": [
+        3060000
+      ],
+      "domain": "wallpaperItem",
+      "spriteId": 729,
+      "rotationCount": 2,
+      "footprint": {
+        "sizeX": 1,
+        "sizeY": 1
+      },
+      "itemHeightTwips": 1934,
+      "serverCatalogEnabled": false
+    },
+    "FloorTile": {
+      "itemIds": [
+        3050000
+      ],
+      "domain": "floorTileItem",
+      "spriteId": 829,
+      "rotationCount": 1,
+      "footprint": {
+        "sizeX": 1,
+        "sizeY": 1
+      },
+      "itemHeightTwips": -40,
+      "serverCatalogEnabled": true
+    },
+    "WindowInside": {
+      "itemIds": [
+        3000001
+      ],
+      "domain": "wallDecorationItem",
+      "spriteId": 354,
+      "rotationCount": 2,
+      "footprint": null,
+      "itemHeightTwips": null,
+      "serverCatalogEnabled": false,
+      "status": "R26 recursive bounds pending"
+    },
+    "Door": {
+      "itemIds": [
+        3010000
+      ],
+      "domain": "doorItem/wallDecorationItem",
+      "spriteId": 1396,
+      "rotationCount": 2,
+      "footprint": null,
+      "itemHeightTwips": null,
+      "serverCatalogEnabled": false,
+      "namedInstances": [
+        "mc_mask",
+        "mc_content"
+      ],
+      "status": "R26 recursive bounds pending"
+    }
+  },
+  "releasePolicy": "Only FloorTile #3050000 may enter the trusted server catalog from R25. Wall items, decorations, wallpapers and doors remain fail-closed until their wallMap/attachment/mask authority and recursive geometry are proven."
+}
