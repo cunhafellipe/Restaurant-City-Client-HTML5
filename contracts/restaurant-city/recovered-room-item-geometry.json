@@ -42,6 +42,12 @@
       "artifactId": 10579117598,
       "artifactSha256": "43b1f64c567d5859d547c80c2e05a21f7d062e477d40138fa2d0a8e5b7ff8991",
       "conclusion": "ALL_WALL_DIVIDER_ATLAS_ORIGINS_RECOVERED"
+    },
+    "dividerPhysicalGolden": {
+      "runId": 35426037459,
+      "productSha": "fe11d18b01701f18a24c291bd4c7a5c1b1fb594b",
+      "quantizedBlockSha256": "34a15ba2363b951f7a4edc026e7653f8b6ccde761e8e15f6af8133fdf8b78e73",
+      "conclusion": "DIVIDER_5_ITEMS_12_FRAMES_FROZEN"
     }
   },
   "constructor": {
@@ -146,8 +152,8 @@
           }
         }
       ],
-      "placementFootprintEnabled": false,
-      "note": "R36 proves this is an ordinary interior decor item tagged wallDivider, not wallItem. Kept fail-closed until the physical 12-frame browser golden is frozen."
+      "placementFootprintEnabled": true,
+      "note": "R36 proves this is an ordinary interior decor item tagged wallDivider, not wallItem. R37/R38 recover exact constructor geometry and frame origins; physical 12-frame Edge golden is frozen, so ordinary placement is enabled."
     },
     "WhiteWallCorner": {
       "itemIds": [
@@ -200,8 +206,8 @@
           }
         }
       ],
-      "placementFootprintEnabled": false,
-      "note": "R36 proves this is an ordinary interior decor item tagged wallDivider, not wallItem. Kept fail-closed until the physical 12-frame browser golden is frozen."
+      "placementFootprintEnabled": true,
+      "note": "R36 proves this is an ordinary interior decor item tagged wallDivider, not wallItem. R37/R38 recover exact constructor geometry and frame origins; physical 12-frame Edge golden is frozen, so ordinary placement is enabled."
     },
     "WhiteWallCross": {
       "itemIds": [
@@ -230,8 +236,8 @@
           }
         }
       ],
-      "placementFootprintEnabled": false,
-      "note": "R36 proves this is an ordinary interior decor item tagged wallDivider, not wallItem. Kept fail-closed until the physical 12-frame browser golden is frozen."
+      "placementFootprintEnabled": true,
+      "note": "R36 proves this is an ordinary interior decor item tagged wallDivider, not wallItem. R37/R38 recover exact constructor geometry and frame origins; physical 12-frame Edge golden is frozen, so ordinary placement is enabled."
     },
     "WhiteWallT": {
       "itemIds": [
@@ -284,8 +290,8 @@
           }
         }
       ],
-      "placementFootprintEnabled": false,
-      "note": "R36 proves this is an ordinary interior decor item tagged wallDivider, not wallItem. Kept fail-closed until the physical 12-frame browser golden is frozen."
+      "placementFootprintEnabled": true,
+      "note": "R36 proves this is an ordinary interior decor item tagged wallDivider, not wallItem. R37/R38 recover exact constructor geometry and frame origins; physical 12-frame Edge golden is frozen, so ordinary placement is enabled."
     },
     "JapaneseLamp": {
       "itemIds": [
@@ -314,8 +320,8 @@
           }
         }
       ],
-      "placementFootprintEnabled": false,
-      "note": "R36 proves this is an ordinary interior decor item tagged wallDivider, not wallItem. Kept fail-closed until the physical 12-frame browser golden is frozen."
+      "placementFootprintEnabled": true,
+      "note": "R36 proves this is an ordinary interior decor item tagged wallDivider, not wallItem. R37/R38 recover exact constructor geometry and frame origins; physical 12-frame Edge golden is frozen, so ordinary placement is enabled."
     }
   },
   "composites": {
@@ -350,5 +356,5 @@
       ]
     }
   },
-  "releasePolicy": "Recovered ordinary-item geometry is promoted only after source-grounded constructor geometry and physical browser validation. The five canonical wallDivider items are proven ordinary interior decor (not wallItem); R36/R37/R38 evidence is present but placement stays fail-closed until their 12-frame golden is frozen; all other implicit-footprint surfaces remain fail-closed."
+  "releasePolicy": "Recovered ordinary-item geometry is promoted only after source-grounded constructor geometry and physical browser validation. The five canonical wallDivider items are proven ordinary interior decor (not wallItem), have exact R36/R37/R38 geometry and a frozen 12-frame Edge golden, and are enabled through the existing ordinary-item authority path; all other implicit-footprint surfaces remain fail-closed."
 }
