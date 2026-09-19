@@ -22,10 +22,7 @@ impl ServiceTopologyGrid {
     pub fn new(room: RoomDimensions) -> Self {
         Self {
             room,
-            cells: vec![
-                TopologyCell::default();
-                (MAX_NUM_TILES_X * MAX_NUM_TILES_Y) as usize
-            ],
+            cells: vec![TopologyCell::default(); (MAX_NUM_TILES_X * MAX_NUM_TILES_Y) as usize],
         }
     }
 
@@ -37,11 +34,7 @@ impl ServiceTopologyGrid {
         self.index(tile).map(|index| self.cells[index])
     }
 
-    pub fn set_cell(
-        &mut self,
-        tile: TilePoint,
-        cell: TopologyCell,
-    ) -> Result<(), TopologyError> {
+    pub fn set_cell(&mut self, tile: TilePoint, cell: TopologyCell) -> Result<(), TopologyError> {
         let Some(index) = self.index(tile) else {
             return Err(TopologyError::GridCoordinateOutOfRange);
         };
@@ -104,11 +97,7 @@ impl ServiceTopologyGrid {
     }
 
     fn index(&self, tile: TilePoint) -> Option<usize> {
-        if tile.x < 0
-            || tile.y < 0
-            || tile.x >= MAX_NUM_TILES_X
-            || tile.y >= MAX_NUM_TILES_Y
-        {
+        if tile.x < 0 || tile.y < 0 || tile.x >= MAX_NUM_TILES_X || tile.y >= MAX_NUM_TILES_Y {
             return None;
         }
         Some((tile.y * MAX_NUM_TILES_X + tile.x) as usize)
@@ -122,7 +111,6 @@ struct PathNode {
     g: i32,
     f: i32,
     open: bool,
-    closed: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -150,7 +138,7 @@ pub fn historical_path(
     destination: TilePoint,
     stop_next_to_destination: bool,
 ) -> Option<HistoricalPath> {
-    if !grid.index(start).is_some() || !grid.index(destination).is_some() {
+    if grid.index(start).is_none() || grid.index(destination).is_none() {
         return None;
     }
 
@@ -165,7 +153,6 @@ pub fn historical_path(
         g: 0,
         f: 0,
         open: true,
-        closed: false,
     });
     node_index[grid.index(start)?] = Some(start_index);
     open_list.push(start_index);
@@ -187,7 +174,6 @@ pub fn historical_path(
         }
 
         nodes[current_index].open = false;
-        nodes[current_index].closed = true;
         open_list.remove(0);
 
         let x_min = current.tile.x - 1;
@@ -211,20 +197,19 @@ pub fn historical_path(
                 let valid = if next == destination && stop_next_to_destination {
                     true
                 } else {
-                    grid.is_walkable_from(
-                        current.tile,
-                        next,
-                        next == destination,
-                        false,
-                    )
+                    grid.is_walkable_from(current.tile, next, next == destination, false)
                 };
                 if !valid {
                     continue;
                 }
 
                 let diagonal = x != current.tile.x && y != current.tile.y;
-                let new_g =
-                    current.g + if diagonal { DIAGONAL_SCORE } else { STRAIGHT_SCORE };
+                let new_g = current.g
+                    + if diagonal {
+                        DIAGONAL_SCORE
+                    } else {
+                        STRAIGHT_SCORE
+                    };
 
                 match node_index[next_grid_index] {
                     None => {
@@ -406,15 +391,16 @@ pub fn calculate_food_service_topology(
             let kitchen_reachable =
                 historical_path(grid, waiter.tile, kitchen.tile, true).is_some();
             if kitchen_reachable
-                && !waiter_kitchens[waiter_index].1.contains(&kitchen.instance_id)
+                && !waiter_kitchens[waiter_index]
+                    .1
+                    .contains(&kitchen.instance_id)
             {
                 waiter_kitchens[waiter_index].1.push(kitchen.instance_id);
             }
 
             for chair in chairs {
                 let chair_reachable =
-                    path_to_customer_chair(grid, waiter.tile, chair.tile, chair.rotation)
-                        .is_some();
+                    path_to_customer_chair(grid, waiter.tile, chair.tile, chair.rotation).is_some();
                 if !chair_reachable {
                     continue;
                 }
@@ -598,8 +584,7 @@ mod tests {
         )
         .unwrap();
 
-        let path =
-            path_to_customer_chair(&grid, TilePoint { x: 2, y: 5 }, chair, 0).unwrap();
+        let path = path_to_customer_chair(&grid, TilePoint { x: 2, y: 5 }, chair, 0).unwrap();
         assert_eq!(path.tiles.last().copied(), Some(facing));
 
         // stopNextToDestTile can enter a blocked target from any reachable
@@ -625,8 +610,7 @@ mod tests {
             .unwrap();
         }
 
-        let fallback =
-            path_to_customer_chair(&grid, TilePoint { x: 2, y: 5 }, chair, 0).unwrap();
+        let fallback = path_to_customer_chair(&grid, TilePoint { x: 2, y: 5 }, chair, 0).unwrap();
         assert_eq!(fallback.tiles.last().copied(), Some(chair));
     }
 
@@ -689,13 +673,7 @@ mod tests {
             .unwrap();
         }
 
-        let open = calculate_food_service_topology(
-            &grid,
-            &[chair],
-            &[kitchen],
-            &[chef],
-            &[waiter],
-        );
+        let open = calculate_food_service_topology(&grid, &[chair], &[kitchen], &[chef], &[waiter]);
         assert_eq!(open.chair_food_eligible, vec![10]);
         assert_eq!(open.waiter_kitchens, vec![(40, vec![20])]);
         assert_eq!(open.waiter_chairs, vec![(40, vec![10])]);
@@ -714,13 +692,8 @@ mod tests {
             .unwrap();
         }
 
-        let blocked = calculate_food_service_topology(
-            &grid,
-            &[chair],
-            &[kitchen],
-            &[chef],
-            &[waiter],
-        );
+        let blocked =
+            calculate_food_service_topology(&grid, &[chair], &[kitchen], &[chef], &[waiter]);
         assert!(blocked.chair_food_eligible.is_empty());
         assert_eq!(blocked.waiter_chairs, vec![(40, vec![10])]);
         assert_eq!(blocked.waiter_kitchens, vec![(40, vec![])]);
