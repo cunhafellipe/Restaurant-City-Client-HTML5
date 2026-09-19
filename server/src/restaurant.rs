@@ -138,6 +138,69 @@ pub struct PlacementIntent {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct FloorTileIntent {
+    pub item_id: u32,
+    pub tile: TilePoint,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct PaintedFloorTile {
+    pub item_id: u32,
+    pub tile: TilePoint,
+    pub room_index: u8,
+}
+
+pub fn validate_floor_tile_intent(
+    catalog: &PlacementCatalog,
+    room: RoomDimensions,
+    intent: FloorTileIntent,
+) -> Result<PaintedFloorTile, RestaurantAuthorityError> {
+    let definition =
+        *catalog
+            .get(intent.item_id)
+            .ok_or(RestaurantAuthorityError::UnknownItem {
+                item_id: intent.item_id,
+            })?;
+
+    if !definition.flags.floor_tile_item {
+        return Err(RestaurantAuthorityError::NotFloorTile {
+            item_id: definition.item_id,
+        });
+    }
+
+    if definition.footprint
+        != (Footprint {
+            size_x: 1,
+            size_y: 1,
+        })
+    {
+        return Err(RestaurantAuthorityError::UnsupportedFloorTileFootprint {
+            item_id: definition.item_id,
+        });
+    }
+
+    let shape = PlacementShape {
+        footprint: definition.footprint,
+        flags: definition.flags,
+    };
+    let room_index = match validate_structural_placement(shape, intent.tile, room) {
+        StructuralPlacement::Valid { room_index } => room_index,
+        reason => {
+            return Err(RestaurantAuthorityError::StructuralPlacement {
+                item_id: definition.item_id,
+                reason,
+            });
+        }
+    };
+
+    Ok(PaintedFloorTile {
+        item_id: definition.item_id,
+        tile: intent.tile,
+        room_index,
+    })
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct PlacedItem {
     pub instance_id: u64,
     pub item_id: u32,
@@ -474,6 +537,12 @@ pub enum RestaurantAuthorityError {
     UnsupportedPlacementDomain {
         item_id: u32,
     },
+    NotFloorTile {
+        item_id: u32,
+    },
+    UnsupportedFloorTileFootprint {
+        item_id: u32,
+    },
     StructuralPlacement {
         item_id: u32,
         reason: StructuralPlacement,
@@ -578,6 +647,70 @@ mod tests {
             },
         ])
         .unwrap()
+    }
+
+    #[test]
+    fn floor_tile_authority_derives_room_and_rejects_zero_border() {
+        let catalog = PlacementCatalog::new([ItemPlacementDefinition {
+            item_id: 3050000,
+            footprint: Footprint {
+                size_x: 1,
+                size_y: 1,
+            },
+            rotation_count: 1,
+            flags: PlacementFlags {
+                floor_tile_item: true,
+                ..PlacementFlags::default()
+            },
+        }])
+        .unwrap();
+
+        assert_eq!(
+            validate_floor_tile_intent(
+                &catalog,
+                room(),
+                FloorTileIntent {
+                    item_id: 3050000,
+                    tile: TilePoint { x: 2, y: 3 },
+                },
+            )
+            .unwrap(),
+            PaintedFloorTile {
+                item_id: 3050000,
+                tile: TilePoint { x: 2, y: 3 },
+                room_index: 0,
+            }
+        );
+
+        assert!(matches!(
+            validate_floor_tile_intent(
+                &catalog,
+                room(),
+                FloorTileIntent {
+                    item_id: 3050000,
+                    tile: TilePoint { x: 0, y: 3 },
+                },
+            ),
+            Err(RestaurantAuthorityError::StructuralPlacement {
+                reason: StructuralPlacement::OutOfBounds,
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn ordinary_item_cannot_enter_floor_tile_authority() {
+        assert_eq!(
+            validate_floor_tile_intent(
+                &catalog(),
+                room(),
+                FloorTileIntent {
+                    item_id: 20,
+                    tile: TilePoint { x: 2, y: 2 },
+                },
+            ),
+            Err(RestaurantAuthorityError::NotFloorTile { item_id: 20 })
+        );
     }
 
     #[test]
