@@ -18,6 +18,8 @@ const STACK_SCREENSHOT = path.join(WORK, 'restaurant-stack.png');
 const STACK_META = path.join(WORK, 'restaurant-stack.json');
 const FLOOR_SCREENSHOT = path.join(WORK, 'restaurant-floor.png');
 const FLOOR_META = path.join(WORK, 'restaurant-floor.json');
+const WALL_SCREENSHOT = path.join(WORK, 'restaurant-window.png');
+const WALL_META = path.join(WORK, 'restaurant-window.json');
 const STACK_GOLDEN = path.join(
   REPO,
   'tests',
@@ -31,6 +33,13 @@ const FLOOR_GOLDEN = path.join(
   'golden',
   'm2',
   'restaurant-floor.json',
+);
+const WALL_GOLDEN = path.join(
+  REPO,
+  'tests',
+  'golden',
+  'm2',
+  'restaurant-window.json',
 );
 const GOLDEN = path.join(
   REPO,
@@ -60,6 +69,29 @@ const fixtureSeed = {
       owned: 2,
       placed: 1,
       available: 1,
+    },
+  ],
+};
+const wallFixtureSeed = {
+  room: { inside_x: 8, inside_y: 8, outside_x: 0, outside_y: 0 },
+  next_instance_id: 2,
+  items: [
+    {
+      instance_id: 1,
+      item_id: 3000001,
+      tile_x: 2,
+      tile_y: 0,
+      rotation: 1,
+      room_index: 0,
+    },
+  ],
+  floor_tiles: [],
+  inventory: [
+    {
+      item_id: 3000001,
+      owned: 1,
+      placed: 1,
+      available: 0,
     },
   ],
 };
@@ -551,6 +583,7 @@ await new Promise((resolve, reject) => {
 let browserProcess = null;
 let browserProfile = null;
 let cdp = null;
+const goldenFailures = [];
 
 try {
   const address = server.address();
