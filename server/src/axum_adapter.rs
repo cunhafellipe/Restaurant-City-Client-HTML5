@@ -716,6 +716,37 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn authenticated_active_service_route_is_read_only_and_no_store() {
+        let service = RestaurantProductService::new(
+            verifier(),
+            crate::service::InMemoryProductStateStore::default(),
+            catalog(),
+            room(),
+        );
+
+        let response = restaurant_router(service, EXPECTED_ORIGIN)
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v1/restaurant/service")
+                    .header(COOKIE, SESSION_COOKIE)
+                    .header(&SEC_FETCH_SITE, "same-origin")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(response.headers()[CACHE_CONTROL], "no-store");
+
+        let body = to_bytes(response.into_body(), MAX_REQUEST_BODY_BYTES)
+            .await
+            .unwrap();
+        let value: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert!(value["active"].is_null());
+    }
+
+    #[tokio::test]
     async fn duplicate_product_session_cookie_fails_closed() {
         let service = RestaurantProductService::new(
             verifier(),
