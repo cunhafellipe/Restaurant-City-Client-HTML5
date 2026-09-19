@@ -16,12 +16,21 @@ const WORLD_SCREENSHOT = path.join(WORK, 'restaurant-world.png');
 const META = path.join(WORK, 'restaurant-editor.json');
 const STACK_SCREENSHOT = path.join(WORK, 'restaurant-stack.png');
 const STACK_META = path.join(WORK, 'restaurant-stack.json');
+const FLOOR_SCREENSHOT = path.join(WORK, 'restaurant-floor.png');
+const FLOOR_META = path.join(WORK, 'restaurant-floor.json');
 const STACK_GOLDEN = path.join(
   REPO,
   'tests',
   'golden',
   'm2',
   'restaurant-stack.json',
+);
+const FLOOR_GOLDEN = path.join(
+  REPO,
+  'tests',
+  'golden',
+  'm2',
+  'restaurant-floor.json',
 );
 const GOLDEN = path.join(
   REPO,
@@ -51,6 +60,27 @@ const fixtureSeed = {
       owned: 2,
       placed: 1,
       available: 1,
+    },
+  ],
+};
+const floorFixtureSeed = {
+  room: { inside_x: 8, inside_y: 8, outside_x: 0, outside_y: 0 },
+  next_instance_id: 1,
+  items: [],
+  floor_tiles: [
+    {
+      item_id: 3050000,
+      tile_x: 2,
+      tile_y: 3,
+      room_index: 0,
+    },
+  ],
+  inventory: [
+    {
+      item_id: 3050000,
+      owned: 1,
+      placed: 1,
+      available: 0,
     },
   ],
 };
@@ -639,7 +669,11 @@ try {
       `Visual probe timed out before editing. State: ${JSON.stringify(state)} Diagnostics: ${JSON.stringify(diagnostics.slice(-20))} Browser stderr: ${processState.stderr.slice(-4000)}`,
     );
   }
-  if (!state.status.includes('Loaded baseline 0.9.143a and 1 persisted restaurant item(s).')) {
+  if (
+    !state.status.includes(
+      'Loaded baseline 0.9.143a, 1 persisted object(s), and 0 authoritative floor tile(s).',
+    )
+  ) {
     throw new Error(`Unexpected editing status: ${state.status}`);
   }
   if (!state.selection.includes('#3020163') || !state.selection.includes('Cannon')) {
@@ -865,6 +899,94 @@ try {
     );
   }
 
+  fixtureState = structuredClone(floorFixtureSeed);
+  await cdp.send('Page.reload', { ignoreCache: true });
+  const floorState = await waitForRuntime(
+    cdp,
+    `(() => {
+      const status = document.querySelector('.rc-status');
+      const canvas = document.querySelector('#game-canvas-host canvas');
+      return {
+        phase: status?.dataset.phase ?? null,
+        status: status?.textContent ?? '',
+        canvas: canvas ? (() => {
+          const rect = canvas.getBoundingClientRect();
+          return {
+            width: canvas.width,
+            height: canvas.height,
+            x: rect.x,
+            y: rect.y,
+            cssWidth: rect.width,
+            cssHeight: rect.height,
+          };
+        })() : null,
+      };
+    })()`,
+    (value) =>
+      value?.phase === 'editing' &&
+      value?.status?.includes(
+        'Loaded baseline 0.9.143a, 0 persisted object(s), and 1 authoritative floor tile(s).',
+      ) &&
+      value?.canvas?.width === 760 &&
+      value?.canvas?.height === 600,
+    8000,
+    'Wood Panel authoritative floor',
+  );
+  await delay(300);
+
+  const floorShot = await cdp.send('Page.captureScreenshot', {
+    format: 'png',
+    fromSurface: true,
+    captureBeyondViewport: false,
+    clip: {
+      x: floorState.canvas.x,
+      y: floorState.canvas.y,
+      width: floorState.canvas.cssWidth,
+      height: floorState.canvas.cssHeight,
+      scale: 1,
+    },
+  });
+  if (typeof floorShot.data !== 'string' || floorShot.data.length === 0) {
+    throw new Error('CDP did not return Wood Panel floor screenshot bytes');
+  }
+  fs.writeFileSync(FLOOR_SCREENSHOT, Buffer.from(floorShot.data, 'base64'));
+  const floorPng = PNG.sync.read(fs.readFileSync(FLOOR_SCREENSHOT));
+  const floorPixelSha256 = bufferSha256(floorPng.data);
+  const floorQuantizedBlockSha256 = quantizedBlockSignature(floorPng, 8);
+  const floorGolden = fs.existsSync(FLOOR_GOLDEN)
+    ? JSON.parse(fs.readFileSync(FLOOR_GOLDEN, 'utf8'))
+    : null;
+  if (floorGolden) {
+    if (
+      floorGolden.schemaVersion !== 1 ||
+      floorGolden.fixture !== 'wood-panel-3050000-at-2-3' ||
+      floorGolden.canvas?.width !== floorPng.width ||
+      floorGolden.canvas?.height !== floorPng.height ||
+      floorGolden.blockSize !== 8 ||
+      floorGolden.expectedQuantizedBlockSha256 !== floorQuantizedBlockSha256
+    ) {
+      throw new Error(
+        `Restaurant City floor visual golden mismatch expected=${floorGolden.expectedQuantizedBlockSha256} actual=${floorQuantizedBlockSha256} pixel=${floorPixelSha256}`,
+      );
+    }
+  } else {
+    console.log(
+      `FLOOR GOLDEN CANDIDATE | fixture=wood-panel-3050000-at-2-3 | pixel=${floorPixelSha256} | block=${floorQuantizedBlockSha256}`,
+    );
+  }
+  const floorMetadata = {
+    schemaVersion: 1,
+    fixture: 'wood-panel-3050000-at-2-3',
+    state: floorState,
+    screenshot: path.relative(REPO, FLOOR_SCREENSHOT).replaceAll('\\\\', '/'),
+    pngSha256: sha256(FLOOR_SCREENSHOT),
+    pixelSha256: floorPixelSha256,
+    blockSize: 8,
+    quantizedBlockSha256: floorQuantizedBlockSha256,
+    goldenFrozen: Boolean(floorGolden),
+  };
+  fs.writeFileSync(FLOOR_META, `${JSON.stringify(floorMetadata, null, 2)}\n`);
+
   fixtureState = structuredClone(stackFixtureSeed);
   await cdp.send('Page.reload', { ignoreCache: true });
   const stackState = await waitForRuntime(
@@ -891,7 +1013,7 @@ try {
     (value) =>
       value?.phase === 'editing' &&
       value?.status?.includes(
-        'Loaded baseline 0.9.143a and 2 persisted restaurant item(s).',
+        'Loaded baseline 0.9.143a, 2 persisted object(s), and 0 authoritative floor tile(s).',
       ) &&
       value?.canvas?.width === 760 &&
       value?.canvas?.height === 600,
@@ -959,6 +1081,7 @@ try {
     state,
     diagnostics: diagnostics.slice(-20),
     stackVisual: stackMetadata,
+    floorVisual: floorMetadata,
     interaction: {
       selected: selectedState.selection,
       rotated: rotatedState,
@@ -993,7 +1116,7 @@ try {
   fs.writeFileSync(META, `${JSON.stringify(metadata, null, 2)}\n`);
 
   console.log(
-    `BROWSER VISUAL GOLDEN + EDIT INTERACTION PASS | browser=${browser} | bytes=${stat.size} | sha256=${metadata.sha256} | worldPixel=${worldPixelSha256} | exactPixelMatch=${exactPixelMatch} | worldBlock=${worldQuantizedBlockSha256} | edit=select-transform-remove | stack=Table+Violin curHeight=25 block=${stackQuantizedBlockSha256} frozen=${Boolean(stackGolden)}`,
+    `BROWSER VISUAL GOLDEN + EDIT INTERACTION PASS | browser=${browser} | bytes=${stat.size} | sha256=${metadata.sha256} | worldPixel=${worldPixelSha256} | exactPixelMatch=${exactPixelMatch} | worldBlock=${worldQuantizedBlockSha256} | edit=select-transform-remove | floor=WoodPanel block=${floorQuantizedBlockSha256} frozen=${Boolean(floorGolden)} | stack=Table+Violin curHeight=25 block=${stackQuantizedBlockSha256} frozen=${Boolean(stackGolden)}`,
   );
 } finally {
   try {
