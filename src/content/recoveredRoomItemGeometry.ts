@@ -1,5 +1,14 @@
 import contract from '../../contracts/restaurant-city/recovered-room-item-geometry.json';
 
+export interface RecoveredRoomItemFrame {
+  readonly rotation: number;
+  readonly frame: string;
+  readonly canvasOriginPx: {
+    readonly x: number;
+    readonly y: number;
+  };
+}
+
 export interface RecoveredRoomItemGeometry {
   readonly className: string;
   readonly itemIds: readonly number[];
@@ -9,6 +18,7 @@ export interface RecoveredRoomItemGeometry {
   };
   readonly itemHeightTwips: number;
   readonly placementFootprintEnabled: boolean;
+  readonly frames: readonly RecoveredRoomItemFrame[];
 }
 
 interface ContractEntry {
@@ -19,6 +29,7 @@ interface ContractEntry {
   };
   readonly itemHeightTwips: number;
   readonly placementFootprintEnabled?: boolean;
+  readonly frames?: readonly RecoveredRoomItemFrame[];
 }
 
 const entries = Object.entries(contract.classes) as ReadonlyArray<
@@ -51,6 +62,7 @@ export function recoveredRoomItemGeometry(
     footprint: entry.footprint,
     itemHeightTwips: entry.itemHeightTwips,
     placementFootprintEnabled: entry.placementFootprintEnabled === true,
+    frames: entry.frames ?? [],
   };
 }
 
@@ -60,4 +72,25 @@ export function recoveredPlacementFootprint(
 ): RecoveredRoomItemGeometry['footprint'] | null {
   const geometry = recoveredRoomItemGeometry(itemId, className);
   return geometry?.placementFootprintEnabled ? geometry.footprint : null;
+}
+
+
+export function recoveredRoomItemFrame(
+  itemId: number,
+  className: string | null,
+  rotation: number,
+): RecoveredRoomItemFrame | null {
+  const geometry = recoveredRoomItemGeometry(itemId, className);
+  if (!geometry || !Number.isInteger(rotation) || rotation < 0) return null;
+  return (
+    geometry.frames.find((frame) => frame.rotation === rotation) ?? null
+  );
+}
+
+export function recoveredRoomItemFrameOffset(
+  itemId: number,
+  className: string | null,
+  rotation: number,
+): RecoveredRoomItemFrame['canvasOriginPx'] | null {
+  return recoveredRoomItemFrame(itemId, className, rotation)?.canvasOriginPx ?? null;
 }
