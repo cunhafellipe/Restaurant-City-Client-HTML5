@@ -1512,6 +1512,23 @@ export class RestaurantEditorScene extends Phaser.Scene {
 
       for (const tile of tiles) {
         const composed = this.composeWallpaperWall(wallpaper, tile);
+        composed.texture
+          .setAlpha(
+            this.selectedWallpaperRotation === wallpaper.rotation ? 0.55 : 1,
+          )
+          .setInteractive({ useHandCursor: true });
+        composed.texture.on(
+          'pointerdown',
+          (
+            _pointer: Phaser.Input.Pointer,
+            _localX: number,
+            _localY: number,
+            event: Phaser.Types.Input.EventData,
+          ) => {
+            event.stopPropagation();
+            this.selectWallpaperSlot(wallpaper.rotation);
+          },
+        );
         this.wallpaperWallLayers.set(this.wallLayerKey(tile), {
           texture: composed.texture,
           sourceWall: composed.sourceWall,
@@ -1913,6 +1930,11 @@ export class RestaurantEditorScene extends Phaser.Scene {
     this.previewGraphics.clear();
     this.previewSprite?.destroy();
     this.previewSprite = null;
+    for (const sprite of this.wallpaperPreviewSprites) sprite.destroy();
+    this.wallpaperPreviewSprites = [];
+
+    if (this.selectedWallpaperRotation !== null) return;
+
     const shape = this.currentShape();
     const tile = this.hoverTile;
     if (!shape || !tile) return;
@@ -1934,6 +1956,48 @@ export class RestaurantEditorScene extends Phaser.Scene {
 
     const item = this.currentDefinition();
     const visual = item ? this.itemVisual(item) : null;
+    if (item?.placementFootprint && visual && this.isAuthoritativeWallpaper(item)) {
+      const targetRotation = defaultWallAttachmentRotation(tile, this.room);
+      if (
+        validation.ok &&
+        (targetRotation === 0 || targetRotation === 1)
+      ) {
+        this.rotation = targetRotation;
+        const tiles: TilePoint[] = [];
+        if (targetRotation === 0) {
+          for (let y = 1; y < this.room.insideY; y += 1) {
+            tiles.push({ x: 0, y });
+          }
+        } else {
+          for (let x = 1; x < this.room.insideX; x += 1) {
+            tiles.push({ x, y: 0 });
+          }
+        }
+
+        for (const wallTile of tiles) {
+          const sprite = this.createItemSprite(
+            item,
+            visual,
+            targetRotation,
+            wallTile,
+            0.72,
+          );
+          sprite.setDepth(this.itemDrawPriority(wallTile) + 2);
+          this.wallpaperPreviewSprites.push(sprite);
+        }
+      }
+
+      if (publishStatus) {
+        this.publishUi(
+          validation.ok
+            ? `Wallpaper preview targets every ${targetRotation === 0 ? 'left' : 'top'} wall segment.`
+            : `Wallpaper preview rejected: ${validation.reason}.`,
+          validation,
+        );
+      }
+      return;
+    }
+
     if (item?.placementFootprint && visual) {
       const curHeight = validation.ok
         ? this.previewCurHeight(item, tile, validation.roomIndex)
@@ -2087,6 +2151,11 @@ export class RestaurantEditorScene extends Phaser.Scene {
     const footprint = rotateFootprint(definition.placementFootprint, rotation);
     const offset =
       recoveredWallFloorFrameOffset(
+        definition.id,
+        definition.className,
+        rotation,
+      ) ??
+      recoveredWallpaperFrameOffset(
         definition.id,
         definition.className,
         rotation,
