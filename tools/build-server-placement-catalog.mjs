@@ -92,8 +92,65 @@ function buildAtlasSymbolIndex(runtimeManifest) {
   return index;
 }
 
-function resolveRotationCount(symbolIndex, item, groupName) {
+function resolveRotationCount(symbolIndex, item, groupName, geometry = null) {
   const className = item.attributes?.className;
+  const recoveredRotationCount = asInteger(geometry?.rotationCount);
+  const recoveredRuntimeClass =
+    typeof geometry?.runtimeClassName === 'string' && geometry.runtimeClassName.length > 0
+      ? geometry.runtimeClassName
+      : null;
+
+  if (
+    geometry?.placementFootprintEnabled === true &&
+    recoveredRuntimeClass !== null &&
+    recoveredRotationCount !== null
+  ) {
+    if (recoveredRotationCount < 1 || recoveredRotationCount > 16) {
+      throw new Error(
+        `Player-placeable item ${groupName}/${item.attributes?.name ?? '<unnamed>'} has invalid recovered logical rotation count ${recoveredRotationCount}`,
+      );
+    }
+    const target = normalizeSymbol(recoveredRuntimeClass);
+    const atlasMap = symbolIndex.get(target);
+    if (!atlasMap || atlasMap.size !== 1) {
+      throw new Error(
+        `Player-placeable item ${groupName}/${item.attributes?.name ?? '<unnamed>'} recovered runtimeClassName=${recoveredRuntimeClass} does not resolve uniquely to a runtime atlas symbol`,
+      );
+    }
+    const atlasFrames = [...atlasMap.values()][0];
+    const expectedVisualFrames = asInteger(geometry?.visualFrameCount);
+    if (
+      expectedVisualFrames === null ||
+      expectedVisualFrames < 1 ||
+      atlasFrames.size !== expectedVisualFrames
+    ) {
+      throw new Error(
+        `Player-placeable item ${groupName}/${item.attributes?.name ?? '<unnamed>'} recovered visual frame count does not match runtime atlas`,
+      );
+    }
+    if (
+      !Array.isArray(geometry.frames) ||
+      geometry.frames.length !== recoveredRotationCount
+    ) {
+      throw new Error(
+        `Player-placeable item ${groupName}/${item.attributes?.name ?? '<unnamed>'} recovered logical frame contract is incomplete`,
+      );
+    }
+    for (let rotation = 0; rotation < recoveredRotationCount; rotation += 1) {
+      const frame = geometry.frames[rotation];
+      if (
+        frame?.rotation !== rotation ||
+        typeof frame?.frame !== 'string' ||
+        !atlasFrames.has(frame.frame)
+      ) {
+        throw new Error(
+          `Player-placeable item ${groupName}/${item.attributes?.name ?? '<unnamed>'} recovered runtime frame mismatch at rotation ${rotation}`,
+        );
+      }
+    }
+    return recoveredRotationCount;
+  }
+
   const target = normalizeSymbol(leafClassName(className));
   if (!target) {
     throw new Error(
@@ -272,7 +329,7 @@ for (const group of database.groups ?? []) {
           typeof item.attributes?.className === 'string'
             ? (() => {
                 try {
-                  return resolveRotationCount(symbolIndex, item, group.name);
+                  return resolveRotationCount(symbolIndex, item, group.name, geometry);
                 } catch {
                   return null;
                 }
@@ -334,7 +391,7 @@ for (const group of database.groups ?? []) {
       sizeY,
       footprintSource,
       recoveredGeometrySource: geometry?.recoveredGeometrySource ?? null,
-      rotationCount: resolveRotationCount(symbolIndex, item, group.name),
+      rotationCount: resolveRotationCount(symbolIndex, item, group.name, geometry),
       wallItem,
       wallDecorationItem,
       wallpaperItem,
@@ -390,6 +447,48 @@ if (promotedDividerIds.size > 0) {
   ) {
     throw new Error(
       `Promoted wallDivider catalog coverage mismatch: contract=${promotedDividerIds.size} trusted=${trustedDividerIds.size} missing=${missingDividerIds.join(',') || '<none>'}`,
+    );
+  }
+}
+
+const promotedKitchenIds = new Set(
+  Object.values(recoveredGeometry.classes ?? {})
+    .filter(
+      (entry) =>
+        entry?.placementFootprintEnabled === true &&
+        entry?.composite === true &&
+        Array.isArray(entry?.effectiveTypes) &&
+        entry.effectiveTypes.includes('kitchen'),
+    )
+    .flatMap((entry) => entry.itemIds ?? []),
+);
+if (promotedKitchenIds.size > 0) {
+  const trustedKitchens = definitions.filter(
+    (entry) =>
+      promotedKitchenIds.has(entry.itemId) &&
+      entry.kitchen === true &&
+      entry.recoveredGeometrySource === 'room-item' &&
+      entry.rotationCount === 4 &&
+      Array.isArray(entry.occupiedCellsByRotation) &&
+      entry.occupiedCellsByRotation.length === 4 &&
+      entry.occupiedCellsByRotation.every(
+        (rotation, index) =>
+          rotation.rotation === index &&
+          Array.isArray(rotation.cells) &&
+          rotation.cells.length === 2,
+      ),
+  );
+  const trustedKitchenIds = new Set(trustedKitchens.map((entry) => entry.itemId));
+  const missingKitchenIds = [...promotedKitchenIds]
+    .filter((itemId) => !trustedKitchenIds.has(itemId))
+    .sort((a, b) => a - b);
+  if (
+    promotedKitchenIds.size !== 11 ||
+    trustedKitchenIds.size !== promotedKitchenIds.size ||
+    missingKitchenIds.length !== 0
+  ) {
+    throw new Error(
+      `Promoted kitchen catalog coverage mismatch: contract=${promotedKitchenIds.size} trusted=${trustedKitchenIds.size} missing=${missingKitchenIds.join(',') || '<none>'}`,
     );
   }
 }
