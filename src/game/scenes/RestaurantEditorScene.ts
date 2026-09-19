@@ -535,7 +535,6 @@ export class RestaurantEditorScene extends Phaser.Scene {
       selectedItem: this.selectedItemUi(),
       selectedPlacedItem: this.selectedPlacedItemUi(),
       selectedWallpaper: this.selectedWallpaperUi(),
-      selectedWallpaper: this.selectedWallpaperUi(),
     });
   }
 
@@ -657,7 +656,7 @@ export class RestaurantEditorScene extends Phaser.Scene {
     this.drawCommittedPlacements();
     this.drawPreview(false);
     this.publishUi(
-      `Editing ${rotation === 0 ? 'left' : 'top'} wallpaper slot. Remove clears the whole orientation; choosing another wallpaper replaces it.`,
+      `Editing ${rotation === 0 ? 'left' : 'top'} wallpaper slot. Remove clears the whole orientation; Cancel returns to wallpaper browsing for replacement.`,
       null,
     );
   }
@@ -2137,7 +2136,7 @@ export class RestaurantEditorScene extends Phaser.Scene {
     curHeight = 0,
   ): Phaser.GameObjects.Sprite {
     if (!definition.placementFootprint) {
-      throw new Error(`Item #${definition.id} has no explicit footprint`);
+      throw new Error(`Item #${definition.id} has no proven placement footprint`);
     }
 
     const frameName = frameForRestaurantItemRotation(visual, rotation);
