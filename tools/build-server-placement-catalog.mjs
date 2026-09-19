@@ -331,11 +331,50 @@ for (const group of database.groups ?? []) {
       floorTileItem,
       surface,
       stackable,
+      wallDivider,
     });
   }
 }
 
 definitions.sort((a, b) => a.itemId - b.itemId);
+
+const promotedDividerIds = new Set(
+  Object.values(recoveredGeometry.classes ?? {})
+    .filter(
+      (entry) =>
+        entry?.placementFootprintEnabled === true &&
+        Array.isArray(entry?.effectiveTypes) &&
+        entry.effectiveTypes.includes('wallDivider'),
+    )
+    .flatMap((entry) => entry.itemIds ?? []),
+);
+if (promotedDividerIds.size > 0) {
+  const trustedDividerIds = new Set(
+    definitions
+      .filter(
+        (entry) =>
+          promotedDividerIds.has(entry.itemId) &&
+          entry.wallDivider === true &&
+          entry.wallItem === false &&
+          entry.wallDecorationItem === false &&
+          entry.wallpaperItem === false &&
+          entry.recoveredGeometrySource === 'room-item',
+      )
+      .map((entry) => entry.itemId),
+  );
+  const missingDividerIds = [...promotedDividerIds]
+    .filter((itemId) => !trustedDividerIds.has(itemId))
+    .sort((a, b) => a - b);
+  if (
+    promotedDividerIds.size !== 5 ||
+    trustedDividerIds.size !== promotedDividerIds.size ||
+    missingDividerIds.length !== 0
+  ) {
+    throw new Error(
+      `Promoted wallDivider catalog coverage mismatch: contract=${promotedDividerIds.size} trusted=${trustedDividerIds.size} missing=${missingDividerIds.join(',') || '<none>'}`,
+    );
+  }
+}
 
 if (recoveredWallpaperGeometry.serverCatalogEnabled === true) {
   const promotedWallpaperIds = new Set(
@@ -421,6 +460,7 @@ const meta = {
     recoveredGeometrySource: entry.recoveredGeometrySource,
     surface: entry.surface,
     stackable: entry.stackable,
+    wallDivider: entry.wallDivider,
   })),
   recoveredFootprintDefinitions: definitions.filter(
     (entry) => entry.footprintSource === 'recovered',
