@@ -541,6 +541,10 @@ impl ProductAggregate {
         &self.restaurant
     }
 
+    pub fn active_service(&self) -> Option<ActiveServiceRecord> {
+        self.active_service
+    }
+
     pub(crate) fn encode_persisted(&self) -> Result<Vec<u8>, ProductStateStoreError> {
         let snapshot = self.restaurant.snapshot();
         let persisted = PersistedAggregate {
@@ -1369,6 +1373,7 @@ impl ProductAggregate {
 
         if self.floor_mutations.contains_key(&mutation_id)
             || self.wallpaper_mutations.contains_key(&mutation_id)
+            || self.service_mutations.contains_key(&mutation_id)
         {
             return Err(ProductServiceError::MutationIdConflict);
         }
@@ -1386,6 +1391,10 @@ impl ProductAggregate {
                 return Err(ProductServiceError::MutationIdConflict);
             }
             return Ok(PlacementMutationOutcome::Duplicate(existing.item));
+        }
+
+        if self.active_service.is_some() {
+            return Err(ProductServiceError::ActiveServiceLayoutLocked);
         }
 
         let owned = self.player.inventory().quantity(intent.item_id);
@@ -1419,6 +1428,7 @@ impl ProductAggregate {
 
         if self.restaurant_mutations.contains_key(&mutation_id)
             || self.wallpaper_mutations.contains_key(&mutation_id)
+            || self.service_mutations.contains_key(&mutation_id)
         {
             return Err(ProductServiceError::MutationIdConflict);
         }
@@ -1462,6 +1472,7 @@ impl ProductAggregate {
 
         if self.restaurant_mutations.contains_key(&mutation_id)
             || self.floor_mutations.contains_key(&mutation_id)
+            || self.service_mutations.contains_key(&mutation_id)
         {
             return Err(ProductServiceError::MutationIdConflict);
         }
@@ -1506,6 +1517,7 @@ impl ProductAggregate {
 
         if self.restaurant_mutations.contains_key(&mutation_id)
             || self.floor_mutations.contains_key(&mutation_id)
+            || self.service_mutations.contains_key(&mutation_id)
         {
             return Err(ProductServiceError::MutationIdConflict);
         }
@@ -1541,6 +1553,7 @@ impl ProductAggregate {
 
         if self.floor_mutations.contains_key(&mutation_id)
             || self.wallpaper_mutations.contains_key(&mutation_id)
+            || self.service_mutations.contains_key(&mutation_id)
         {
             return Err(ProductServiceError::MutationIdConflict);
         }
@@ -1558,6 +1571,10 @@ impl ProductAggregate {
                 return Err(ProductServiceError::MutationIdConflict);
             }
             return Ok(PlacementMutationOutcome::Duplicate(existing.item));
+        }
+
+        if self.active_service.is_some() {
+            return Err(ProductServiceError::ActiveServiceLayoutLocked);
         }
 
         let updated = self
@@ -1583,6 +1600,7 @@ impl ProductAggregate {
 
         if self.floor_mutations.contains_key(&mutation_id)
             || self.wallpaper_mutations.contains_key(&mutation_id)
+            || self.service_mutations.contains_key(&mutation_id)
         {
             return Err(ProductServiceError::MutationIdConflict);
         }
@@ -1593,6 +1611,10 @@ impl ProductAggregate {
                 return Err(ProductServiceError::MutationIdConflict);
             }
             return Ok(PlacementMutationOutcome::Duplicate(existing.item));
+        }
+
+        if self.active_service.is_some() {
+            return Err(ProductServiceError::ActiveServiceLayoutLocked);
         }
 
         let removed = self
