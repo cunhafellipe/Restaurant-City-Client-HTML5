@@ -479,6 +479,22 @@ mod tests {
         .unwrap()
     }
 
+    fn wallpaper_catalog() -> PlacementCatalog {
+        PlacementCatalog::new([ItemPlacementDefinition {
+            item_id: 3_060_000,
+            footprint: Footprint {
+                size_x: 1,
+                size_y: 1,
+            },
+            rotation_count: 2,
+            flags: PlacementFlags {
+                wallpaper_item: true,
+                ..PlacementFlags::default()
+            },
+        }])
+        .unwrap()
+    }
+
     fn room() -> RoomDimensions {
         RoomDimensions {
             inside_x: 8,
@@ -851,6 +867,94 @@ mod tests {
         }
 
         let _ = fs::remove_file(path);
+    }
+
+    #[tokio::test]
+    async fn wallpaper_routes_round_trip_through_router() {
+        let service = RestaurantProductService::new(
+            verifier(),
+            crate::service::InMemoryProductStateStore::default(),
+            wallpaper_catalog(),
+            room(),
+        );
+        service
+            .apply_player_command(
+                "session",
+                MutationId::new("grant-wallpaper-route".to_owned()).unwrap(),
+                Command::GrantInventory {
+                    item_id: 3_060_000,
+                    quantity: 1,
+                },
+            )
+            .unwrap();
+        let app = restaurant_router(service, EXPECTED_ORIGIN);
+
+        let applied = app
+            .clone()
+            .oneshot(mutation_request(
+                "PUT",
+                "/api/v1/restaurant/wallpapers",
+                "wallpaper-route-apply",
+                r#"{"item_id":3060000,"tile_x":3,"tile_y":0}"#,
+            ))
+            .await
+            .unwrap();
+        assert_eq!(applied.status(), StatusCode::OK);
+        let body = to_bytes(applied.into_body(), MAX_REQUEST_BODY_BYTES)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["wallpaper"]["rotation"], 1);
+
+        let layout = app
+            .clone()
+            .oneshot(authenticated_get())
+            .await
+            .unwrap();
+        assert_eq!(layout.status(), StatusCode::OK);
+        let body = to_bytes(layout.into_body(), MAX_REQUEST_BODY_BYTES)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["wallpapers"].as_array().unwrap().len(), 1);
+        assert_eq!(json["inventory"][0]["placed"], 1);
+
+        let removed = app
+            .clone()
+            .oneshot(mutation_request(
+                "DELETE",
+                "/api/v1/restaurant/wallpapers/1",
+                "wallpaper-route-remove",
+                "",
+            ))
+            .await
+            .unwrap();
+        assert_eq!(removed.status(), StatusCode::OK);
+
+        let duplicate = app
+            .clone()
+            .oneshot(mutation_request(
+                "DELETE",
+                "/api/v1/restaurant/wallpapers/1",
+                "wallpaper-route-remove",
+                "",
+            ))
+            .await
+            .unwrap();
+        assert_eq!(duplicate.status(), StatusCode::OK);
+        let body = to_bytes(duplicate.into_body(), MAX_REQUEST_BODY_BYTES)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["outcome"], "duplicate");
+
+        let layout = app.oneshot(authenticated_get()).await.unwrap();
+        let body = to_bytes(layout.into_body(), MAX_REQUEST_BODY_BYTES)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["wallpapers"].as_array().unwrap().len(), 0);
+        assert_eq!(json["inventory"][0]["available"], 1);
     }
 
     #[tokio::test]
