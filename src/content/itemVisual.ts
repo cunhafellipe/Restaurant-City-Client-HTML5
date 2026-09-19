@@ -1,5 +1,6 @@
 import { TILE_HEIGHT_HALF, TILE_WIDTH_HALF, type Footprint } from '../core/restaurantGrid';
 import type { RestaurantItemDefinition } from './items';
+import { recoveredRoomItemGeometry } from './recoveredRoomItemGeometry';
 
 const SYSTEM_ONLY_GROUPS = new Set(['Visit', 'OutsideAreaSize']);
 
@@ -105,6 +106,47 @@ export function resolveRestaurantItemVisual(
   index: RestaurantItemVisualIndex,
 ): RestaurantItemVisual | null {
   if (isSystemOnlyRestaurantItem(item)) return null;
+
+  const recovered = recoveredRoomItemGeometry(item.id, item.className);
+  if (
+    recovered?.runtimeClassName &&
+    recovered.rotationCount !== null &&
+    recovered.rotationCount > 0 &&
+    recovered.frames.length === recovered.rotationCount
+  ) {
+    const runtimeKey = normalize(recovered.runtimeClassName);
+    const matches = index.get(runtimeKey) ?? [];
+    if (matches.length !== 1) {
+      throw new Error(
+        `Restaurant City item #${item.id} recovered runtime class ${recovered.runtimeClassName} resolved to ${matches.length} atlas symbols`,
+      );
+    }
+    const candidate = matches[0]!;
+    const available = new Set(candidate.frames);
+    const logicalFrames = [...recovered.frames]
+      .sort((a, b) => a.rotation - b.rotation)
+      .map((frame, rotation) => {
+        if (frame.rotation !== rotation || !available.has(frame.frame)) {
+          throw new Error(
+            `Restaurant City item #${item.id} recovered runtime frame contract is inconsistent at rotation ${rotation}`,
+          );
+        }
+        return frame.frame;
+      });
+    if (
+      recovered.visualFrameCount !== null &&
+      new Set(logicalFrames).size !== recovered.visualFrameCount
+    ) {
+      throw new Error(
+        `Restaurant City item #${item.id} recovered visual/logical rotation contract is inconsistent`,
+      );
+    }
+    return {
+      atlasId: candidate.atlasId,
+      symbol: runtimeKey,
+      frames: logicalFrames,
+    };
+  }
 
   const strategies = [
     item.className,
