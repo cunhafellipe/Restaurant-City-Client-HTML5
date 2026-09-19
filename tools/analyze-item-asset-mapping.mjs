@@ -6,6 +6,12 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(HERE, '..');
 const GENERATED = path.join(REPO, 'public', 'assets', 'generated');
 const MANIFEST_FILE = path.join(GENERATED, 'manifest.json');
+const RECOVERED_ROOM_ITEM_GEOMETRY = path.join(
+  REPO,
+  'contracts',
+  'restaurant-city',
+  'recovered-room-item-geometry.json',
+);
 const SERVER_CATALOG = path.join(
   REPO,
   'server',
@@ -177,9 +183,13 @@ function suggestSymbols(index, values, limit = 12) {
 }
 
 requireFile(MANIFEST_FILE, 'runtime manifest');
+requireFile(RECOVERED_ROOM_ITEM_GEOMETRY, 'recovered RoomItem geometry');
 requireFile(SERVER_CATALOG, 'trusted placement catalog');
 
 const manifest = JSON.parse(fs.readFileSync(MANIFEST_FILE, 'utf8'));
+const recoveredRoomItemGeometry = JSON.parse(
+  fs.readFileSync(RECOVERED_ROOM_ITEM_GEOMETRY, 'utf8'),
+);
 if (manifest.version !== 3) throw new Error('item asset mapping requires manifest v3');
 
 const restaurant = (manifest.data ?? []).find((entry) => entry.id === 'restaurant');
@@ -193,6 +203,23 @@ if (!Array.isArray(database.groups)) throw new Error('malformed restaurant ItemD
 
 const authoritativeIds = parseAuthoritativeIds(fs.readFileSync(SERVER_CATALOG, 'utf8'));
 const { bySymbol, frameCount } = buildSymbolIndex(manifest);
+
+function recoveredRuntimeGeometry(itemId, className) {
+  const leaf = leafClassName(className);
+  if (!leaf) return null;
+  const entry = recoveredRoomItemGeometry.classes?.[leaf];
+  if (
+    !entry ||
+    entry.placementFootprintEnabled !== true ||
+    !Array.isArray(entry.itemIds) ||
+    !entry.itemIds.includes(itemId) ||
+    typeof entry.runtimeClassName !== 'string' ||
+    entry.runtimeClassName.length === 0
+  ) {
+    return null;
+  }
+  return entry;
+}
 
 const records = [];
 for (const group of database.groups) {
@@ -208,12 +235,20 @@ for (const group of database.groups) {
     const hash = stringValue(item.attributes?.hash);
     const itemName = stringValue(item.attributes?.name);
 
-    const strategies = [
-      { strategy: 'className', value: className },
-      { strategy: 'classNameLeaf', value: leafClassName(className) },
-      { strategy: 'hash', value: hash },
-      { strategy: 'name', value: itemName },
-    ];
+    const recovered = recoveredRuntimeGeometry(id, className);
+    const strategies = recovered
+      ? [
+          {
+            strategy: 'recoveredRuntimeClassName',
+            value: recovered.runtimeClassName,
+          },
+        ]
+      : [
+          { strategy: 'className', value: className },
+          { strategy: 'classNameLeaf', value: leafClassName(className) },
+          { strategy: 'hash', value: hash },
+          { strategy: 'name', value: itemName },
+        ];
 
     const candidates = [];
     for (const candidate of strategies) {
@@ -228,6 +263,33 @@ for (const group of database.groups) {
             frameCount: match.frames.length,
             frames: match.frames,
           });
+        }
+      }
+    }
+
+    if (recovered && candidates.length === 1) {
+      const candidate = candidates[0];
+      const expectedVisualFrameCount = integer(recovered.visualFrameCount);
+      const expectedLogicalRotationCount = integer(recovered.rotationCount);
+      if (
+        expectedVisualFrameCount === null ||
+        expectedLogicalRotationCount === null ||
+        expectedVisualFrameCount < 1 ||
+        expectedLogicalRotationCount < 1 ||
+        candidate.frameCount !== expectedVisualFrameCount ||
+        !Array.isArray(recovered.frames) ||
+        recovered.frames.length !== expectedLogicalRotationCount
+      ) {
+        throw new Error(
+          'recovered runtime geometry/frame contract mismatch for authoritative item ' + id,
+        );
+      }
+      const available = new Set(candidate.frames);
+      for (const frame of recovered.frames) {
+        if (typeof frame?.frame !== 'string' || !available.has(frame.frame)) {
+          throw new Error(
+            'recovered runtime frame missing for authoritative item ' + id,
+          );
         }
       }
     }
