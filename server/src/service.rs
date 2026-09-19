@@ -584,6 +584,19 @@ impl ProductAggregate {
                     wallpaper: PersistedWallpaper::from(record.wallpaper),
                 })
                 .collect(),
+            active_service: self.active_service.map(PersistedActiveService::from),
+            service_mutations: self
+                .service_mutations
+                .iter()
+                .map(|(mutation_id, record)| PersistedServiceMutation {
+                    mutation_id: mutation_id.as_str().to_owned(),
+                    sequence: record.sequence,
+                    operation: record.operation.into(),
+                    result: record.result.map(PersistedActiveService::from),
+                })
+                .collect(),
+            next_service_mutation_sequence: self.next_service_mutation_sequence,
+            next_service_id: self.next_service_id,
         };
 
         serde_json::to_vec(&persisted).map_err(|_| ProductStateStoreError::Corrupt)
