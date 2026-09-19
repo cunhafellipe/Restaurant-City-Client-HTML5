@@ -127,7 +127,6 @@ enum ServiceMutationOperation {
     },
     StartCustomerChairPath {
         service_id: u64,
-        start_tile: TilePoint,
         effective_at_ms: u64,
     },
     CompleteCustomerChairPath {
@@ -286,6 +285,10 @@ struct PersistedActiveServiceAssignment {
     waiter_employee_id: u64,
     waiter_tile_x: i32,
     waiter_tile_y: i32,
+    #[serde(default)]
+    customer_entrance_tile_x: Option<i32>,
+    #[serde(default)]
+    customer_entrance_tile_y: Option<i32>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -302,6 +305,10 @@ struct PersistedActiveService {
     waiter_employee_id: u64,
     waiter_tile_x: i32,
     waiter_tile_y: i32,
+    #[serde(default)]
+    customer_entrance_tile_x: Option<i32>,
+    #[serde(default)]
+    customer_entrance_tile_y: Option<i32>,
     state: ServiceLoopState,
     #[serde(default)]
     timing_anchored: bool,
@@ -334,8 +341,6 @@ enum PersistedServiceMutationOperation {
     },
     StartCustomerChairPath {
         service_id: u64,
-        start_tile_x: i32,
-        start_tile_y: i32,
         effective_at_ms: u64,
     },
     CompleteCustomerChairPath {
@@ -500,6 +505,8 @@ impl From<ActiveServiceAssignment> for PersistedActiveServiceAssignment {
             waiter_employee_id: value.waiter_employee_id,
             waiter_tile_x: value.waiter_tile.x,
             waiter_tile_y: value.waiter_tile.y,
+            customer_entrance_tile_x: value.customer_entrance_tile.map(|tile| tile.x),
+            customer_entrance_tile_y: value.customer_entrance_tile.map(|tile| tile.y),
         }
     }
 }
@@ -515,6 +522,14 @@ impl From<PersistedActiveServiceAssignment> for ActiveServiceAssignment {
             waiter_tile: TilePoint {
                 x: value.waiter_tile_x,
                 y: value.waiter_tile_y,
+            },
+            customer_entrance_tile: match (
+                value.customer_entrance_tile_x,
+                value.customer_entrance_tile_y,
+            ) {
+                (Some(x), Some(y)) => Some(TilePoint { x, y }),
+                (None, None) => None,
+                _ => None,
             },
         }
     }
@@ -534,6 +549,8 @@ impl From<ActiveServiceRecord> for PersistedActiveService {
             waiter_employee_id: value.identity.waiter_employee_id,
             waiter_tile_x: value.identity.waiter_tile.x,
             waiter_tile_y: value.identity.waiter_tile.y,
+            customer_entrance_tile_x: value.identity.customer_entrance_tile.map(|tile| tile.x),
+            customer_entrance_tile_y: value.identity.customer_entrance_tile.map(|tile| tile.y),
             state: value.state,
             timing_anchored: value.timing_anchored,
             customer_deadline_at_ms: value.deadlines.customer_deadline_at_ms,
@@ -575,6 +592,15 @@ impl TryFrom<PersistedActiveService> for ActiveServiceRecord {
             return Err(ProductStateStoreError::Corrupt);
         }
 
+        let customer_entrance_tile = match (
+            value.customer_entrance_tile_x,
+            value.customer_entrance_tile_y,
+        ) {
+            (Some(x), Some(y)) => Some(TilePoint { x, y }),
+            (None, None) => None,
+            _ => return Err(ProductStateStoreError::Corrupt),
+        };
+
         Ok(Self {
             identity: ActiveServiceIdentity {
                 service_id: value.service_id,
@@ -590,6 +616,7 @@ impl TryFrom<PersistedActiveService> for ActiveServiceRecord {
                     x: value.waiter_tile_x,
                     y: value.waiter_tile_y,
                 },
+                customer_entrance_tile,
             },
             state: value.state,
             timing_anchored: value.timing_anchored,
@@ -629,12 +656,9 @@ impl From<ServiceMutationOperation> for PersistedServiceMutationOperation {
             },
             ServiceMutationOperation::StartCustomerChairPath {
                 service_id,
-                start_tile,
                 effective_at_ms,
             } => Self::StartCustomerChairPath {
                 service_id,
-                start_tile_x: start_tile.x,
-                start_tile_y: start_tile.y,
                 effective_at_ms,
             },
             ServiceMutationOperation::CompleteCustomerChairPath {
@@ -679,15 +703,9 @@ impl From<PersistedServiceMutationOperation> for ServiceMutationOperation {
             },
             PersistedServiceMutationOperation::StartCustomerChairPath {
                 service_id,
-                start_tile_x,
-                start_tile_y,
                 effective_at_ms,
             } => Self::StartCustomerChairPath {
                 service_id,
-                start_tile: TilePoint {
-                    x: start_tile_x,
-                    y: start_tile_y,
-                },
                 effective_at_ms,
             },
             PersistedServiceMutationOperation::CompleteCustomerChairPath {
