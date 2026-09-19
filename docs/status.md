@@ -13,39 +13,63 @@ Living tracker. Facts only; update when implementation evidence changes.
 
 ## Current objective
 
-M2 world/editor parity is closed. Begin the first actual restaurant gameplay
-vertical slice from canonical `WorldRestaurantPlay`: customer admission/seating,
-`DishOrder`, chef cooking, waiter delivery, eating/empty-plate cleanup and the
-authoritative meal payout boundary.
+M2 world/editor parity is closed. M3 gate 1 froze the canonical service-loop
+state machine and payout boundary. M3 gate 2 is now closed as well: the product
+derives native service topology from the same authoritative restaurant layout,
+projects it read-only to Phaser, and rejects stale layout/topology pairs.
 
-### Latest checkpoint — M3 service-loop authority gate 1
+The next slice is the first live single-customer/single-table/single-chef/
+single-waiter lifecycle driven by that topology and the already validated
+service reducer. Active service identity/replay must become durable before a
+live meal is allowed to reach server-only settlement.
 
-- Canonical 0.9.143a service chain is now frozen in
-  `contracts/restaurant-city/recovered-service-loop.json`:
-  customer admission/seating → `DishOrder` → chef → waiter → eat → empty plate.
-- Recovered customer timing includes **1 s** post-seat decision, **10 s** order
-  wait, **120 s** food wait, **25 s** eating and **2 s** paying.
-- Recovered chef base cook time is **16–32 s**, linearly interpolated by
-  employee work percentage between 20% and 80%; waiter action delay is
-  **2–6 s**.
-- Customer cadence is source-grounded:
-  `60000 / (min(demand, 550) * 0.05) + rnd(-3000, 3000)`.
-- TypeScript and Rust now carry matching deterministic customer/order state
-  machines. Random/path choices are explicit inputs rather than hidden browser
-  authority.
-- Historical payout boundary is preserved exactly: **finishing a meal does not
-  pay**. `clearEmptyPlate(order)` is the settlement trigger.
-- Meal settlement is one atomic, idempotent Rust mutation:
-  `recipe.cost` coins plus gourmet points stored in historical tenths
-  (`10 + 2 * (recipe.level - 1)`). The browser has no reward-grant endpoint.
-- Product gate **35427154909** is GREEN on physical runner
-  `ANEWON-REVIVAL-01`: **97/97 TypeScript**, **83/83 Rust**, catalog remains
-  **92**, item→atlas remains **92 unique / 0 ambiguous / 0 missing**, and every
-  existing browser golden stayed frozen.
-- Artifact `10579641712`, SHA-256
-  `2c9b2670a891d8110cad053b88cf424ebe5755b3ddfa103b600837a3913a3243`.
+### Latest checkpoint — M3 service-topology authority gate 2
+
+- The trusted placement catalog now contains **103 player definitions** with
+  **103 unique / 0 ambiguous / 0 missing** item→atlas mappings.
+- All **11 canonical kitchen composites** are promoted from physical R42/R43
+  evidence with exact per-rotation occupied cells. Rotations 2/3 preserve
+  historical negative offsets rather than rebasing the anchor.
+- Stove10 is preserved as **4 logical rotations / 1 visual frame**.
+- Stove11 resolves fail-closed through the proven runtime alias
+  `Stove11Rotations_485`.
+- The Rust topology domain derives default walls, door walkability, authoritative
+  item occupancy, chair facing tiles, table eligibility/free state, kitchens,
+  drinks and waiter/chef reachability from the existing restaurant snapshot.
+- Toilet service reachability remains distinct from meal-seat admission:
+  `calculateServableTables` semantics may mark service reachability while
+  `is_meal_seat` excludes toilets.
+- `GET /api/v1/restaurant/topology` is an authenticated, same-origin,
+  **read-only/no-store** route. The topology is derived from the same loaded
+  aggregate and carries its source room + placed items.
+- The TypeScript authority loads a synchronized
+  `RestaurantAuthoritativeSnapshot`; stale layout/topology pairs are retried
+  once and then rejected fail-closed.
+- Phaser consumes and publishes the synchronized topology without receiving any
+  economy authority. Physical browser evidence verifies the topology source,
+  occupied table cell and walkability while every frozen M2 visual golden
+  remains unchanged.
+- Product gate **35450486931** is GREEN on the physical runner:
+  **102/102 TypeScript**, **98/98 Rust**, catalog **103**, mapping
+  **103 unique / 0 ambiguous / 0 missing**, WEB-NATIVE PASS, cargo
+  fmt/clippy/test PASS and **0 production npm vulnerabilities**.
+- Artifact `10587180002`, SHA-256
+  `9745e31358f95e210381813721d066cf358eea1f56b6d18db6969b23b4612eba`.
 - Validated behavioral product SHA:
-  `fe3ce19c92ece6110b3da7327238de4a5cb6f4df`.
+  `20002a82737958e894d511e38a0363fb3357bb97`.
+
+### M3 service-loop authority gate 1
+
+The gate-1 contract remains frozen in
+`contracts/restaurant-city/recovered-service-loop.json`:
+
+- canonical customer/order/chef/waiter state transitions and timers;
+- chef **16–32 s** work interpolation and waiter **2–6 s** action delay;
+- admission cadence
+  `60000 / (min(demand, 550) * 0.05) + rnd(-3000, 3000)`;
+- payout only at `clearEmptyPlate(order)`;
+- atomic/idempotent server-side `SettleMeal`;
+- no browser reward-grant endpoint.
 
 ## Verified foundation
 
@@ -57,8 +81,9 @@ authoritative meal payout boundary.
 | ANEWON product routing | done | ADR-0009 merged in `anew-docs` |
 | product security policy | done | `SECURITY.md` + `anewon.product.json` |
 | production source maps | disabled | `vite.config.ts` |
-| product-authority domain | active | `server/`: opaque Platform subject, checked/idempotent economy/inventory mutations |
-| full visual corpus pipeline | active | bounded deterministic multi-atlas pages; R16.x runner verification |
+| product-authority domain | active | opaque Platform subject, durable/idempotent placement/economy and read-only topology projection |
+| service topology | done | exact authoritative occupancy/facing/walkability + synchronized Phaser snapshot |
+| full visual corpus pipeline | active | R16: 2,481 linked symbols, 17,169 frames; deterministic generated web derivatives |
 | BIN/XML local decoder | active | `tools/extract-content.mjs`; decoded output stays gitignored/local |
 | later historical bytes | unresolved | R15/R17 exhausted current automated host/Wayback routes with 0 accepted bytes |
 
@@ -92,9 +117,9 @@ RPC may be used for parity/replay, but must not become the native domain API.
 
 | Date | What |
 |---|---|
-| 2026-09-19 | M3 service-loop authority gate 1 closed: canonical admission/order/chef/waiter/eat/plate-clear contract, deterministic TS/Rust replay, atomic idempotent payout, 97 TS + 83 Rust green in run 35427154909. |
-| 2026-09-19 | M2 world/editor slice closed: R36 identified 5 canonical wallDividers as ordinary decor (0 wallItem), R37/R38 recovered 5/5 geometry + 12/12 origins, 92/92 trusted mapping and White Wall browser lifecycle green in run 35426235929. |
-| 2026-09-19 | Wallpaper domain closed as playable vertical slice: R34 48/48 exports + R35 96/96 frame origins, V4 authority/persistence, 87/87 trusted item-atlas mapping, frozen left/top browser goldens, and real Edge apply/select/remove flow green in run 35424279934. |
+| 2026-09-19 | M3 service-topology gate 2 closed: 11/11 kitchen composites promoted, catalog/mapping 103/103, exact occupancy/facing/walkability, authenticated read-only topology route, synchronized Phaser topology and physical browser proof green in run 35450486931. |
+| 2026-09-19 | M3 service-loop authority gate 1 closed: canonical admission/order/chef/waiter/eat/plate-clear contract, deterministic TS/Rust replay and atomic idempotent payout. |
+| 2026-09-19 | M2 world/editor slice closed: five canonical wallDividers, wallpapers, door/window/floor/stacking and frozen browser goldens. |
 | 2026-09-18 | ADR-0009 merged: Restaurant City formally routed as ANEWON SOCIAL_WEB Product; Platform/Runtime/product boundaries fixed. |
 | 2026-09-18 | Product authority Rust foundation added with opaque ANEWON subject and idempotent checked state mutations. |
 | 2026-09-18 | Visual pipeline upgraded from one unbounded PNG to deterministic bounded multi-atlas pages for the full corpus. |
@@ -103,21 +128,22 @@ RPC may be used for parity/replay, but must not become the native domain API.
 
 ## Blockers
 
-- full R16 corpus run must finish cleanly and provide final visual/data counts;
-- later 2010-2012 assets/data remain historically evidenced but byte recovery
+- later 2010–2012 assets/data remain historically evidenced but byte recovery
   is unresolved;
+- active service-loop identity/replay is not durable yet, so no live meal may
+  trigger settlement;
 - public/commercial distribution of legacy assets remains blocked absent an
   explicit rights basis.
 
 ## Next
 
-1. recover and pin service-topology rules as a native contract:
-   chair-facing tile, table eligibility and waiter → kitchen → chair reachability;
-2. project authoritative placed chair/table/kitchen items into a gameplay
-   topology snapshot without duplicating editor ownership;
-3. implement the first live Phaser actor fixture using the deterministic M3
-   reducer while keeping reward settlement server-only;
-4. persist active service-loop state/replay identity before exposing any
-   network mutation that could award a meal;
-5. add physical browser evidence for one complete customer meal lifecycle,
-   then freeze it before expanding to drinks/toilet/cleaner branches.
+1. define and persist one active service identity binding customer, order,
+   chair/table, chef, kitchen and waiter to the authoritative topology;
+2. drive explicit path/timing outcomes through the already validated service
+   reducer and render the first live Phaser customer/chef/waiter actors;
+3. prove deterministic replay/reopen of that active service state before any
+   live server-side payout connection;
+4. wire plate-clear to the existing server-only idempotent `SettleMeal` only
+   after the durable identity gate is green;
+5. capture one complete physical browser meal lifecycle and freeze it before
+   expanding to drinks/toilet/cleaner branches.
