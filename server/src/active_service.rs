@@ -13,6 +13,7 @@ use crate::restaurant::{PlacementCatalog, RestaurantSnapshot};
 use crate::service_clock::{
     ServiceDeadlines, ServiceTimingError, anchor_service_deadlines, transition_timed_service,
 };
+use crate::service_path::ServicePathPlan;
 use crate::topology::{
     ServiceChef, ServiceWaiter, calculate_food_service_topology, derive_service_layout,
     is_meal_seat, is_table_free, table_for_chair,
@@ -54,6 +55,10 @@ pub struct ActiveServiceRecord {
     /// the server-selected start timestamp.
     pub timing_anchored: bool,
     pub deadlines: ServiceDeadlines,
+    /// Server-owned path authority for a path-driven phase. The exact waypoint
+    /// list is never persisted here; it is rederived from the locked
+    /// restaurant revision and validated against this compact plan.
+    pub active_path: Option<ServicePathPlan>,
 }
 
 impl ActiveServiceRecord {
@@ -139,6 +144,7 @@ impl ActiveServiceRecord {
             state: ServiceLoopState::default(),
             timing_anchored: false,
             deadlines: ServiceDeadlines::default(),
+            active_path: None,
         })
     }
 
@@ -286,6 +292,7 @@ mod tests {
         assert_eq!(record.state, ServiceLoopState::default());
         assert!(!record.timing_anchored);
         assert_eq!(record.deadlines, ServiceDeadlines::default());
+        assert_eq!(record.active_path, None);
         assert!(record.locks_instance(1));
         assert!(record.locks_instance(2));
         assert!(record.locks_instance(3));
