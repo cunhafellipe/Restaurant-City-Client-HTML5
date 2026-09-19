@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "baseline": "0.9.143a",
+  "canonicalArchiveSha256": "4493be9bc4c2f87ef80ca7afa5321e12bb94a7ec6ed2f0a673b4d48b19170ef4",
+  "canonicalActionScriptRepository": "n3r0-b1n4ry/RestaurantCity_SWF",
+  "canonicalActionScriptCommit": "d552cfa4767fe4fb5b7899493c30bfb375afc2c1",
+  "policy": "A runtime alias may only rename a linked canonical symbol when its chid and exact source linkage name are proven. Extraction fails closed on missing linkage, name drift, duplicate chid, duplicate runtime name, or alias collision.",
+  "swfs": {
+    "indoor_asset": [
+      {
+        "chid": 2088,
+        "sourceName": "indoor_asset_fla.Stove11Rotations_485",
+        "runtimeName": "Stove11Rotations_485",
+        "reason": "Canonical RoomItem.createRoomItems promotes Stove11 sub0 to the runtime primary. The SWF linkage is package-qualified while recovered ActionScript and service geometry identify the runtime class by leaf name.",
+        "evidence": {
+          "wrapperItemId": 3070008,
+          "wrapperClass": "Stove11",
+          "runtimeSourcePath": "decompile/indoor_asset/src/indoor_asset_fla/Stove11Rotations_485.as",
+          "r43Run": 35446233379,
+          "runtimeSpriteId": 2088,
+          "visualFrameCount": 4,
+          "logicalRotationCount": 4
+        }
+      }
+    ]
+  }
+}
