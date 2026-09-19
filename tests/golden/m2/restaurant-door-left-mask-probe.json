@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "fixture": "simple-door-3010000-left-mask-probe-at-0-2",
+  "baseline": "0.9.143a",
+  "canvas": {
+    "width": 760,
+    "height": 600
+  },
+  "blockSize": 8,
+  "expectedQuantizedBlockSha256": "2cde6c4d35986266cc676f0c58176d62eb57b24eb3362e18e2752c2ca6276685",
+  "referencePixelSha256": "f9fe919e1d97dfb3c7e49df9cd98bc5223096f31d3208e824be37fc47b77c4e5",
+  "referencePngSha256": "a1f398341efeab77ae6fe2adbd90ab3750a891f24f74ca92b54fac3f29f50def",
+  "provenance": {
+    "productSha": "7f542fce38076961de87b5e78d59d502d1fc1cf6",
+    "verificationRunId": 35421414807,
+    "rotation": 0,
+    "tile": {
+      "x": 0,
+      "y": 2
+    },
+    "maskFrame": "indoor_asset/doorwaymask/001",
+    "maskLocal": {
+      "x": 40,
+      "y": 25.900000000000006
+    }
+  }
+}
