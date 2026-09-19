@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "fixture": "canonical-wall-divider-5-items-12-frames-fail-closed",
+  "fixture": "canonical-wall-divider-5-items-12-frames",
   "baseline": "0.9.143a",
   "canvas": {
     "width": 760,
@@ -24,6 +24,7 @@
       3020055
     ],
     "frameCount": 12,
-    "semantics": "All five canonical wallDivider records are ordinary interior decor items (0 wallItem); exact vector constructor geometry and atlas canvas origins are recovered before placement promotion."
+    "semantics": "All five canonical wallDivider records are ordinary interior decor items (0 wallItem); exact vector constructor geometry and atlas canvas origins are recovered before placement promotion.",
+    "promotionGate": "Placement enabled only after pre-promotion run 35426037459 froze this exact block signature."
   }
 }
