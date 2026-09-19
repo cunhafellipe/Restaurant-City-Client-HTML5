@@ -1,9 +1,11 @@
-use crate::active_service::{ActiveServiceAssignment, ActiveServiceIdentity, ActiveServiceRecord};
+use crate::active_service::{
+    ActiveServiceAssignment, ActiveServiceError, ActiveServiceIdentity, ActiveServiceRecord,
+};
 use crate::domain::{
     AuthorityError, Command, MutationId, MutationOutcome, PlayerPersistenceSnapshot, PlayerState,
 };
 use crate::gameplay::{
-    CustomerServiceState, OrderServiceState, ServiceLoopEvent, ServiceLoopState,
+    CustomerServiceState, OrderServiceState, ServiceLoopError, ServiceLoopEvent, ServiceLoopState,
 };
 use crate::placement::{RoomDimensions, TilePoint};
 use crate::platform::{
