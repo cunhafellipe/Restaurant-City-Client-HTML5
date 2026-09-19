@@ -21,6 +21,11 @@ export interface AuthoritativeFloorTile {
   readonly roomIndex: number;
 }
 
+export interface AuthoritativeWallpaper {
+  readonly itemId: number;
+  readonly rotation: 0 | 1;
+}
+
 export interface AuthoritativeInventoryAvailability {
   readonly itemId: number;
   readonly owned: number;
@@ -33,6 +38,7 @@ export interface RestaurantLayout {
   readonly nextInstanceId: number;
   readonly items: readonly AuthoritativePlacedItem[];
   readonly floorTiles: readonly AuthoritativeFloorTile[];
+  readonly wallpapers: readonly AuthoritativeWallpaper[];
   readonly inventory: readonly AuthoritativeInventoryAvailability[];
 }
 
@@ -55,6 +61,12 @@ export interface FloorTileCommand {
   readonly tileY: number;
 }
 
+export interface WallpaperCommand {
+  readonly itemId: number;
+  readonly tileX: number;
+  readonly tileY: number;
+}
+
 export interface PlacementCommit {
   readonly outcome: 'applied' | 'duplicate';
   readonly item: AuthoritativePlacedItem;
@@ -63,6 +75,11 @@ export interface PlacementCommit {
 export interface FloorTileCommit {
   readonly outcome: 'applied' | 'duplicate';
   readonly tile: AuthoritativeFloorTile;
+}
+
+export interface WallpaperCommit {
+  readonly outcome: 'applied' | 'duplicate';
+  readonly wallpaper: AuthoritativeWallpaper;
 }
 
 export interface RestaurantAuthority {
@@ -75,6 +92,11 @@ export interface RestaurantAuthority {
     command: FloorTileCommand,
     mutationId: string,
   ): Promise<FloorTileCommit>;
+  applyWallpaper(
+    command: WallpaperCommand,
+    mutationId: string,
+  ): Promise<WallpaperCommit>;
+  removeWallpaper(rotation: 0 | 1, mutationId: string): Promise<WallpaperCommit>;
   transformItem(
     instanceId: number,
     command: TransformCommand,
@@ -227,6 +249,66 @@ export class HttpRestaurantAuthority implements RestaurantAuthority {
     return parseFloorTileCommit(await response.json());
   }
 
+  async applyWallpaper(
+    command: WallpaperCommand,
+    mutationId: string,
+  ): Promise<WallpaperCommit> {
+    validateMutationId(mutationId);
+    validateWallpaperCommand(command);
+
+    const response = await this.fetcher(
+      `${this.basePath}/restaurant/wallpapers`,
+      {
+        method: 'PUT',
+        credentials: 'same-origin',
+        cache: 'no-store',
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+          'Idempotency-Key': mutationId,
+        },
+        body: JSON.stringify({
+          item_id: command.itemId,
+          tile_x: command.tileX,
+          tile_y: command.tileY,
+        }),
+      },
+    );
+
+    if (!response.ok) {
+      throw await authorityError(response);
+    }
+
+    return parseWallpaperCommit(await response.json());
+  }
+
+  async removeWallpaper(
+    rotation: 0 | 1,
+    mutationId: string,
+  ): Promise<WallpaperCommit> {
+    validateWallpaperRotation(rotation);
+    validateMutationId(mutationId);
+
+    const response = await this.fetcher(
+      `${this.basePath}/restaurant/wallpapers/${rotation}`,
+      {
+        method: 'DELETE',
+        credentials: 'same-origin',
+        cache: 'no-store',
+        headers: {
+          Accept: 'application/json',
+          'Idempotency-Key': mutationId,
+        },
+      },
+    );
+
+    if (!response.ok) {
+      throw await authorityError(response);
+    }
+
+    return parseWallpaperCommit(await response.json());
+  }
+
   async transformItem(
     instanceId: number,
     command: TransformCommand,
@@ -302,6 +384,12 @@ export function createFloorTileMutationId(
   return createMutationId('floor', uuid);
 }
 
+export function createWallpaperMutationId(
+  uuid: () => string = () => crypto.randomUUID(),
+): string {
+  return createMutationId('wallpaper', uuid);
+}
+
 export function createTransformMutationId(
   uuid: () => string = () => crypto.randomUUID(),
 ): string {
@@ -315,7 +403,7 @@ export function createRemoveMutationId(
 }
 
 function createMutationId(
-  operation: 'placement' | 'floor' | 'transform' | 'remove',
+  operation: 'placement' | 'floor' | 'wallpaper' | 'transform' | 'remove',
   uuid: () => string,
 ): string {
   const value = `rc-${operation}-${uuid()}`;
@@ -346,6 +434,22 @@ function validateFloorTileCommand(command: FloorTileCommand): void {
     !Number.isSafeInteger(command.tileY)
   ) {
     throw new Error('Invalid Restaurant City floor tile command');
+  }
+}
+
+function validateWallpaperCommand(command: WallpaperCommand): void {
+  if (
+    !isUInt32(command.itemId) ||
+    !Number.isSafeInteger(command.tileX) ||
+    !Number.isSafeInteger(command.tileY)
+  ) {
+    throw new Error('Invalid Restaurant City wallpaper command');
+  }
+}
+
+function validateWallpaperRotation(rotation: number): asserts rotation is 0 | 1 {
+  if (rotation !== 0 && rotation !== 1) {
+    throw new Error('Invalid Restaurant City wallpaper rotation');
   }
 }
 
@@ -397,6 +501,7 @@ function parseRestaurantLayout(value: unknown): RestaurantLayout {
     !isObject(value.room) ||
     !Array.isArray(value.items) ||
     !Array.isArray(value.floor_tiles) ||
+    !Array.isArray(value.wallpapers) ||
     !Array.isArray(value.inventory)
   ) {
     throw new Error('Malformed authoritative restaurant layout');
@@ -414,6 +519,7 @@ function parseRestaurantLayout(value: unknown): RestaurantLayout {
   );
   const items = value.items.map(parsePlacedItem);
   const floorTiles = value.floor_tiles.map(parseFloorTile);
+  const wallpapers = value.wallpapers.map(parseWallpaper);
   const inventory = value.inventory.map(parseInventoryAvailability);
 
   if (room.insideX === 0 || room.insideY === 0 || nextInstanceId === 0) {
@@ -446,6 +552,18 @@ function parseRestaurantLayout(value: unknown): RestaurantLayout {
     placedByItem.set(tile.itemId, (placedByItem.get(tile.itemId) ?? 0) + 1);
   }
 
+  const wallpaperRotations = new Set<number>();
+  for (const wallpaper of wallpapers) {
+    if (wallpaperRotations.has(wallpaper.rotation)) {
+      throw new Error('Malformed authoritative duplicate wallpaper orientation');
+    }
+    wallpaperRotations.add(wallpaper.rotation);
+    placedByItem.set(
+      wallpaper.itemId,
+      (placedByItem.get(wallpaper.itemId) ?? 0) + 1,
+    );
+  }
+
   const inventoryIds = new Set<number>();
   for (const entry of inventory) {
     if (inventoryIds.has(entry.itemId)) {
@@ -468,6 +586,7 @@ function parseRestaurantLayout(value: unknown): RestaurantLayout {
     nextInstanceId,
     items,
     floorTiles,
+    wallpapers,
     inventory,
   };
 }
@@ -481,6 +600,31 @@ function parseFloorTile(value: unknown): AuthoritativeFloorTile {
     tileX: requireSafeInt(value.tile_x, 'floor_tile.tile_x'),
     tileY: requireSafeInt(value.tile_y, 'floor_tile.tile_y'),
     roomIndex: requireRoomIndex(value.room_index),
+  };
+}
+
+function parseWallpaper(value: unknown): AuthoritativeWallpaper {
+  if (!isObject(value)) {
+    throw new Error('Malformed authoritative wallpaper');
+  }
+  const rotation = requireUInt(value.rotation, 'wallpaper.rotation');
+  validateWallpaperRotation(rotation);
+  return {
+    itemId: requireUInt(value.item_id, 'wallpaper.item_id'),
+    rotation,
+  };
+}
+
+function parseWallpaperCommit(value: unknown): WallpaperCommit {
+  if (
+    !isObject(value) ||
+    (value.outcome !== 'applied' && value.outcome !== 'duplicate')
+  ) {
+    throw new Error('Malformed authoritative wallpaper response');
+  }
+  return {
+    outcome: value.outcome,
+    wallpaper: parseWallpaper(value.wallpaper),
   };
 }
 
