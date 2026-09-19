@@ -30,10 +30,11 @@ pub struct ServiceItemFlags {
 pub struct PlacementCatalog {
     definitions: BTreeMap<u32, ItemPlacementDefinition>,
     service_roles: BTreeMap<u32, ServiceItemFlags>,
+    occupied_cells: BTreeMap<(u32, u8), Vec<TilePoint>>,
 }
 
 pub const PLACEMENT_CATALOG_MAGIC: &str = "ANEWON_RC_PLACEMENT_CATALOG_V4";
-const PLACEMENT_CATALOG_COLUMNS: &str = "item_id\tsize_x\tsize_y\trotation_count\twall_item\twall_decoration_item\twallpaper_item\toutdoor\tfloor_tile_item\tsurface\tstackable\tdoor_item\tchair_item\ttable_item\tkitchen\tdrink\ttoilet";
+const PLACEMENT_CATALOG_COLUMNS: &str = "item_id\tsize_x\tsize_y\trotation_count\twall_item\twall_decoration_item\twallpaper_item\toutdoor\tfloor_tile_item\tsurface\tstackable\tdoor_item\tchair_item\ttable_item\tkitchen\tdrink\ttoilet\toccupied_cells";
 
 impl PlacementCatalog {
     pub fn new(
@@ -71,6 +72,28 @@ impl PlacementCatalog {
         self.service_roles.get(&item_id).copied().unwrap_or_default()
     }
 
+    pub fn occupied_cells(&self, item_id: u32, rotation: u8) -> Option<Vec<TilePoint>> {
+        let definition = *self.get(item_id)?;
+        if rotation >= definition.rotation_count {
+            return None;
+        }
+        if let Some(cells) = self.occupied_cells.get(&(item_id, rotation)) {
+            return Some(cells.clone());
+        }
+
+        let footprint = rotate_footprint(definition.footprint, i32::from(rotation));
+        let mut cells = Vec::with_capacity((footprint.size_x * footprint.size_y) as usize);
+        for y in 0..footprint.size_y {
+            for x in 0..footprint.size_x {
+                cells.push(TilePoint {
+                    x: x as i32,
+                    y: y as i32,
+                });
+            }
+        }
+        Some(cells)
+    }
+
     pub fn from_trusted_tsv(input: &str) -> Result<Self, PlacementCatalogLoadError> {
         let mut lines = input.lines().enumerate();
         let Some((_, magic)) = lines.next() else {
@@ -83,6 +106,7 @@ impl PlacementCatalog {
         let mut saw_columns = false;
         let mut definitions = Vec::new();
         let mut service_roles = BTreeMap::new();
+        let mut occupied_cells = BTreeMap::new();
 
         for (index, raw) in lines {
             let line_number = index + 1;
@@ -100,7 +124,7 @@ impl PlacementCatalog {
             }
 
             let fields: Vec<_> = line.split('\t').collect();
-            if fields.len() != 17 {
+            if fields.len() != 18 {
                 return Err(PlacementCatalogLoadError::InvalidRow { line: line_number });
             }
 
@@ -145,6 +169,40 @@ impl PlacementCatalog {
                 drink: parse_bool(fields[15])?,
                 toilet: parse_bool(fields[16])?,
             };
+
+            if fields[17] != "-" {
+                let rotations: Vec<_> = fields[17].split('/').collect();
+                if rotations.len() != usize::from(definition.rotation_count) {
+                    return Err(PlacementCatalogLoadError::InvalidRow { line: line_number });
+                }
+                for (rotation, encoded) in rotations.iter().enumerate() {
+                    if encoded.is_empty() {
+                        return Err(PlacementCatalogLoadError::InvalidRow { line: line_number });
+                    }
+                    let mut cells = Vec::new();
+                    for token in encoded.split('+') {
+                        let Some((x, y)) = token.split_once(',') else {
+                            return Err(PlacementCatalogLoadError::InvalidRow { line: line_number });
+                        };
+                        let x = x
+                            .parse::<i32>()
+                            .map_err(|_| PlacementCatalogLoadError::InvalidRow { line: line_number })?;
+                        let y = y
+                            .parse::<i32>()
+                            .map_err(|_| PlacementCatalogLoadError::InvalidRow { line: line_number })?;
+                        let tile = TilePoint { x, y };
+                        if cells.contains(&tile) {
+                            return Err(PlacementCatalogLoadError::InvalidRow { line: line_number });
+                        }
+                        cells.push(tile);
+                    }
+                    if cells.is_empty() || !cells.contains(&TilePoint { x: 0, y: 0 }) {
+                        return Err(PlacementCatalogLoadError::InvalidRow { line: line_number });
+                    }
+                    occupied_cells.insert((definition.item_id, rotation as u8), cells);
+                }
+            }
+
             service_roles.insert(definition.item_id, service);
             definitions.push(definition);
         }
@@ -156,6 +214,7 @@ impl PlacementCatalog {
         let mut catalog =
             Self::new(definitions).map_err(PlacementCatalogLoadError::Definition)?;
         catalog.service_roles = service_roles;
+        catalog.occupied_cells = occupied_cells;
         Ok(catalog)
     }
 }
@@ -1067,7 +1126,7 @@ mod tests {
         let input = concat!(
             "ANEWON_RC_PLACEMENT_CATALOG_V4\n",
             "# baseline=0.9.143a\n",
-            "item_id\tsize_x\tsize_y\trotation_count\twall_item\twall_decoration_item\twallpaper_item\toutdoor\tfloor_tile_item\tsurface\tstackable\tdoor_item\tchair_item\ttable_item\tkitchen\tdrink\ttoilet\n",
+            "item_id\tsize_x\tsize_y\trotation_count\twall_item\twall_decoration_item\twallpaper_item\toutdoor\tfloor_tile_item\tsurface\tstackable\tdoor_item\tchair_item\ttable_item\tkitchen\tdrink\ttoilet\toccupied_cells\n",
             "10\t2\t1\t4\t0\t0\t0\t0\t0\t1\t0\n",
             "20\t1\t1\t1\t0\t0\t0\t0\t0\t0\t1\n",
         );
@@ -1077,10 +1136,25 @@ mod tests {
     }
 
     #[test]
+    fn trusted_catalog_loader_preserves_composite_cells_per_rotation() {
+        let input = concat!(
+            "ANEWON_RC_PLACEMENT_CATALOG_V4\n",
+            "item_id\tsize_x\tsize_y\trotation_count\twall_item\twall_decoration_item\twallpaper_item\toutdoor\tfloor_tile_item\tsurface\tstackable\tdoor_item\tchair_item\ttable_item\tkitchen\tdrink\ttoilet\toccupied_cells\n",
+            "3070000\t2\t1\t4\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t1\t0\t0\t0,0+1,0/0,0+0,1/0,0+-1,0/0,0+0,-1\n",
+        );
+        let catalog = PlacementCatalog::from_trusted_tsv(input).unwrap();
+        assert_eq!(
+            catalog.occupied_cells(3070000, 2).unwrap(),
+            vec![TilePoint { x: 0, y: 0 }, TilePoint { x: -1, y: 0 }]
+        );
+        assert!(catalog.service_flags(3070000).kitchen);
+    }
+
+    #[test]
     fn trusted_catalog_loader_rejects_duplicate_ids() {
         let input = concat!(
             "ANEWON_RC_PLACEMENT_CATALOG_V4\n",
-            "item_id\tsize_x\tsize_y\trotation_count\twall_item\twall_decoration_item\twallpaper_item\toutdoor\tfloor_tile_item\tsurface\tstackable\tdoor_item\tchair_item\ttable_item\tkitchen\tdrink\ttoilet\n",
+            "item_id\tsize_x\tsize_y\trotation_count\twall_item\twall_decoration_item\twallpaper_item\toutdoor\tfloor_tile_item\tsurface\tstackable\tdoor_item\tchair_item\ttable_item\tkitchen\tdrink\ttoilet\toccupied_cells\n",
             "10\t2\t1\t4\t0\t0\t0\t0\t0\t1\t0\n",
             "10\t1\t1\t4\t0\t0\t0\t0\t0\t0\t1\n",
         );
