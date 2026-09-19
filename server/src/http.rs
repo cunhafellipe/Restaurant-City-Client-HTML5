@@ -848,6 +848,7 @@ fn map_service_error(error: ProductServiceError) -> PublicProductError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::active_service::ActiveServiceAssignment;
     use crate::domain::{Command, MutationId};
     use crate::placement::{Footprint, PlacementFlags, RoomDimensions};
     use crate::platform::{
@@ -1073,6 +1074,76 @@ mod tests {
         assert_eq!(kitchen_cells.len(), 2);
         assert!(kitchen_cells.iter().all(|cell| cell["item_count"] == 1));
         assert!(kitchen_cells.iter().all(|cell| cell["walkable"] == false));
+    }
+
+    #[test]
+    fn active_service_projection_is_read_only_and_projects_authoritative_state() {
+        let service = topology_service();
+        for item_id in [11_u32, 12, 13] {
+            service
+                .apply_player_command(
+                    "session",
+                    MutationId::new(format!("service-grant-{item_id}")).unwrap(),
+                    Command::GrantInventory {
+                        item_id,
+                        quantity: 1,
+                    },
+                )
+                .unwrap();
+        }
+        for (mutation_id, item_id, tile) in [
+            ("service-chair", 11_u32, TilePoint { x: 2, y: 2 }),
+            ("service-table", 12_u32, TilePoint { x: 3, y: 2 }),
+            ("service-kitchen", 13_u32, TilePoint { x: 6, y: 4 }),
+        ] {
+            service
+                .place_item(
+                    "session",
+                    MutationId::new(mutation_id.to_owned()).unwrap(),
+                    PlacementIntent {
+                        item_id,
+                        tile,
+                        rotation: 0,
+                    },
+                )
+                .unwrap();
+        }
+
+        service
+            .start_active_service(
+                "session",
+                MutationId::new("service-start-http".to_owned()).unwrap(),
+                ActiveServiceAssignment {
+                    chair_instance_id: 1,
+                    table_instance_id: 2,
+                    chef_employee_id: 101,
+                    kitchen_instance_id: 3,
+                    waiter_employee_id: 201,
+                    waiter_tile: TilePoint { x: 4, y: 4 },
+                },
+            )
+            .unwrap();
+
+        let body = handle_load_active_service(&service, context(Some("session"), None)).unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+        assert_eq!(json["active"]["service_id"], 1);
+        assert_eq!(json["active"]["restaurant_mutation_sequence"], 3);
+        assert_eq!(json["active"]["chair_instance_id"], 1);
+        assert_eq!(json["active"]["table_instance_id"], 2);
+        assert_eq!(json["active"]["kitchen_instance_id"], 3);
+        assert_eq!(json["active"]["waiter_tile_x"], 4);
+        assert_eq!(json["active"]["waiter_tile_y"], 4);
+        assert_eq!(json["active"]["customer_state"], "admitted");
+        assert_eq!(json["active"]["order_state"], "created");
+        assert!(json["active"]["customer_timer_ms"].is_null());
+        assert!(json["active"]["order_timer_ms"].is_null());
+
+        let empty = topology_service();
+        let empty_body =
+            handle_load_active_service(&empty, context(Some("session"), None)).unwrap();
+        let empty_json: serde_json::Value = serde_json::from_slice(&empty_body).unwrap();
+        assert!(empty_json["active"].is_null());
     }
 
     #[test]
