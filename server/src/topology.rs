@@ -473,10 +473,10 @@ pub struct ServiceTopologySnapshot {
     pub chef_chairs: Vec<(u64, Vec<u64>)>,
 }
 
-pub fn table_for_chair<'a>(
+pub fn table_for_chair(
     chair: ServiceChair,
-    tables: &'a [ServiceTable],
-) -> Option<&'a ServiceTable> {
+    tables: &[ServiceTable],
+) -> Option<&ServiceTable> {
     let facing = facing_tile(chair.tile, chair.rotation);
     tables.iter().find(|table| table.tile == facing)
 }
