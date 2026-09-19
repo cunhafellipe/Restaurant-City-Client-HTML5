@@ -999,12 +999,9 @@ export class RestaurantEditorScene extends Phaser.Scene {
     this.doorProbeWall = null;
     this.doorProbeDoor = null;
 
-    if (
-      typeof window === 'undefined' ||
-      !new URLSearchParams(window.location.search).has('doorProbe')
-    ) {
-      return;
-    }
+    if (typeof window === 'undefined') return;
+    const probeParams = new URLSearchParams(window.location.search);
+    if (!probeParams.has('doorProbe')) return;
 
     const door = this.catalogById.get(SIMPLE_DOOR_ITEM_ID);
     if (!door?.placementFootprint) {
@@ -1016,8 +1013,13 @@ export class RestaurantEditorScene extends Phaser.Scene {
       throw new Error('Recovered Simple Door raster contract is unavailable');
     }
 
-    const tile: TilePoint = { x: 2, y: 0 };
-    const rotation = 1;
+    const requestedRotation = Number.parseInt(
+      probeParams.get('doorProbeRotation') ?? '1',
+      10,
+    );
+    const rotation = requestedRotation === 0 ? 0 : 1;
+    const tile: TilePoint =
+      rotation === 0 ? { x: 0, y: 2 } : { x: 2, y: 0 };
     const wallFrameName = frameForRestaurantItemRotation(wallVisual, rotation);
     const wallFrame = this.textures.getFrame(wallVisual.atlasId, wallFrameName);
     const wallOffset = recoveredWallFloorFrameOffset(
@@ -1074,9 +1076,7 @@ export class RestaurantEditorScene extends Phaser.Scene {
     maskStamp.destroy();
     this.doorProbeWall = rt;
 
-    const maskOnly = new URLSearchParams(window.location.search).has(
-      'doorMaskOnly',
-    );
+    const maskOnly = probeParams.has('doorMaskOnly');
     let doorSprite: Phaser.GameObjects.Sprite | null = null;
     if (!maskOnly) {
       doorSprite = this.createItemSprite(
