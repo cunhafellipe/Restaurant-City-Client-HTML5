@@ -77,9 +77,7 @@ pub fn canonical_customer_spawn_delay_ms(
     Ok(60_000.0 / (demand * CUSTOMERS_PER_MINUTE_PER_DEMAND) + f64::from(jitter_ms))
 }
 
-pub fn canonical_chef_base_cook_duration_ms(
-    work_percent: f64,
-) -> Result<u64, GameplayRuleError> {
+pub fn canonical_chef_base_cook_duration_ms(work_percent: f64) -> Result<u64, GameplayRuleError> {
     if !work_percent.is_finite() || !(0.0..=100.0).contains(&work_percent) {
         return Err(GameplayRuleError::InvalidWorkPercent);
     }
@@ -411,11 +409,16 @@ mod tests {
 
     #[test]
     fn customer_spawn_delay_matches_recovered_formula_and_cap() {
-        assert_eq!(canonical_customer_spawn_delay_ms(100.0, 0).unwrap(), 12_000.0);
-        assert_eq!(canonical_customer_spawn_delay_ms(100.0, -3000).unwrap(), 9_000.0);
+        assert_eq!(
+            canonical_customer_spawn_delay_ms(100.0, 0).unwrap(),
+            12_000.0
+        );
+        assert_eq!(
+            canonical_customer_spawn_delay_ms(100.0, -3000).unwrap(),
+            9_000.0
+        );
         assert!(
-            (canonical_customer_spawn_delay_ms(600.0, 0).unwrap()
-                - 60_000.0 / (550.0 * 0.05))
+            (canonical_customer_spawn_delay_ms(600.0, 0).unwrap() - 60_000.0 / (550.0 * 0.05))
                 .abs()
                 < f64::EPSILON
         );
@@ -488,8 +491,7 @@ mod tests {
             .unwrap()
             .state;
 
-        let transition =
-            transition_service_loop(state, ServiceLoopEvent::PlateCleared).unwrap();
+        let transition = transition_service_loop(state, ServiceLoopEvent::PlateCleared).unwrap();
         assert_eq!(transition.effect, Some(ServiceLoopEffect::SettleMeal));
         assert_eq!(transition.state.customer, CustomerServiceState::Left);
         assert_eq!(transition.state.order, OrderServiceState::Settled);
@@ -498,10 +500,7 @@ mod tests {
     #[test]
     fn service_loop_rejects_early_settlement_and_tampered_delays() {
         assert_eq!(
-            transition_service_loop(
-                ServiceLoopState::default(),
-                ServiceLoopEvent::PlateCleared,
-            ),
+            transition_service_loop(ServiceLoopState::default(), ServiceLoopEvent::PlateCleared,),
             Err(ServiceLoopError::InvalidTransition)
         );
 
