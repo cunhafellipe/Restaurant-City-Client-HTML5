@@ -10,6 +10,14 @@ export interface RecoveredWallFloorGeometry {
   readonly itemHeightTwips: number | null;
   readonly serverCatalogEnabled: boolean;
   readonly runtimeGeometryEnabled: boolean;
+  readonly localBounds: {
+    readonly leftPx: number;
+    readonly rightPx: number;
+    readonly topPx: number;
+    readonly bottomPx: number;
+    readonly widthPx: number;
+    readonly heightPx: number;
+  } | null;
 }
 
 interface ContractEntry {
@@ -21,6 +29,14 @@ interface ContractEntry {
   readonly itemHeightTwips?: number | null;
   readonly serverCatalogEnabled?: boolean;
   readonly runtimeGeometryEnabled?: boolean;
+  readonly localBounds?: {
+    readonly leftPx: number;
+    readonly rightPx: number;
+    readonly topPx: number;
+    readonly bottomPx: number;
+    readonly widthPx: number;
+    readonly heightPx: number;
+  } | null;
 }
 
 const entries = Object.entries(contract.classes) as ReadonlyArray<
@@ -53,6 +69,7 @@ export function recoveredWallFloorGeometry(
     itemHeightTwips: entry.itemHeightTwips ?? null,
     serverCatalogEnabled: entry.serverCatalogEnabled === true,
     runtimeGeometryEnabled: entry.runtimeGeometryEnabled === true,
+    localBounds: entry.localBounds ?? null,
   };
 }
 
@@ -65,3 +82,23 @@ export function recoveredEnabledWallFloorFootprint(
     ? geometry.footprint
     : null;
 }
+
+export function recoveredWallFloorFrameOffset(
+  itemId: number,
+  className: string | null,
+): { readonly x: number; readonly y: number } | null {
+  const geometry = recoveredWallFloorGeometry(itemId, className);
+  if (
+    !geometry ||
+    (!geometry.runtimeGeometryEnabled && !geometry.serverCatalogEnabled) ||
+    !geometry.localBounds
+  ) {
+    return null;
+  }
+
+  return {
+    x: geometry.localBounds.leftPx,
+    y: geometry.localBounds.topPx,
+  };
+}
+
