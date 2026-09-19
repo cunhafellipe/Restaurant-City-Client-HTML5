@@ -53,7 +53,8 @@
         "sizeY": 1
       },
       "itemHeightTwips": 2020,
-      "serverCatalogEnabled": false
+      "serverCatalogEnabled": false,
+      "runtimeGeometryEnabled": true
     },
     "WallCorner": {
       "itemIds": [
@@ -67,7 +68,8 @@
         "sizeY": 1
       },
       "itemHeightTwips": 1690,
-      "serverCatalogEnabled": false
+      "serverCatalogEnabled": false,
+      "runtimeGeometryEnabled": true
     },
     "Wall1": {
       "itemIds": [
@@ -81,7 +83,8 @@
         "sizeY": 1
       },
       "itemHeightTwips": 1934,
-      "serverCatalogEnabled": false
+      "serverCatalogEnabled": false,
+      "runtimeGeometryEnabled": true
     },
     "FloorTile": {
       "itemIds": [
@@ -95,7 +98,8 @@
         "sizeY": 1
       },
       "itemHeightTwips": -40,
-      "serverCatalogEnabled": true
+      "serverCatalogEnabled": true,
+      "runtimeGeometryEnabled": true
     },
     "WindowInside": {
       "itemIds": [
@@ -123,7 +127,8 @@
         "translateYTwips": -596
       },
       "serverCatalogEnabled": true,
-      "status": "Geometry proven by R26; enabled for default-wall server-derived attachment. Client renders authoritative snapshots; editor interaction remains gated."
+      "status": "Geometry proven by R26; enabled for default-wall server-derived attachment. Client renders authoritative snapshots; editor interaction remains gated.",
+      "runtimeGeometryEnabled": true
     },
     "Door": {
       "itemIds": [
@@ -172,8 +177,9 @@
         }
       },
       "serverCatalogEnabled": false,
-      "status": "Geometry and erase-mask instance proven by R26; wallMap attachment authority still required."
+      "status": "Geometry and erase-mask instance proven by R26; wallMap attachment authority still required.",
+      "runtimeGeometryEnabled": true
     }
   },
-  "releasePolicy": "FloorTile #3050000 and WindowInside #3000001 are enabled in the trusted server catalog. Window uses server-derived default wall attachment and rotation. Door geometry/mask is proven but remains fail-closed until erase-mask rendering is implemented. Wall items, wallpapers and custom walls remain disabled."
+  "releasePolicy": "R25/R26 proven geometry is available to the renderer for default wall/floor infrastructure and authoritative snapshots. Only FloorTile #3050000 and WindowInside #3000001 are enabled in the trusted server catalog. Door remains fail-closed for mutations until erase-mask rendering is implemented; wall items, wallpapers and custom walls remain non-persistent derived/disabled domains."
 }
