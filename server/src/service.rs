@@ -427,7 +427,12 @@ impl ProductAggregate {
         let restaurant = RestaurantState::from_snapshot(catalog, snapshot)
             .map_err(|_| ProductStateStoreError::Corrupt)?;
 
-        Self::validate_inventory_against_restaurant(&player, &restaurant, &BTreeMap::new())?;
+        Self::validate_inventory_against_restaurant(
+            &player,
+            &restaurant,
+            &BTreeMap::new(),
+            &BTreeMap::new(),
+        )?;
         Ok((player, restaurant))
     }
 
@@ -435,6 +440,7 @@ impl ProductAggregate {
         player: &PlayerState,
         restaurant: &RestaurantState,
         floor_tiles: &BTreeMap<FloorTileKey, PaintedFloorTile>,
+        wallpapers: &BTreeMap<WallpaperOrientation, AppliedWallpaper>,
     ) -> Result<(), ProductStateStoreError> {
         let mut placed_counts = BTreeMap::<u32, u32>::new();
         for item in restaurant.items() {
@@ -445,6 +451,12 @@ impl ProductAggregate {
         }
         for tile in floor_tiles.values() {
             let count = placed_counts.entry(tile.item_id).or_default();
+            *count = count
+                .checked_add(1)
+                .ok_or(ProductStateStoreError::Corrupt)?;
+        }
+        for wallpaper in wallpapers.values() {
+            let count = placed_counts.entry(wallpaper.item_id).or_default();
             *count = count
                 .checked_add(1)
                 .ok_or(ProductStateStoreError::Corrupt)?;
@@ -465,6 +477,7 @@ impl ProductAggregate {
     ) -> Result<Self, ProductStateStoreError> {
         if persisted.schema_version != LEGACY_PRODUCT_PERSISTENCE_SCHEMA_VERSION
             || !persisted.restaurant.floor_tiles.is_empty()
+            || !persisted.restaurant.wallpapers.is_empty()
         {
             return Err(ProductStateStoreError::Corrupt);
         }
@@ -528,6 +541,9 @@ impl ProductAggregate {
             floor_tiles: BTreeMap::new(),
             floor_mutations: BTreeMap::new(),
             next_floor_mutation_sequence: 1,
+            wallpapers: BTreeMap::new(),
+            wallpaper_mutations: BTreeMap::new(),
+            next_wallpaper_mutation_sequence: 1,
         })
     }
 
@@ -537,16 +553,37 @@ impl ProductAggregate {
     ) -> Result<Self, ProductStateStoreError> {
         if persisted.schema_version != JOURNALED_OBJECT_PERSISTENCE_SCHEMA_VERSION
             || !persisted.restaurant.floor_tiles.is_empty()
+            || !persisted.restaurant.wallpapers.is_empty()
             || persisted.next_floor_mutation_sequence != 0
             || !persisted.floor_mutations.is_empty()
+            || persisted.next_wallpaper_mutation_sequence != 0
+            || !persisted.wallpaper_mutations.is_empty()
         {
             return Err(ProductStateStoreError::Corrupt);
         }
 
-        // V2 predates floor state. Promote it in-memory to an empty V3 floor
-        // domain, then use the same strict object-journal replay as V3.
+        // V2 predates floor and wallpaper state. Promote both domains empty.
         persisted.schema_version = PRODUCT_PERSISTENCE_SCHEMA_VERSION;
         persisted.next_floor_mutation_sequence = 1;
+        persisted.next_wallpaper_mutation_sequence = 1;
+        Self::decode_current_persisted(catalog, persisted)
+    }
+
+    fn decode_v3_persisted(
+        catalog: &PlacementCatalog,
+        mut persisted: PersistedAggregate,
+    ) -> Result<Self, ProductStateStoreError> {
+        if persisted.schema_version != FLOOR_TILE_PERSISTENCE_SCHEMA_VERSION
+            || !persisted.restaurant.wallpapers.is_empty()
+            || persisted.next_wallpaper_mutation_sequence != 0
+            || !persisted.wallpaper_mutations.is_empty()
+        {
+            return Err(ProductStateStoreError::Corrupt);
+        }
+
+        // V3 already has object + floor journals; V4 adds wallpaper slots.
+        persisted.schema_version = PRODUCT_PERSISTENCE_SCHEMA_VERSION;
+        persisted.next_wallpaper_mutation_sequence = 1;
         Self::decode_current_persisted(catalog, persisted)
     }
 
@@ -557,13 +594,14 @@ impl ProductAggregate {
         if persisted.schema_version != PRODUCT_PERSISTENCE_SCHEMA_VERSION
             || persisted.next_restaurant_mutation_sequence == 0
             || persisted.next_floor_mutation_sequence == 0
+            || persisted.next_wallpaper_mutation_sequence == 0
         {
             return Err(ProductStateStoreError::Corrupt);
         }
 
-        // V3 keeps the V2 object journal and adds an independent historical
-        // floor-paint journal. Replay both domains instead of trusting either
-        // serialized snapshot.
+        // V4 keeps the object/floor journals and adds an independent
+        // orientation-level wallpaper journal. Replay all domains instead of
+        // trusting serialized snapshots.
         let player = PlayerState::from_persistence_snapshot(persisted.player)
             .map_err(|_| ProductStateStoreError::Corrupt)?;
         let PersistedRestaurant {
@@ -571,6 +609,7 @@ impl ProductAggregate {
             next_instance_id,
             items,
             floor_tiles,
+            wallpapers,
         } = persisted.restaurant;
         let room: RoomDimensions = room.into();
         let expected_restaurant = RestaurantSnapshot {
@@ -579,6 +618,7 @@ impl ProductAggregate {
             items: items.into_iter().map(PlacedItem::from).collect(),
         };
         let expected_floor_tiles = Self::decode_persisted_floor_tiles(catalog, room, floor_tiles)?;
+        let expected_wallpapers = Self::decode_persisted_wallpapers(catalog, room, wallpapers)?;
         let mut restaurant_mutations = BTreeMap::new();
         let mut ordered = Vec::new();
         let mut seen_sequences = BTreeMap::<u64, ()>::new();
@@ -725,7 +765,80 @@ impl ProductAggregate {
             return Err(ProductStateStoreError::Corrupt);
         }
 
-        Self::validate_inventory_against_restaurant(&player, &replay, &replay_floor_tiles)?;
+        let mut wallpaper_mutations = BTreeMap::new();
+        let mut ordered_wallpaper = Vec::new();
+        let mut seen_wallpaper_sequences = BTreeMap::<u64, ()>::new();
+        for entry in persisted.wallpaper_mutations {
+            let mutation_id =
+                MutationId::new(entry.mutation_id).map_err(|_| ProductStateStoreError::Corrupt)?;
+            if restaurant_mutations.contains_key(&mutation_id)
+                || floor_mutations.contains_key(&mutation_id)
+                || entry.sequence == 0
+                || seen_wallpaper_sequences.insert(entry.sequence, ()).is_some()
+            {
+                return Err(ProductStateStoreError::Corrupt);
+            }
+
+            let wallpaper = AppliedWallpaper::try_from(entry.wallpaper)
+                .map_err(|_| ProductStateStoreError::Corrupt)?;
+            let validated = Self::validate_persisted_wallpaper(catalog, room, wallpaper)?;
+            let record = WallpaperMutationRecord {
+                sequence: entry.sequence,
+                operation: entry.operation.into(),
+                wallpaper: validated,
+            };
+            if wallpaper_mutations
+                .insert(mutation_id.clone(), record)
+                .is_some()
+            {
+                return Err(ProductStateStoreError::Corrupt);
+            }
+            ordered_wallpaper.push((mutation_id, record));
+        }
+
+        ordered_wallpaper.sort_by_key(|(_, record)| record.sequence);
+        for (index, (_, record)) in ordered_wallpaper.iter().enumerate() {
+            let expected = u64::try_from(index)
+                .map_err(|_| ProductStateStoreError::Corrupt)?
+                .checked_add(1)
+                .ok_or(ProductStateStoreError::Corrupt)?;
+            if record.sequence != expected {
+                return Err(ProductStateStoreError::Corrupt);
+            }
+        }
+        let expected_wallpaper_next = u64::try_from(ordered_wallpaper.len())
+            .map_err(|_| ProductStateStoreError::Corrupt)?
+            .checked_add(1)
+            .ok_or(ProductStateStoreError::Corrupt)?;
+        if persisted.next_wallpaper_mutation_sequence != expected_wallpaper_next {
+            return Err(ProductStateStoreError::Corrupt);
+        }
+
+        let mut replay_wallpapers = BTreeMap::new();
+        for (_, record) in &ordered_wallpaper {
+            match record.operation {
+                WallpaperMutationOperation::Apply => {
+                    replay_wallpapers.insert(record.wallpaper.orientation, record.wallpaper);
+                }
+                WallpaperMutationOperation::Remove => {
+                    if replay_wallpapers.remove(&record.wallpaper.orientation)
+                        != Some(record.wallpaper)
+                    {
+                        return Err(ProductStateStoreError::Corrupt);
+                    }
+                }
+            }
+        }
+        if replay_wallpapers != expected_wallpapers {
+            return Err(ProductStateStoreError::Corrupt);
+        }
+
+        Self::validate_inventory_against_restaurant(
+            &player,
+            &replay,
+            &replay_floor_tiles,
+            &replay_wallpapers,
+        )?;
 
         Ok(Self {
             player,
@@ -735,7 +848,54 @@ impl ProductAggregate {
             floor_tiles: replay_floor_tiles,
             floor_mutations,
             next_floor_mutation_sequence: persisted.next_floor_mutation_sequence,
+            wallpapers: replay_wallpapers,
+            wallpaper_mutations,
+            next_wallpaper_mutation_sequence: persisted.next_wallpaper_mutation_sequence,
         })
+    }
+
+    fn validate_persisted_wallpaper(
+        catalog: &PlacementCatalog,
+        room: RoomDimensions,
+        wallpaper: AppliedWallpaper,
+    ) -> Result<AppliedWallpaper, ProductStateStoreError> {
+        let wall_tile = match wallpaper.orientation {
+            WallpaperOrientation::Left => TilePoint { x: 0, y: 1 },
+            WallpaperOrientation::Top => TilePoint { x: 1, y: 0 },
+        };
+        let validated = validate_wallpaper_intent(
+            catalog,
+            room,
+            WallpaperIntent {
+                item_id: wallpaper.item_id,
+                wall_tile,
+            },
+        )
+        .map_err(|_| ProductStateStoreError::Corrupt)?;
+        if validated != wallpaper {
+            return Err(ProductStateStoreError::Corrupt);
+        }
+        Ok(validated)
+    }
+
+    fn decode_persisted_wallpapers(
+        catalog: &PlacementCatalog,
+        room: RoomDimensions,
+        persisted: Vec<PersistedWallpaper>,
+    ) -> Result<BTreeMap<WallpaperOrientation, AppliedWallpaper>, ProductStateStoreError> {
+        let mut wallpapers = BTreeMap::new();
+        for entry in persisted {
+            let wallpaper =
+                AppliedWallpaper::try_from(entry).map_err(|_| ProductStateStoreError::Corrupt)?;
+            let validated = Self::validate_persisted_wallpaper(catalog, room, wallpaper)?;
+            if wallpapers
+                .insert(validated.orientation, validated)
+                .is_some()
+            {
+                return Err(ProductStateStoreError::Corrupt);
+            }
+        }
+        Ok(wallpapers)
     }
 
     fn decode_persisted_floor_tiles(
