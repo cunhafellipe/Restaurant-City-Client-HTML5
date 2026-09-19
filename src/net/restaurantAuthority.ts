@@ -96,9 +96,49 @@ export interface RestaurantServiceTopology {
   readonly drinks: readonly AuthoritativeServiceDrink[];
 }
 
+export type AuthoritativeCustomerServiceState =
+  | 'admitted'
+  | 'walking-to-chair'
+  | 'deciding'
+  | 'waiting'
+  | 'waiting-for-food'
+  | 'eating'
+  | 'paying'
+  | 'leaving'
+  | 'left';
+
+export type AuthoritativeOrderServiceState =
+  | 'created'
+  | 'queued'
+  | 'cooking'
+  | 'completed'
+  | 'waiter-collecting'
+  | 'serving'
+  | 'empty-plate'
+  | 'settled';
+
+export interface RestaurantActiveService {
+  readonly serviceId: number;
+  readonly restaurantMutationSequence: number;
+  readonly customerId: number;
+  readonly orderId: number;
+  readonly chairInstanceId: number;
+  readonly tableInstanceId: number;
+  readonly chefEmployeeId: number;
+  readonly kitchenInstanceId: number;
+  readonly waiterEmployeeId: number;
+  readonly waiterTileX: number;
+  readonly waiterTileY: number;
+  readonly customerState: AuthoritativeCustomerServiceState;
+  readonly orderState: AuthoritativeOrderServiceState;
+  readonly customerTimerMs: number | null;
+  readonly orderTimerMs: number | null;
+}
+
 export interface RestaurantAuthoritativeSnapshot {
   readonly layout: RestaurantLayout;
   readonly topology: RestaurantServiceTopology;
+  readonly activeService: RestaurantActiveService | null;
 }
 
 export interface PlacementCommand {
@@ -144,6 +184,7 @@ export interface WallpaperCommit {
 export interface RestaurantAuthority {
   loadRestaurant(): Promise<RestaurantLayout>;
   loadServiceTopology(): Promise<RestaurantServiceTopology>;
+  loadActiveService(): Promise<RestaurantActiveService | null>;
   loadRestaurantSnapshot(): Promise<RestaurantAuthoritativeSnapshot>;
   placeItem(
     command: PlacementCommand,
@@ -263,16 +304,40 @@ export class HttpRestaurantAuthority implements RestaurantAuthority {
     return parseServiceTopology(await response.json());
   }
 
+  async loadActiveService(): Promise<RestaurantActiveService | null> {
+    const response = await this.fetcher(
+      `${this.basePath}/restaurant/service`,
+      {
+        method: 'GET',
+        credentials: 'same-origin',
+        cache: 'no-store',
+        headers: {
+          Accept: 'application/json',
+        },
+      },
+    );
+
+    if (!response.ok) {
+      throw await authorityError(response);
+    }
+
+    return parseActiveServiceEnvelope(await response.json());
+  }
+
   async loadRestaurantSnapshot(): Promise<RestaurantAuthoritativeSnapshot> {
     for (let attempt = 0; attempt < 2; attempt += 1) {
       const layout = await this.loadRestaurant();
       const topology = await this.loadServiceTopology();
-      if (serviceTopologyMatchesLayout(topology, layout)) {
-        return { layout, topology };
+      const activeService = await this.loadActiveService();
+      if (
+        serviceTopologyMatchesLayout(topology, layout) &&
+        activeServiceMatchesTopology(activeService, topology)
+      ) {
+        return { layout, topology, activeService };
       }
     }
     throw new Error(
-      'Authoritative service topology does not match the current restaurant layout',
+      'Authoritative restaurant, service topology, and active service do not form a synchronized snapshot',
     );
   }
 
