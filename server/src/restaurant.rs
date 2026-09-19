@@ -197,7 +197,9 @@ impl PlacementCatalog {
                         })?;
                         let tile = TilePoint { x, y };
                         if cells.contains(&tile) {
-                            return Err(PlacementCatalogLoadError::InvalidRow { line: line_number });
+                            return Err(PlacementCatalogLoadError::InvalidRow {
+                                line: line_number,
+                            });
                         }
                         cells.push(tile);
                     }
