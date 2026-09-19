@@ -169,10 +169,14 @@ export function activeServiceActorPresentation(
   const customer: ServiceActorPresentation = (() => {
     switch (active.customerState) {
       case 'admitted':
+        // Historical WorldRestaurantPlay creates nextCustomer at a pedestrian
+        // start position and keeps it hidden until walkToEntrance() begins.
+        // The authoritative snapshot does not expose that spawn/entrance path
+        // yet, so rendering this state at the chair would fabricate movement.
         return {
-          animation: 'idle',
-          anchor: 'chair',
-          requiresAuthoritativePath: false,
+          animation: 'hidden',
+          anchor: 'hidden',
+          requiresAuthoritativePath: true,
         };
       case 'walking-to-chair':
         return {
