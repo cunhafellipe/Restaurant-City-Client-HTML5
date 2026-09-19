@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "baseline": "0.9.143a",
+  "fixture": "simple-window-3000001-at-2-0",
+  "canvas": {
+    "width": 760,
+    "height": 600
+  },
+  "blockSize": 8,
+  "expectedQuantizedBlockSha256": "aa6dcc7848befcadb53d235168ea43056b79b6c8acbbd4a05d48c7dde7621d2c",
+  "referencePixelSha256": "c975069e594ac45e194a1b673e4716210ee37edb1f5057295ab513b65f3dc04b",
+  "referencePngSha256": "ab325783092bac6f240e3220436578be42941c8b68ca561ba14aad8aebf5cf3b",
+  "referenceProductSha": "8c06086a5b9a525879f5fa363bb60296b61abf38",
+  "deterministicValidationRuns": [
+    35418803108
+  ],
+  "note": "Inspected ANEWON self-hosted Edge CDP WebGL composite. Simple Window #3000001 is an authoritative server-derived default-wall attachment at tile (2,0), with rotation and per-frame raster origin recovered from R30/R31. Gate compares the quantized 8x8 signature."
+}
