@@ -48,6 +48,23 @@
       "productSha": "fe11d18b01701f18a24c291bd4c7a5c1b1fb594b",
       "quantizedBlockSha256": "34a15ba2363b951f7a4edc026e7653f8b6ccde761e8e15f6af8133fdf8b78e73",
       "conclusion": "DIVIDER_5_ITEMS_12_FRAMES_FROZEN"
+    },
+    "dividerPromotionGate": {
+      "runId": 35426235929,
+      "productSha": "759e9dfeae582a6c3e1d7e7ae0485bdac9f714e0",
+      "artifactId": 10579275728,
+      "artifactSha256": "a0b9ff6702f31a231e8432df0c50d7ab37533e671ee28d3014a05b7fc11d2bbb",
+      "trustedCatalogDefinitions": 92,
+      "itemAtlasMapping": {
+        "authoritative": 92,
+        "unique": 92,
+        "ambiguous": 0,
+        "missing": 0
+      },
+      "typescriptTests": 90,
+      "rustTests": 75,
+      "browserLifecycle": "White Wall place -> select -> rotate -> move -> remove",
+      "conclusion": "ALL_5_CANONICAL_WALL_DIVIDERS_PROMOTED_AS_ORDINARY_ITEMS"
     }
   },
   "constructor": {
