@@ -13,6 +13,12 @@ const RECOVERED_GEOMETRY = path.join(
   'restaurant-city',
   'recovered-room-item-geometry.json',
 );
+const RECOVERED_WALL_FLOOR_GEOMETRY = path.join(
+  REPO,
+  'contracts',
+  'restaurant-city',
+  'recovered-wall-floor-geometry.json',
+);
 const OUT_DIR = path.join(REPO, 'server', 'runtime', 'generated');
 const OUT_TSV = path.join(OUT_DIR, 'restaurant-placement-catalog.tsv');
 const OUT_META = path.join(OUT_DIR, 'restaurant-placement-catalog.meta.json');
@@ -115,6 +121,9 @@ if (!fs.existsSync(ITEM_DB) || !fs.existsSync(MANIFEST)) {
 const database = JSON.parse(fs.readFileSync(ITEM_DB, 'utf8'));
 const manifest = JSON.parse(fs.readFileSync(MANIFEST, 'utf8'));
 const recoveredGeometry = JSON.parse(fs.readFileSync(RECOVERED_GEOMETRY, 'utf8'));
+const recoveredWallFloorGeometry = JSON.parse(
+  fs.readFileSync(RECOVERED_WALL_FLOOR_GEOMETRY, 'utf8'),
+);
 const source = manifest.data?.find((entry) => entry.id === 'restaurant');
 const symbolIndex = buildAtlasSymbolIndex(manifest);
 if (!source) {
@@ -124,15 +133,21 @@ if (!source) {
 function recoveredGeometryFor(itemId, className) {
   const leaf = leafClassName(className);
   if (!leaf) return null;
-  const entry = recoveredGeometry.classes?.[leaf];
-  if (
-    !entry ||
-    !Array.isArray(entry.itemIds) ||
-    !entry.itemIds.includes(itemId)
-  ) {
-    return null;
+
+  for (const [contract, source] of [
+    [recoveredGeometry, 'room-item'],
+    [recoveredWallFloorGeometry, 'wall-floor'],
+  ]) {
+    const entry = contract.classes?.[leaf];
+    if (
+      entry &&
+      Array.isArray(entry.itemIds) &&
+      entry.itemIds.includes(itemId)
+    ) {
+      return { ...entry, recoveredGeometrySource: source };
+    }
   }
-  return entry;
+  return null;
 }
 
 const definitions = [];
@@ -156,7 +171,10 @@ for (const group of database.groups ?? []) {
     const explicitSizeY = asInteger(item.attributes?.sizeY);
     const geometry = recoveredGeometryFor(id, item.attributes?.className);
     const recoveredFootprint =
-      geometry?.placementFootprintEnabled === true ? geometry.footprint : null;
+      geometry?.placementFootprintEnabled === true ||
+      geometry?.serverCatalogEnabled === true
+        ? geometry.footprint
+        : null;
     const sizeX =
       explicitSizeX !== null && explicitSizeX > 0
         ? explicitSizeX
@@ -274,6 +292,7 @@ for (const group of database.groups ?? []) {
       sizeX,
       sizeY,
       footprintSource,
+      recoveredGeometrySource: geometry?.recoveredGeometrySource ?? null,
       rotationCount: resolveRotationCount(symbolIndex, item, group.name),
       wallItem,
       wallDecorationItem,
@@ -341,13 +360,17 @@ const meta = {
     sizeX: entry.sizeX,
     sizeY: entry.sizeY,
     footprintSource: entry.footprintSource,
+    recoveredGeometrySource: entry.recoveredGeometrySource,
     surface: entry.surface,
     stackable: entry.stackable,
   })),
   recoveredFootprintDefinitions: definitions.filter(
     (entry) => entry.footprintSource === 'recovered',
   ).length,
-  recoveredGeometryContract: path.relative(REPO, RECOVERED_GEOMETRY),
+  recoveredGeometryContracts: [
+    path.relative(REPO, RECOVERED_GEOMETRY),
+    path.relative(REPO, RECOVERED_WALL_FLOOR_GEOMETRY),
+  ],
   unsupportedDomainCounts: {
     total: unsupportedDomainInventory.length,
     wallItem: unsupportedDomainInventory.filter((entry) => entry.wallItem).length,
