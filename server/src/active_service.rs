@@ -13,7 +13,7 @@ use crate::restaurant::{PlacementCatalog, RestaurantSnapshot};
 use crate::service_clock::{
     ServiceDeadlines, ServiceTimingError, anchor_service_deadlines, transition_timed_service,
 };
-use crate::service_path::ServicePathPlan;
+use crate::service_path::{ServicePathPlan, is_valid_customer_entrance};
 use crate::topology::{
     ServiceChef, ServiceWaiter, calculate_food_service_topology, derive_service_layout,
     is_meal_seat, is_table_free, table_for_chair,
@@ -27,6 +27,10 @@ pub struct ActiveServiceAssignment {
     pub kitchen_instance_id: u64,
     pub waiter_employee_id: u64,
     pub waiter_tile: TilePoint,
+    /// Entrance selected by the server admission scheduler. Legacy V5/V6
+    /// services may not have one; current path authority requires it before
+    /// customer movement can begin.
+    pub customer_entrance_tile: Option<TilePoint>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -44,6 +48,7 @@ pub struct ActiveServiceIdentity {
     pub kitchen_instance_id: u64,
     pub waiter_employee_id: u64,
     pub waiter_tile: TilePoint,
+    pub customer_entrance_tile: Option<TilePoint>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -81,6 +86,14 @@ impl ActiveServiceRecord {
 
         let layout =
             derive_service_layout(restaurant, catalog).map_err(|_| ActiveServiceError::Topology)?;
+
+        if let Some(entrance) = assignment.customer_entrance_tile {
+            if !is_valid_customer_entrance(restaurant, catalog, &layout, entrance)
+                .map_err(|_| ActiveServiceError::Topology)?
+            {
+                return Err(ActiveServiceError::EntranceUnavailable);
+            }
+        }
 
         let chair = layout
             .chairs
@@ -140,6 +153,7 @@ impl ActiveServiceRecord {
                 kitchen_instance_id: assignment.kitchen_instance_id,
                 waiter_employee_id: assignment.waiter_employee_id,
                 waiter_tile: assignment.waiter_tile,
+                customer_entrance_tile: assignment.customer_entrance_tile,
             },
             state: ServiceLoopState::default(),
             timing_anchored: false,
@@ -210,6 +224,7 @@ pub enum ActiveServiceError {
     TableMismatch,
     TableUnavailable,
     KitchenUnavailable,
+    EntranceUnavailable,
     Unreachable,
 }
 
@@ -281,6 +296,7 @@ mod tests {
                 kitchen_instance_id: 3,
                 waiter_employee_id: 201,
                 waiter_tile: TilePoint { x: 4, y: 4 },
+                customer_entrance_tile: None,
             },
             &restaurant,
             &catalog,
@@ -311,6 +327,7 @@ mod tests {
                 kitchen_instance_id: 3,
                 waiter_employee_id: 201,
                 waiter_tile: TilePoint { x: 4, y: 4 },
+                customer_entrance_tile: None,
             },
             &restaurant,
             &catalog,
