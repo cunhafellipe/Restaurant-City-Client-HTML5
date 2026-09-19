@@ -546,29 +546,41 @@ mod tests {
     }
 
     #[test]
-    fn stop_next_to_destination_can_target_an_occupied_object_tile() {
+    fn stop_next_to_destination_bypasses_only_the_final_diagonal_corner_check() {
         let mut grid = ServiceTopologyGrid::new(room());
-        let destination = TilePoint { x: 4, y: 3 };
-        grid.set_cell(
+        let start = TilePoint { x: 1, y: 1 };
+        let destination = TilePoint { x: 2, y: 2 };
+
+        // Destination occupancy itself is forced by PathFinder in both modes.
+        // Surround it so the only possible entry is the direct diagonal from
+        // start. Normal mode still applies isWalkableFrom's corner rule;
+        // stopNextToDestTile=true accepts the destination immediately.
+        for tile in [
             destination,
-            TopologyCell {
-                item_count: 1,
-                ..TopologyCell::default()
-            },
-        )
-        .unwrap();
+            TilePoint { x: 2, y: 1 },
+            TilePoint { x: 1, y: 2 },
+            TilePoint { x: 3, y: 1 },
+            TilePoint { x: 3, y: 2 },
+            TilePoint { x: 1, y: 3 },
+            TilePoint { x: 2, y: 3 },
+            TilePoint { x: 3, y: 3 },
+        ] {
+            grid.set_cell(
+                tile,
+                TopologyCell {
+                    item_count: 1,
+                    ..TopologyCell::default()
+                },
+            )
+            .unwrap();
+        }
 
-        assert!(
-            historical_path(&grid, TilePoint { x: 1, y: 3 }, destination, false).is_none()
-        );
+        assert!(historical_path(&grid, start, destination, false).is_none());
 
-        let path =
-            historical_path(&grid, TilePoint { x: 1, y: 3 }, destination, true).unwrap();
-        assert_eq!(path.tiles.last().copied(), Some(destination));
-        assert_eq!(
-            path.clone().without_destination().tiles.last().copied(),
-            Some(TilePoint { x: 3, y: 3 })
-        );
+        let path = historical_path(&grid, start, destination, true).unwrap();
+        assert_eq!(path.tiles, vec![destination]);
+        assert_eq!(path.movement_score, DIAGONAL_SCORE);
+        assert!(path.clone().without_destination().tiles.is_empty());
     }
 
     #[test]
@@ -590,42 +602,28 @@ mod tests {
             path_to_customer_chair(&grid, TilePoint { x: 2, y: 5 }, chair, 0).unwrap();
         assert_eq!(path.tiles.last().copied(), Some(facing));
 
-        // Seal the facing tile behind a non-door wall. The direct target still
-        // exists as a stop-next-to-destination target, so block the approach as
-        // well and prove the chair fallback remains reachable.
-        grid.set_cell(
+        // stopNextToDestTile can enter a blocked target from any reachable
+        // adjacent tile, so isolate every neighbor of the facing target except
+        // the chair itself. The chair remains reachable from the west.
+        for tile in [
             facing,
-            TopologyCell {
-                wall: true,
-                item_count: 1,
-                has_door: false,
-            },
-        )
-        .unwrap();
-        grid.set_cell(
             TilePoint { x: 5, y: 4 },
-            TopologyCell {
-                item_count: 1,
-                ..TopologyCell::default()
-            },
-        )
-        .unwrap();
-        grid.set_cell(
             TilePoint { x: 6, y: 4 },
-            TopologyCell {
-                item_count: 1,
-                ..TopologyCell::default()
-            },
-        )
-        .unwrap();
-        grid.set_cell(
+            TilePoint { x: 7, y: 4 },
+            TilePoint { x: 7, y: 5 },
+            TilePoint { x: 5, y: 6 },
             TilePoint { x: 6, y: 6 },
-            TopologyCell {
-                item_count: 1,
-                ..TopologyCell::default()
-            },
-        )
-        .unwrap();
+            TilePoint { x: 7, y: 6 },
+        ] {
+            grid.set_cell(
+                tile,
+                TopologyCell {
+                    item_count: 1,
+                    ..TopologyCell::default()
+                },
+            )
+            .unwrap();
+        }
 
         let fallback =
             path_to_customer_chair(&grid, TilePoint { x: 2, y: 5 }, chair, 0).unwrap();
