@@ -683,6 +683,147 @@ export function serviceTopologyMatchesLayout(
   });
 }
 
+const CUSTOMER_SERVICE_STATES = new Set<AuthoritativeCustomerServiceState>([
+  'admitted',
+  'walking-to-chair',
+  'deciding',
+  'waiting',
+  'waiting-for-food',
+  'eating',
+  'paying',
+  'leaving',
+  'left',
+]);
+
+const ORDER_SERVICE_STATES = new Set<AuthoritativeOrderServiceState>([
+  'created',
+  'queued',
+  'cooking',
+  'completed',
+  'waiter-collecting',
+  'serving',
+  'empty-plate',
+  'settled',
+]);
+
+export function activeServiceMatchesTopology(
+  active: RestaurantActiveService | null,
+  topology: RestaurantServiceTopology,
+): boolean {
+  if (active === null) return true;
+
+  const chair = topology.chairs.find(
+    (candidate) => candidate.instanceId === active.chairInstanceId,
+  );
+  const table = topology.tables.find(
+    (candidate) => candidate.instanceId === active.tableInstanceId,
+  );
+  const kitchen = topology.kitchens.find(
+    (candidate) => candidate.instanceId === active.kitchenInstanceId,
+  );
+  const waiterCell = topology.cells.find(
+    (cell) =>
+      cell.tileX === active.waiterTileX && cell.tileY === active.waiterTileY,
+  );
+
+  return (
+    chair !== undefined &&
+    chair.mealSeat &&
+    chair.tableInstanceId === active.tableInstanceId &&
+    table !== undefined &&
+    kitchen !== undefined &&
+    waiterCell !== undefined &&
+    waiterCell.walkable
+  );
+}
+
+function parseActiveServiceEnvelope(value: unknown): RestaurantActiveService | null {
+  if (!isObject(value) || !('active' in value)) {
+    throw new Error('Malformed authoritative active service envelope');
+  }
+  if (value.active === null) return null;
+  if (!isObject(value.active)) {
+    throw new Error('Malformed authoritative active service');
+  }
+
+  const customerState = value.active.customer_state;
+  const orderState = value.active.order_state;
+  if (
+    typeof customerState !== 'string' ||
+    !CUSTOMER_SERVICE_STATES.has(
+      customerState as AuthoritativeCustomerServiceState,
+    ) ||
+    typeof orderState !== 'string' ||
+    !ORDER_SERVICE_STATES.has(orderState as AuthoritativeOrderServiceState)
+  ) {
+    throw new Error('Malformed authoritative active service state');
+  }
+
+  const serviceId = requirePositiveSafeUInt(
+    value.active.service_id,
+    'active_service.service_id',
+  );
+  const customerId = requirePositiveSafeUInt(
+    value.active.customer_id,
+    'active_service.customer_id',
+  );
+  const orderId = requirePositiveSafeUInt(
+    value.active.order_id,
+    'active_service.order_id',
+  );
+  if (customerId !== serviceId || orderId !== serviceId) {
+    throw new Error('Malformed authoritative active service identity');
+  }
+
+  return {
+    serviceId,
+    restaurantMutationSequence: requirePositiveSafeUInt(
+      value.active.restaurant_mutation_sequence,
+      'active_service.restaurant_mutation_sequence',
+    ),
+    customerId,
+    orderId,
+    chairInstanceId: requirePositiveSafeUInt(
+      value.active.chair_instance_id,
+      'active_service.chair_instance_id',
+    ),
+    tableInstanceId: requirePositiveSafeUInt(
+      value.active.table_instance_id,
+      'active_service.table_instance_id',
+    ),
+    chefEmployeeId: requirePositiveSafeUInt(
+      value.active.chef_employee_id,
+      'active_service.chef_employee_id',
+    ),
+    kitchenInstanceId: requirePositiveSafeUInt(
+      value.active.kitchen_instance_id,
+      'active_service.kitchen_instance_id',
+    ),
+    waiterEmployeeId: requirePositiveSafeUInt(
+      value.active.waiter_employee_id,
+      'active_service.waiter_employee_id',
+    ),
+    waiterTileX: requireSafeInt(
+      value.active.waiter_tile_x,
+      'active_service.waiter_tile_x',
+    ),
+    waiterTileY: requireSafeInt(
+      value.active.waiter_tile_y,
+      'active_service.waiter_tile_y',
+    ),
+    customerState: customerState as AuthoritativeCustomerServiceState,
+    orderState: orderState as AuthoritativeOrderServiceState,
+    customerTimerMs: requireNullableSafeUInt(
+      value.active.customer_timer_ms,
+      'active_service.customer_timer_ms',
+    ),
+    orderTimerMs: requireNullableSafeUInt(
+      value.active.order_timer_ms,
+      'active_service.order_timer_ms',
+    ),
+  };
+}
+
 function parseServiceTopology(value: unknown): RestaurantServiceTopology {
   if (
     !isObject(value) ||
@@ -1041,6 +1182,14 @@ function requireSafeUInt(value: unknown, field: string): number {
     throw new Error(`Malformed authoritative field: ${field}`);
   }
   return value;
+}
+
+function requirePositiveSafeUInt(value: unknown, field: string): number {
+  const parsed = requireSafeUInt(value, field);
+  if (parsed === 0) {
+    throw new Error(`Malformed authoritative field: ${field}`);
+  }
+  return parsed;
 }
 
 function requireSafeInt(value: unknown, field: string): number {
