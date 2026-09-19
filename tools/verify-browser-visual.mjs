@@ -1513,6 +1513,105 @@ try {
     `DOOR LEFT MASK PROBE CANDIDATE | fixture=simple-door-3010000-left-mask-probe-at-0-2 | pixel=${doorLeftMaskMetadata.pixelSha256} | png=${doorLeftMaskMetadata.pngSha256} | block=${doorLeftMaskMetadata.quantizedBlockSha256} | maskLocal=${JSON.stringify(doorLeftMaskState.probe.maskLocal)}`,
   );
 
+  async function captureAuthoritativeDoor(
+    seed,
+    fixture,
+    expectedFrame,
+    screenshotFile,
+    metadataFile,
+  ) {
+    fixtureState = structuredClone(seed);
+    await cdp.send('Page.navigate', { url });
+    const authorityState = await waitForRuntime(
+      cdp,
+      `(() => {
+        const status = document.querySelector('.rc-status');
+        const canvas = document.querySelector('#game-canvas-host canvas');
+        const visual = globalThis.__ANEWON_RC_VISUAL_DIAGNOSTICS__ ?? null;
+        return {
+          phase: status?.dataset.phase ?? null,
+          status: status?.textContent ?? '',
+          committedFrame: visual?.committed?.[0]?.frame ?? null,
+          committedDepth: visual?.committed?.[0]?.depth ?? null,
+          canvas: canvas ? (() => {
+            const rect = canvas.getBoundingClientRect();
+            return {
+              width: canvas.width,
+              height: canvas.height,
+              x: rect.x,
+              y: rect.y,
+              cssWidth: rect.width,
+              cssHeight: rect.height,
+            };
+          })() : null,
+        };
+      })()`,
+      (value) =>
+        value?.phase === 'editing' &&
+        value?.status?.includes(
+          'Loaded baseline 0.9.143a, 1 persisted object(s), and 0 authoritative floor tile(s).',
+        ) &&
+        value?.committedFrame === expectedFrame &&
+        value?.canvas?.width === 760 &&
+        value?.canvas?.height === 600,
+      8000,
+      fixture,
+    );
+    await delay(300);
+
+    const shot = await cdp.send('Page.captureScreenshot', {
+      format: 'png',
+      fromSurface: true,
+      captureBeyondViewport: false,
+      clip: {
+        x: authorityState.canvas.x,
+        y: authorityState.canvas.y,
+        width: authorityState.canvas.cssWidth,
+        height: authorityState.canvas.cssHeight,
+        scale: 1,
+      },
+    });
+    if (typeof shot.data !== 'string' || shot.data.length === 0) {
+      throw new Error(`CDP did not return ${fixture} screenshot bytes`);
+    }
+    fs.writeFileSync(screenshotFile, Buffer.from(shot.data, 'base64'));
+    const png = PNG.sync.read(fs.readFileSync(screenshotFile));
+    const result = {
+      schemaVersion: 1,
+      fixture,
+      state: authorityState,
+      screenshot: path.relative(REPO, screenshotFile).replaceAll('\\\\', '/'),
+      pngSha256: sha256(screenshotFile),
+      pixelSha256: bufferSha256(png.data),
+      blockSize: 8,
+      quantizedBlockSha256: quantizedBlockSignature(png, 8),
+      goldenFrozen: false,
+    };
+    fs.writeFileSync(
+      metadataFile,
+      `${JSON.stringify(result, null, 2)}\n`,
+    );
+    console.log(
+      `DOOR AUTHORITY CANDIDATE | fixture=${fixture} | frame=${expectedFrame} | depth=${authorityState.committedDepth} | pixel=${result.pixelSha256} | png=${result.pngSha256} | block=${result.quantizedBlockSha256}`,
+    );
+    return result;
+  }
+
+  const doorAuthoritativeMetadata = await captureAuthoritativeDoor(
+    doorTopFixtureSeed,
+    'simple-door-3010000-authoritative-at-2-0',
+    'indoor_asset/door/002',
+    DOOR_AUTH_SCREENSHOT,
+    DOOR_AUTH_META,
+  );
+  const doorLeftAuthoritativeMetadata = await captureAuthoritativeDoor(
+    doorLeftFixtureSeed,
+    'simple-door-3010000-authoritative-at-0-2',
+    'indoor_asset/door/001',
+    DOOR_LEFT_AUTH_SCREENSHOT,
+    DOOR_LEFT_AUTH_META,
+  );
+
   const metadata = {
     schemaVersion: 2,
     browser,
@@ -1527,6 +1626,8 @@ try {
     wallVisual: wallMetadata,
     doorProbeVisual: doorProbeMetadata,
     doorLeftMaskProbeVisual: doorLeftMaskMetadata,
+    doorAuthoritativeVisual: doorAuthoritativeMetadata,
+    doorLeftAuthoritativeVisual: doorLeftAuthoritativeMetadata,
     interaction: {
       selected: selectedState.selection,
       rotated: rotatedState,
