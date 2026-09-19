@@ -6,8 +6,8 @@
 
 pub mod axum_adapter;
 pub mod domain;
-pub mod http;
 pub mod gameplay;
+pub mod http;
 pub mod persistence;
 pub mod placement;
 pub mod platform;
@@ -23,8 +23,8 @@ pub use gameplay::{
     CUSTOMERS_PER_MINUTE_PER_DEMAND, CustomerServiceState, GameplayRuleError, MAX_DEMAND,
     MealReward, OrderServiceState, ServiceLoopEffect, ServiceLoopError, ServiceLoopEvent,
     ServiceLoopState, ServiceLoopTransition, WAITER_ACTION_MAX_MS, WAITER_ACTION_MIN_MS,
-    canonical_chef_base_cook_duration_ms, canonical_customer_spawn_delay_ms,
-    canonical_meal_reward, transition_service_loop,
+    canonical_chef_base_cook_duration_ms, canonical_customer_spawn_delay_ms, canonical_meal_reward,
+    transition_service_loop,
 };
 pub use platform::{
     AnewSubject, PRODUCT_ID, PlatformSessionError, PlatformSessionVerifier, ProductSessionId,
