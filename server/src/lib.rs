@@ -61,11 +61,11 @@ pub use persistence::RedbProductStateStore;
 pub use http::{
     InventoryAvailabilityResponse, PlacedItemResponse, PlacementResponse, ProductHttpContext,
     PublicProductError, RestaurantLayoutResponse, RoomResponse, ServiceChairResponse,
-    ServiceDrinkResponse, ServiceKitchenResponse, ServiceTableResponse, ServiceTopologyCellResponse,
-    ServiceTopologyResponse, ServiceTopologySourceResponse, WallpaperMutationResponse,
-    WallpaperResponse, handle_apply_wallpaper, handle_load_restaurant,
-    handle_load_service_topology, handle_place_item,
-    handle_remove_item, handle_remove_wallpaper, handle_transform_item,
+    ServiceDrinkResponse, ServiceKitchenResponse, ServiceTableResponse,
+    ServiceTopologyCellResponse, ServiceTopologyResponse, ServiceTopologySourceResponse,
+    WallpaperMutationResponse, WallpaperResponse, handle_apply_wallpaper, handle_load_restaurant,
+    handle_load_service_topology, handle_place_item, handle_remove_item, handle_remove_wallpaper,
+    handle_transform_item,
 };
 
 pub use axum_adapter::restaurant_router;
