@@ -250,6 +250,12 @@ impl ProductAggregate {
                     .into_iter()
                     .map(PersistedPlacedItem::from)
                     .collect(),
+                floor_tiles: self
+                    .floor_tiles
+                    .values()
+                    .copied()
+                    .map(PersistedFloorTile::from)
+                    .collect(),
             },
             next_restaurant_mutation_sequence: self.next_restaurant_mutation_sequence,
             restaurant_mutations: self
@@ -260,6 +266,16 @@ impl ProductAggregate {
                     sequence: record.sequence,
                     operation: record.operation.into(),
                     item: PersistedPlacedItem::from(record.item),
+                })
+                .collect(),
+            next_floor_mutation_sequence: self.next_floor_mutation_sequence,
+            floor_mutations: self
+                .floor_mutations
+                .iter()
+                .map(|(mutation_id, record)| PersistedFloorTileMutation {
+                    mutation_id: mutation_id.as_str().to_owned(),
+                    sequence: record.sequence,
+                    tile: PersistedFloorTile::from(record.tile),
                 })
                 .collect(),
         };
@@ -279,6 +295,11 @@ impl ProductAggregate {
                 let persisted: LegacyPersistedAggregate =
                     serde_json::from_slice(bytes).map_err(|_| ProductStateStoreError::Corrupt)?;
                 Self::decode_legacy_persisted(catalog, persisted)
+            }
+            JOURNALED_OBJECT_PERSISTENCE_SCHEMA_VERSION => {
+                let persisted: PersistedAggregate =
+                    serde_json::from_slice(bytes).map_err(|_| ProductStateStoreError::Corrupt)?;
+                Self::decode_v2_persisted(catalog, persisted)
             }
             PRODUCT_PERSISTENCE_SCHEMA_VERSION => {
                 let persisted: PersistedAggregate =
