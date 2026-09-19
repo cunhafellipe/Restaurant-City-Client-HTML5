@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   HttpRestaurantAuthority,
   RestaurantAuthorityError,
+  createFloorTileMutationId,
   createPlacementMutationId,
   createRemoveMutationId,
   createTransformMutationId,
@@ -29,6 +30,7 @@ describe('HttpRestaurantAuthority', () => {
           },
           next_instance_id: 1,
           items: [],
+          floor_tiles: [],
           inventory: [],
         }),
       );
@@ -76,6 +78,7 @@ describe('HttpRestaurantAuthority', () => {
             room_index: 0,
           },
         ],
+        floor_tiles: [],
         inventory: [
           {
             item_id: 10,
@@ -104,6 +107,68 @@ describe('HttpRestaurantAuthority', () => {
     expect(init?.credentials).toBe('same-origin');
     expect(init?.cache).toBe('no-store');
     expect(new Headers(init?.headers).has('Authorization')).toBe(false);
+  });
+
+  it('loads floor cells and counts them in the authoritative inventory invariant', async () => {
+    const authority = new HttpRestaurantAuthority(
+      '/api/v1',
+      async () =>
+        okJson({
+          room: { inside_x: 8, inside_y: 8, outside_x: 0, outside_y: 0 },
+          next_instance_id: 1,
+          items: [],
+          floor_tiles: [
+            { item_id: 3050000, tile_x: 2, tile_y: 3, room_index: 0 },
+          ],
+          inventory: [
+            { item_id: 3050000, owned: 1, placed: 1, available: 0 },
+          ],
+        }),
+    );
+
+    const layout = await authority.loadRestaurant();
+    expect(layout.floorTiles).toEqual([
+      { itemId: 3050000, tileX: 2, tileY: 3, roomIndex: 0 },
+    ]);
+  });
+
+  it('puts strict floor-tile DTO with same-origin idempotency', async () => {
+    const fetcher = vi.fn(async () =>
+      okJson({
+        outcome: 'applied',
+        tile: {
+          item_id: 3050000,
+          tile_x: 2,
+          tile_y: 3,
+          room_index: 0,
+        },
+      }),
+    );
+    const authority = new HttpRestaurantAuthority('/api/v1', fetcher);
+    const commit = await authority.paintFloorTile(
+      { itemId: 3050000, tileX: 2, tileY: 3 },
+      'rc-floor-test-1',
+    );
+
+    expect(commit.tile).toEqual({
+      itemId: 3050000,
+      tileX: 2,
+      tileY: 3,
+      roomIndex: 0,
+    });
+    const [url, init] = fetcher.mock.calls[0]!;
+    expect(url).toBe('/api/v1/restaurant/floor-tiles');
+    expect(init?.method).toBe('PUT');
+    expect(init?.credentials).toBe('same-origin');
+    expect(new Headers(init?.headers).get('Idempotency-Key')).toBe(
+      'rc-floor-test-1',
+    );
+    expect(new Headers(init?.headers).has('Authorization')).toBe(false);
+    expect(JSON.parse(String(init?.body))).toEqual({
+      item_id: 3050000,
+      tile_x: 2,
+      tile_y: 3,
+    });
   });
 
   it('posts strict placement DTO with a stable idempotency key', async () => {
@@ -298,6 +363,7 @@ describe('HttpRestaurantAuthority', () => {
           },
           next_instance_id: 1,
           items: [],
+          floor_tiles: [],
           inventory: [
             {
               item_id: 10,
@@ -339,6 +405,7 @@ describe('HttpRestaurantAuthority', () => {
               room_index: 0,
             },
           ],
+          floor_tiles: [],
           inventory: [
             { item_id: 10, owned: 2, placed: 2, available: 0 },
           ],
@@ -364,6 +431,7 @@ describe('HttpRestaurantAuthority', () => {
               room_index: 0,
             },
           ],
+          floor_tiles: [],
           inventory: [
             { item_id: 10, owned: 2, placed: 0, available: 2 },
           ],
@@ -391,6 +459,7 @@ describe('HttpRestaurantAuthority', () => {
               room_index: 0,
             },
           ],
+          floor_tiles: [],
           inventory: [
             { item_id: 10, owned: 1, placed: 1, available: 0 },
           ],
@@ -416,6 +485,7 @@ describe('HttpRestaurantAuthority', () => {
               room_index: 9,
             },
           ],
+          floor_tiles: [],
           inventory: [
             { item_id: 10, owned: 1, placed: 1, available: 0 },
           ],
@@ -450,6 +520,9 @@ describe('restaurant mutation ids', () => {
   it('keeps operation-specific bounded idempotency namespaces', () => {
     expect(createPlacementMutationId(uuid)).toBe(
       'rc-placement-00000000-0000-4000-8000-000000000001',
+    );
+    expect(createFloorTileMutationId(uuid)).toBe(
+      'rc-floor-00000000-0000-4000-8000-000000000001',
     );
     expect(createTransformMutationId(uuid)).toBe(
       'rc-transform-00000000-0000-4000-8000-000000000001',
