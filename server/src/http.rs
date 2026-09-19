@@ -8,10 +8,10 @@
 use crate::domain::MutationId;
 use crate::placement::TilePoint;
 use crate::platform::{PlatformSessionError, PlatformSessionVerifier};
-use crate::restaurant::{PlacedItem, PlacementIntent};
+use crate::restaurant::{FloorTileIntent, PaintedFloorTile, PlacedItem, PlacementIntent};
 use crate::service::{
-    InventoryAvailability, PlacementMutationOutcome, ProductServiceError, ProductStateStore,
-    RestaurantProductService, RestaurantProductSnapshot,
+    FloorTileMutationOutcome, InventoryAvailability, PlacementMutationOutcome, ProductServiceError,
+    ProductStateStore, RestaurantProductService, RestaurantProductSnapshot,
 };
 use serde::{Deserialize, Serialize};
 
@@ -83,6 +83,14 @@ struct TransformRequestDto {
     rotation: u8,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct FloorTileRequestDto {
+    item_id: u32,
+    tile_x: i32,
+    tile_y: i32,
+}
+
 #[derive(Clone, Copy, Debug, Serialize, Eq, PartialEq)]
 pub struct RoomResponse {
     pub inside_x: u32,
@@ -102,6 +110,14 @@ pub struct PlacedItemResponse {
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Eq, PartialEq)]
+pub struct FloorTileResponse {
+    pub item_id: u32,
+    pub tile_x: i32,
+    pub tile_y: i32,
+    pub room_index: u8,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Eq, PartialEq)]
 pub struct InventoryAvailabilityResponse {
     pub item_id: u32,
     pub owned: u32,
@@ -114,6 +130,7 @@ pub struct RestaurantLayoutResponse {
     pub room: RoomResponse,
     pub next_instance_id: u64,
     pub items: Vec<PlacedItemResponse>,
+    pub floor_tiles: Vec<FloorTileResponse>,
     pub inventory: Vec<InventoryAvailabilityResponse>,
 }
 
@@ -121,6 +138,12 @@ pub struct RestaurantLayoutResponse {
 pub struct PlacementResponse {
     pub outcome: &'static str,
     pub item: PlacedItemResponse,
+}
+
+#[derive(Clone, Debug, Serialize, Eq, PartialEq)]
+pub struct FloorTilePaintResponse {
+    pub outcome: &'static str,
+    pub tile: FloorTileResponse,
 }
 
 pub fn handle_load_restaurant<V, S>(
@@ -177,6 +200,40 @@ where
         .map_err(map_service_error)?;
 
     mutation_response(outcome)
+}
+
+pub fn handle_paint_floor_tile<V, S>(
+    service: &RestaurantProductService<V, S>,
+    context: ProductHttpContext<'_>,
+    body: &[u8],
+) -> Result<Vec<u8>, PublicProductError>
+where
+    V: PlatformSessionVerifier,
+    S: ProductStateStore,
+{
+    let session_token = session_token(context.session_token)?;
+    let mutation_id = mutation_id(context.mutation_id)?;
+    if body.is_empty() || body.len() > MAX_BODY_BYTES {
+        return Err(PublicProductError::InvalidRequest);
+    }
+
+    let dto: FloorTileRequestDto =
+        serde_json::from_slice(body).map_err(|_| PublicProductError::InvalidRequest)?;
+    let outcome = service
+        .paint_floor_tile(
+            session_token,
+            mutation_id,
+            FloorTileIntent {
+                item_id: dto.item_id,
+                tile: TilePoint {
+                    x: dto.tile_x,
+                    y: dto.tile_y,
+                },
+            },
+        )
+        .map_err(map_service_error)?;
+
+    floor_tile_mutation_response(outcome)
 }
 
 pub fn handle_transform_item<V, S>(
@@ -253,6 +310,22 @@ fn mutation_response(outcome: PlacementMutationOutcome) -> Result<Vec<u8>, Publi
     json_bytes(&response)
 }
 
+fn floor_tile_mutation_response(
+    outcome: FloorTileMutationOutcome,
+) -> Result<Vec<u8>, PublicProductError> {
+    let response = match outcome {
+        FloorTileMutationOutcome::Applied(tile) => FloorTilePaintResponse {
+            outcome: "applied",
+            tile: floor_tile_response(tile),
+        },
+        FloorTileMutationOutcome::Duplicate(tile) => FloorTilePaintResponse {
+            outcome: "duplicate",
+            tile: floor_tile_response(tile),
+        },
+    };
+    json_bytes(&response)
+}
+
 fn session_token(value: Option<&str>) -> Result<&str, PublicProductError> {
     let token = value.ok_or(PublicProductError::Unauthenticated)?;
     if token.is_empty()
@@ -291,6 +364,11 @@ fn layout_response(snapshot: RestaurantProductSnapshot) -> RestaurantLayoutRespo
             .into_iter()
             .map(placed_item_response)
             .collect(),
+        floor_tiles: snapshot
+            .floor_tiles
+            .into_iter()
+            .map(floor_tile_response)
+            .collect(),
         inventory: snapshot
             .inventory
             .into_iter()
@@ -305,6 +383,15 @@ fn inventory_availability_response(item: InventoryAvailability) -> InventoryAvai
         owned: item.owned,
         placed: item.placed,
         available: item.available,
+    }
+}
+
+fn floor_tile_response(tile: PaintedFloorTile) -> FloorTileResponse {
+    FloorTileResponse {
+        item_id: tile.item_id,
+        tile_x: tile.tile.x,
+        tile_y: tile.tile.y,
+        room_index: tile.room_index,
     }
 }
 
