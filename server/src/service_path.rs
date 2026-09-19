@@ -35,9 +35,7 @@ pub enum ServicePathError {
     PathPlanMismatch,
 }
 
-pub fn canonical_waiter_walk_speed_y(
-    work_percent: f64,
-) -> Result<f64, ServicePathError> {
+pub fn canonical_waiter_walk_speed_y(work_percent: f64) -> Result<f64, ServicePathError> {
     if !work_percent.is_finite() || !(0.0..=100.0).contains(&work_percent) {
         return Err(ServicePathError::InvalidWorkPercent);
     }
@@ -49,13 +47,10 @@ pub fn canonical_waiter_walk_speed_y(
         return Ok(WAITER_MOVE_SPEED_Y_MIN_PX_PER_MS);
     }
 
-    Ok(
-        WAITER_MOVE_SPEED_Y_MIN_PX_PER_MS
-            + (WAITER_MOVE_SPEED_Y_MAX_PX_PER_MS
-                - WAITER_MOVE_SPEED_Y_MIN_PX_PER_MS)
-                * (work_percent - 20.0)
-                / 60.0,
-    )
+    Ok(WAITER_MOVE_SPEED_Y_MIN_PX_PER_MS
+        + (WAITER_MOVE_SPEED_Y_MAX_PX_PER_MS - WAITER_MOVE_SPEED_Y_MIN_PX_PER_MS)
+            * (work_percent - 20.0)
+            / 60.0)
 }
 
 /// Canonical customer chair movement ends on the chair tile itself.
@@ -169,10 +164,10 @@ pub fn path_duration_ms(
     for to in &path.tiles {
         let tile_dx = i64::from(to.x) - i64::from(from.x);
         let tile_dy = i64::from(to.y) - i64::from(from.y);
-        let screen_dx = ((tile_dx - tile_dy) * i64::from(HISTORICAL_TILE_WIDTH_HALF_PX))
-            .unsigned_abs() as f64;
-        let screen_dy = ((tile_dx + tile_dy) * i64::from(HISTORICAL_TILE_HEIGHT_HALF_PX))
-            .unsigned_abs() as f64;
+        let screen_dx =
+            ((tile_dx - tile_dy) * i64::from(HISTORICAL_TILE_WIDTH_HALF_PX)).unsigned_abs() as f64;
+        let screen_dy =
+            ((tile_dx + tile_dy) * i64::from(HISTORICAL_TILE_HEIGHT_HALF_PX)).unsigned_abs() as f64;
 
         let segment_ms = (screen_dx / speed_x_px_per_ms)
             .max(screen_dy / speed_y_px_per_ms)
@@ -318,8 +313,7 @@ mod tests {
     #[test]
     fn waiter_kitchen_pickup_drops_occupied_kitchen_destination() {
         let layout = layout();
-        let path =
-            waiter_path_to_kitchen_pickup(&layout, TilePoint { x: 4, y: 4 }, 13).unwrap();
+        let path = waiter_path_to_kitchen_pickup(&layout, TilePoint { x: 4, y: 4 }, 13).unwrap();
         assert_ne!(path.tiles.last(), Some(&TilePoint { x: 6, y: 4 }));
     }
 
@@ -396,10 +390,7 @@ mod tests {
     #[test]
     fn path_duration_sums_sequential_historical_segments() {
         let path = HistoricalPath {
-            tiles: vec![
-                TilePoint { x: 2, y: 1 },
-                TilePoint { x: 3, y: 2 },
-            ],
+            tiles: vec![TilePoint { x: 2, y: 1 }, TilePoint { x: 3, y: 2 }],
             movement_score: 24,
         };
         assert_eq!(
