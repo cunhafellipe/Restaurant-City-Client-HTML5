@@ -221,7 +221,6 @@ pub fn historical_path(
                             g: new_g,
                             f: new_g + heuristic,
                             open: true,
-                            closed: false,
                         });
                         node_index[next_grid_index] = Some(index);
 
