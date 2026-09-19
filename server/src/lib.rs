@@ -14,6 +14,7 @@ pub mod placement;
 pub mod platform;
 pub mod restaurant;
 pub mod service;
+pub mod service_clock;
 pub mod topology;
 
 pub use active_service::{
@@ -60,6 +61,13 @@ pub use service::{
     LoadedProductState, PlacementMutationOutcome, ProductAggregate, ProductServiceError,
     ProductStateStore, ProductStateStoreError, RestaurantProductService, RestaurantProductSnapshot,
     WallpaperMutationOutcome,
+};
+
+pub use service_clock::{
+    DueServiceEvent, ServiceDeadlines, ServiceTimeSource, ServiceTimingError,
+    SystemServiceTimeSource, TimedServiceCatchUp, TimedServiceTransition,
+    catch_up_timed_service, due_service_event, remaining_ms, transition_timed_service,
+    validate_service_deadlines,
 };
 
 pub use persistence::RedbProductStateStore;
