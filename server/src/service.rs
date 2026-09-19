@@ -774,7 +774,9 @@ impl ProductAggregate {
             if restaurant_mutations.contains_key(&mutation_id)
                 || floor_mutations.contains_key(&mutation_id)
                 || entry.sequence == 0
-                || seen_wallpaper_sequences.insert(entry.sequence, ()).is_some()
+                || seen_wallpaper_sequences
+                    .insert(entry.sequence, ())
+                    .is_some()
             {
                 return Err(ProductStateStoreError::Corrupt);
             }
@@ -1088,11 +1090,7 @@ impl ProductAggregate {
         }
 
         self.wallpapers.insert(wallpaper.orientation, wallpaper);
-        self.record_wallpaper_mutation(
-            mutation_id,
-            WallpaperMutationOperation::Apply,
-            wallpaper,
-        )?;
+        self.record_wallpaper_mutation(mutation_id, WallpaperMutationOperation::Apply, wallpaper)?;
         Ok(WallpaperMutationOutcome::Applied(wallpaper))
     }
 
@@ -1118,18 +1116,13 @@ impl ProductAggregate {
             return Ok(WallpaperMutationOutcome::Duplicate(existing.wallpaper));
         }
 
-        let removed = self
-            .wallpapers
-            .remove(&orientation)
-            .ok_or(ProductServiceError::WallpaperNotApplied {
+        let removed = self.wallpapers.remove(&orientation).ok_or(
+            ProductServiceError::WallpaperNotApplied {
                 rotation: orientation.rotation(),
-            })?;
-
-        self.record_wallpaper_mutation(
-            mutation_id,
-            WallpaperMutationOperation::Remove,
-            removed,
+            },
         )?;
+
+        self.record_wallpaper_mutation(mutation_id, WallpaperMutationOperation::Remove, removed)?;
         Ok(WallpaperMutationOutcome::Applied(removed))
     }
 
@@ -1712,12 +1705,8 @@ where
 
         for _ in 0..MAX_STORE_RETRIES {
             let (expected_revision, mut state) = self.load_or_initialize(session.subject)?;
-            let outcome = state.apply_owned_wallpaper(
-                session,
-                &self.catalog,
-                mutation_id.clone(),
-                intent,
-            )?;
+            let outcome =
+                state.apply_owned_wallpaper(session, &self.catalog, mutation_id.clone(), intent)?;
 
             if matches!(outcome, WallpaperMutationOutcome::Duplicate(_)) {
                 return Ok(outcome);
