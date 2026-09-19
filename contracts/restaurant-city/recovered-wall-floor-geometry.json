@@ -427,8 +427,15 @@
           "heightPx": 116.55
         }
       },
-      "serverCatalogEnabled": false,
-      "status": "Geometry, per-rotation Door content rasters and DoorWayMask erase raster proven by R26/R30/R32/R33. Mutations remain fail-closed until per-wall erase composition passes a physical browser golden.",
+      "serverCatalogEnabled": true,
+      "status": "Geometry, per-rotation Door content rasters and DoorWayMask erase raster proven by R26/R30/R32/R33. Physical browser gates validate top/left wall erase composition and authoritative Door rendering; mutation authority is enabled through the recovered wall-attachment domain.",
+      "runtimeValidation": {
+        "topWallGoldenRun": 35421601701,
+        "leftWallMaskRun": 35421414807,
+        "leftWallGoldenRun": 35421601701,
+        "canonicalActionScriptCommit": "d552cfa4767fe4fb5b7899493c30bfb375afc2c1",
+        "placeRoomItemSemantics": "door rotation 0 => getTileDrawPriority(x+1,y)-1; rotation 1 => getTileDrawPriority(x-1,y+1); mc_mask cloned into wall with BlendMode.ERASE"
+      },
       "runtimeGeometryEnabled": true,
       "localBounds": {
         "leftPx": 0,
@@ -494,5 +501,5 @@
       ]
     }
   },
-  "releasePolicy": "FloorTile #3050000 and WindowInside #3000001 remain enabled in the trusted server catalog. R25-R33 geometry/raster evidence is available to the renderer. Door #3010000 remains fail-closed for mutations until per-wall DoorWayMask erase composition is physically validated; wall items, wallpapers and custom walls remain non-persistent/disabled domains."
+  "releasePolicy": "FloorTile #3050000, WindowInside #3000001 and Door #3010000 are enabled in the trusted server catalog. Door mutation authority reuses server-derived wall attachment rotation/occupancy and is released only with frozen physical browser goldens for both wall orientations. Wall items, wallpapers and custom walls remain non-persistent/disabled domains."
 }
