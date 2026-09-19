@@ -15,6 +15,7 @@ use crate::placement::TilePoint;
 use crate::topology::{
     HistoricalPath, ServiceLayoutSnapshot, historical_path, path_to_customer_chair,
 };
+use serde::{Deserialize, Serialize};
 
 pub const HISTORICAL_TILE_WIDTH_PX: i32 = 80;
 pub const HISTORICAL_TILE_HEIGHT_PX: i32 = 40;
@@ -184,12 +185,14 @@ pub fn path_duration_ms(
 }
 
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum ServicePathKind {
     CustomerToChair,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ServicePathPlan {
     pub kind: ServicePathKind,
     pub start: TilePoint,
