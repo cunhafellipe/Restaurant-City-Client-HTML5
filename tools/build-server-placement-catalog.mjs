@@ -230,6 +230,11 @@ for (const group of database.groups ?? []) {
     const floorTileItem = hasFlag(group, item, 'floorTileItem');
     const doorItem = hasFlag(group, item, 'doorItem');
     const wallDivider = hasFlag(group, item, 'wallDivider');
+    const chairItem = hasFlag(group, item, 'chairItem');
+    const tableItem = hasFlag(group, item, 'tableItem');
+    const kitchen = hasFlag(group, item, 'kitchen');
+    const drink = hasFlag(group, item, 'drink');
+    const toilet = hasFlag(group, item, 'toilet');
     const systemOnly = SYSTEM_ONLY_GROUPS.has(group.name);
 
     if (
@@ -332,6 +337,11 @@ for (const group of database.groups ?? []) {
       surface,
       stackable,
       wallDivider,
+      chairItem,
+      tableItem,
+      kitchen,
+      drink,
+      toilet,
     });
   }
 }
@@ -407,11 +417,11 @@ fs.mkdirSync(OUT_DIR, { recursive: true });
 
 const bool = (value) => (value ? '1' : '0');
 const lines = [
-  'ANEWON_RC_PLACEMENT_CATALOG_V3',
+  'ANEWON_RC_PLACEMENT_CATALOG_V4',
   `# baseline=${manifest.baseline ?? 'unknown'}`,
   `# source_decoded_sha256=${source.decodedSha256 ?? ''}`,
   `# source_file=${source.source ?? ''}`,
-  'item_id\tsize_x\tsize_y\trotation_count\twall_item\twall_decoration_item\twallpaper_item\toutdoor\tfloor_tile_item\tsurface\tstackable',
+  'item_id\tsize_x\tsize_y\trotation_count\twall_item\twall_decoration_item\twallpaper_item\toutdoor\tfloor_tile_item\tsurface\tstackable\tchair_item\ttable_item\tkitchen\tdrink\ttoilet',
   ...definitions.map((entry) =>
     [
       entry.itemId,
@@ -425,6 +435,11 @@ const lines = [
       bool(entry.floorTileItem),
       bool(entry.surface),
       bool(entry.stackable),
+      bool(entry.chairItem),
+      bool(entry.tableItem),
+      bool(entry.kitchen),
+      bool(entry.drink),
+      bool(entry.toilet),
     ].join('\t'),
   ),
 ];
@@ -432,8 +447,8 @@ const lines = [
 fs.writeFileSync(OUT_TSV, `${lines.join('\n')}\n`);
 
 const meta = {
-  schemaVersion: 3,
-  format: 'ANEWON_RC_PLACEMENT_CATALOG_V3',
+  schemaVersion: 4,
+  format: 'ANEWON_RC_PLACEMENT_CATALOG_V4',
   baseline: manifest.baseline ?? null,
   sourceFamily: 'restaurant',
   sourceFile: source.source,
@@ -461,10 +476,22 @@ const meta = {
     surface: entry.surface,
     stackable: entry.stackable,
     wallDivider: entry.wallDivider,
+    chairItem: entry.chairItem,
+    tableItem: entry.tableItem,
+    kitchen: entry.kitchen,
+    drink: entry.drink,
+    toilet: entry.toilet,
   })),
   recoveredFootprintDefinitions: definitions.filter(
     (entry) => entry.footprintSource === 'recovered',
   ).length,
+  serviceRoleCounts: {
+    chairItem: definitions.filter((entry) => entry.chairItem).length,
+    tableItem: definitions.filter((entry) => entry.tableItem).length,
+    kitchen: definitions.filter((entry) => entry.kitchen).length,
+    drink: definitions.filter((entry) => entry.drink).length,
+    toilet: definitions.filter((entry) => entry.toilet).length,
+  },
   recoveredGeometryContracts: [
     path.relative(REPO, RECOVERED_GEOMETRY),
     path.relative(REPO, RECOVERED_WALL_FLOOR_GEOMETRY),
