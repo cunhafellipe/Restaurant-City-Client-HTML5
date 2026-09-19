@@ -485,6 +485,14 @@ pub fn is_table_free(table: ServiceTable) -> bool {
     !table.has_table_top_order && table.item_count_on_tile == 1
 }
 
+/// Canonical getAvailableChairs excludes toilet seats before a customer can
+/// occupy a chair. calculateServableTables may still set canOrderFood/drink on
+/// those RoomItems, so keep service reachability and meal-seat admission as
+/// separate historical stages.
+pub fn is_meal_seat(chair: ServiceChair) -> bool {
+    !chair.toilet
+}
+
 /// Source-grounded food branch of WorldRestaurantPlay.calculateServableTables.
 ///
 /// A chair becomes food-eligible only when the same waiter can reach both a
@@ -536,13 +544,6 @@ pub fn calculate_food_service_topology(
             }
 
             for chair in chairs {
-                // Six canonical chairItem definitions are toilets. They share
-                // the chair role for interaction/pathing but are never meal
-                // seats and must not enter waiter/chef food eligibility.
-                if chair.toilet {
-                    continue;
-                }
-
                 let chair_reachable =
                     path_to_customer_chair(grid, waiter.tile, chair.tile, chair.rotation).is_some();
                 if !chair_reachable {
@@ -937,7 +938,7 @@ mod tests {
     }
 
     #[test]
-    fn toilet_chair_is_excluded_from_food_service_topology() {
+    fn toilet_chair_keeps_service_flags_but_is_not_a_meal_seat() {
         let mut grid = ServiceTopologyGrid::new(room());
         let toilet = ServiceChair {
             instance_id: 10,
@@ -974,10 +975,18 @@ mod tests {
             }],
         );
 
-        assert!(snapshot.chair_food_eligible.is_empty());
-        assert_eq!(snapshot.waiter_chairs, vec![(40, vec![])]);
+        // calculateServableTables itself does not filter toilet RoomItems.
+        assert_eq!(snapshot.chair_food_eligible, vec![10]);
+        assert_eq!(snapshot.waiter_chairs, vec![(40, vec![10])]);
         assert_eq!(snapshot.waiter_kitchens, vec![(40, vec![20])]);
-        assert_eq!(snapshot.chef_chairs, vec![(30, vec![])]);
+        assert_eq!(snapshot.chef_chairs, vec![(30, vec![10])]);
+
+        // getAvailableChairs performs the distinct meal-seat exclusion.
+        assert!(!is_meal_seat(toilet));
+        assert!(is_meal_seat(ServiceChair {
+            toilet: false,
+            ..toilet
+        }));
     }
 
     #[test]
