@@ -1798,6 +1798,7 @@ impl ProductAggregate {
             ServiceMutationOperation::Start {
                 restaurant_mutation_sequence,
                 assignment,
+                effective_at_ms: None,
             },
             Some(started),
         )?;
@@ -1827,6 +1828,7 @@ impl ProductAggregate {
                 ServiceMutationOperation::Transition {
                     service_id: existing_service_id,
                     event: existing_event,
+                    ..
                 } if existing_service_id == service_id && existing_event == event => {
                     Ok(ActiveServiceMutationOutcome::Duplicate(existing.result))
                 }
@@ -1849,7 +1851,184 @@ impl ProductAggregate {
 
         self.record_service_mutation(
             mutation_id,
-            ServiceMutationOperation::Transition { service_id, event },
+            ServiceMutationOperation::Transition {
+                service_id,
+                event,
+                effective_at_ms: None,
+            },
+            Some(transitioned),
+        )?;
+        self.active_service = Some(transitioned);
+
+        Ok(ActiveServiceMutationOutcome::Applied(Some(transitioned)))
+    }
+
+    pub fn start_active_service_at(
+        &mut self,
+        session: VerifiedProductSession,
+        catalog: &PlacementCatalog,
+        mutation_id: MutationId,
+        assignment: ActiveServiceAssignment,
+        effective_at_ms: u64,
+    ) -> Result<ActiveServiceMutationOutcome, ProductServiceError> {
+        self.require_subject(session)?;
+
+        if self.restaurant_mutations.contains_key(&mutation_id)
+            || self.floor_mutations.contains_key(&mutation_id)
+            || self.wallpaper_mutations.contains_key(&mutation_id)
+        {
+            return Err(ProductServiceError::MutationIdConflict);
+        }
+        if let Some(existing) = self.service_mutations.get(&mutation_id) {
+            return match existing.operation {
+                ServiceMutationOperation::Start {
+                    assignment: existing_assignment,
+                    ..
+                } if existing_assignment == assignment => {
+                    Ok(ActiveServiceMutationOutcome::Duplicate(existing.result))
+                }
+                _ => Err(ProductServiceError::MutationIdConflict),
+            };
+        }
+        if self.active_service.is_some() {
+            return Err(ProductServiceError::ActiveServiceInProgress);
+        }
+
+        let restaurant_mutation_sequence = self
+            .next_restaurant_mutation_sequence
+            .checked_sub(1)
+            .ok_or(ProductServiceError::Store(ProductStateStoreError::Corrupt))?;
+        let service_id = self.next_service_id;
+        let next_service_id = service_id
+            .checked_add(1)
+            .ok_or(ProductServiceError::ServiceIdExhausted)?;
+        let started = ActiveServiceRecord::start(
+            service_id,
+            restaurant_mutation_sequence,
+            assignment,
+            &self.restaurant.snapshot(),
+            catalog,
+        )
+        .map_err(ProductServiceError::ActiveServiceAuthority)?
+        .anchor_timing(effective_at_ms)
+        .map_err(ProductServiceError::ServiceTimingAuthority)?;
+
+        self.record_service_mutation(
+            mutation_id,
+            ServiceMutationOperation::Start {
+                restaurant_mutation_sequence,
+                assignment,
+                effective_at_ms: Some(effective_at_ms),
+            },
+            Some(started),
+        )?;
+        self.active_service = Some(started);
+        self.next_service_id = next_service_id;
+
+        Ok(ActiveServiceMutationOutcome::Applied(Some(started)))
+    }
+
+    pub fn anchor_active_service_timing(
+        &mut self,
+        session: VerifiedProductSession,
+        mutation_id: MutationId,
+        service_id: u64,
+        effective_at_ms: u64,
+    ) -> Result<ActiveServiceMutationOutcome, ProductServiceError> {
+        self.require_subject(session)?;
+
+        if self.restaurant_mutations.contains_key(&mutation_id)
+            || self.floor_mutations.contains_key(&mutation_id)
+            || self.wallpaper_mutations.contains_key(&mutation_id)
+        {
+            return Err(ProductServiceError::MutationIdConflict);
+        }
+        if let Some(existing) = self.service_mutations.get(&mutation_id) {
+            return match existing.operation {
+                ServiceMutationOperation::AnchorTiming {
+                    service_id: existing_service_id,
+                    effective_at_ms: existing_at,
+                } if existing_service_id == service_id && existing_at == effective_at_ms => {
+                    Ok(ActiveServiceMutationOutcome::Duplicate(existing.result))
+                }
+                _ => Err(ProductServiceError::MutationIdConflict),
+            };
+        }
+
+        let current = self
+            .active_service
+            .ok_or(ProductServiceError::ActiveServiceNotFound)?;
+        if current.identity.service_id != service_id {
+            return Err(ProductServiceError::ActiveServiceIdMismatch);
+        }
+        if current.timing_anchored {
+            return Err(ProductServiceError::ServiceTimingAlreadyAnchored);
+        }
+        let anchored = current
+            .anchor_timing(effective_at_ms)
+            .map_err(ProductServiceError::ServiceTimingAuthority)?;
+
+        self.record_service_mutation(
+            mutation_id,
+            ServiceMutationOperation::AnchorTiming {
+                service_id,
+                effective_at_ms,
+            },
+            Some(anchored),
+        )?;
+        self.active_service = Some(anchored);
+        Ok(ActiveServiceMutationOutcome::Applied(Some(anchored)))
+    }
+
+    pub fn transition_active_service_at(
+        &mut self,
+        session: VerifiedProductSession,
+        mutation_id: MutationId,
+        service_id: u64,
+        event: ServiceLoopEvent,
+        effective_at_ms: u64,
+    ) -> Result<ActiveServiceMutationOutcome, ProductServiceError> {
+        self.require_subject(session)?;
+
+        if self.restaurant_mutations.contains_key(&mutation_id)
+            || self.floor_mutations.contains_key(&mutation_id)
+            || self.wallpaper_mutations.contains_key(&mutation_id)
+        {
+            return Err(ProductServiceError::MutationIdConflict);
+        }
+        if let Some(existing) = self.service_mutations.get(&mutation_id) {
+            return match existing.operation {
+                ServiceMutationOperation::Transition {
+                    service_id: existing_service_id,
+                    event: existing_event,
+                    ..
+                } if existing_service_id == service_id && existing_event == event => {
+                    Ok(ActiveServiceMutationOutcome::Duplicate(existing.result))
+                }
+                _ => Err(ProductServiceError::MutationIdConflict),
+            };
+        }
+
+        let current = self
+            .active_service
+            .ok_or(ProductServiceError::ActiveServiceNotFound)?;
+        if current.identity.service_id != service_id {
+            return Err(ProductServiceError::ActiveServiceIdMismatch);
+        }
+        let (transitioned, effect) = current
+            .transition_at(event, effective_at_ms)
+            .map_err(ProductServiceError::ServiceTimingAuthority)?;
+        if effect.is_some() {
+            return Err(ProductServiceError::MealSettlementNotConnected);
+        }
+
+        self.record_service_mutation(
+            mutation_id,
+            ServiceMutationOperation::Transition {
+                service_id,
+                event,
+                effective_at_ms: Some(effective_at_ms),
+            },
             Some(transitioned),
         )?;
         self.active_service = Some(transitioned);
@@ -2738,6 +2917,7 @@ pub enum ProductServiceError {
     RestaurantAuthority(RestaurantAuthorityError),
     ActiveServiceAuthority(ActiveServiceError),
     ServiceLoopAuthority(ServiceLoopError),
+    ServiceTimingAuthority(ServiceTimingError),
     ItemUnavailable {
         item_id: u32,
         owned: u32,
@@ -2749,6 +2929,7 @@ pub enum ProductServiceError {
     ActiveServiceNotFound,
     ActiveServiceIdMismatch,
     ActiveServiceNotComplete,
+    ServiceTimingAlreadyAnchored,
     MealSettlementNotConnected,
     WallpaperNotApplied {
         rotation: u8,
