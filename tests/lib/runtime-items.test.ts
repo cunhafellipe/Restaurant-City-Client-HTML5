@@ -54,7 +54,7 @@ describe('Restaurant City runtime item definitions', () => {
     expect(definition.explicitFootprint).toBeNull();
   });
 
-  it('keeps canonical wallDivider as ordinary decor while its recovered footprint is fail-closed', () => {
+  it('keeps canonical wallDivider as ordinary decor after recovered placement promotion', () => {
     const definition = buildRestaurantItemDefinition(
       {
         ...group,
@@ -76,7 +76,8 @@ describe('Restaurant City runtime item definitions', () => {
     expect(definition.placement.wallDecorationItem).toBe(false);
     expect(definition.placement.wallpaperItem).toBe(false);
     expect(definition.explicitFootprint).toBeNull();
-    expect(definition.placementFootprint).toBeNull();
+    expect(definition.placementFootprint).toEqual({ sizeX: 1, sizeY: 1 });
+    expect(definition.footprintSource).toBe('recovered');
   });
 
   it('preserves duplicate ids like the original loader', () => {
