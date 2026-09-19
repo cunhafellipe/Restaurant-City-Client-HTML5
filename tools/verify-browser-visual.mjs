@@ -16,6 +16,14 @@ const WORLD_SCREENSHOT = path.join(WORK, 'restaurant-world.png');
 const META = path.join(WORK, 'restaurant-editor.json');
 const STACK_SCREENSHOT = path.join(WORK, 'restaurant-stack.png');
 const STACK_META = path.join(WORK, 'restaurant-stack.json');
+const SERVICE_ACTOR_SCREENSHOT = path.join(
+  WORK,
+  'restaurant-service-actors.png',
+);
+const SERVICE_ACTOR_META = path.join(
+  WORK,
+  'restaurant-service-actors.json',
+);
 const FLOOR_SCREENSHOT = path.join(WORK, 'restaurant-floor.png');
 const FLOOR_META = path.join(WORK, 'restaurant-floor.json');
 const WALL_SCREENSHOT = path.join(WORK, 'restaurant-window.png');
@@ -333,6 +341,7 @@ const stackFixtureSeed = {
   ],
 };
 let fixtureState = structuredClone(fixtureSeed);
+let fixtureActiveService = null;
 
 function integerAttribute(value, field) {
   if (typeof value === 'number' && Number.isInteger(value)) return value;
@@ -437,6 +446,89 @@ function visualPlacementCatalog() {
   }
   visualPlacementCatalogCache = definitions;
   return definitions;
+}
+
+function serviceActorFixture() {
+  const definitions = visualPlacementCatalog();
+  const findItemId = (predicate, label) => {
+    for (const [itemId, definition] of definitions) {
+      if (predicate(definition)) return itemId;
+    }
+    throw new Error(`Visual actor probe cannot find canonical ${label}`);
+  };
+
+  const chairItemId = findItemId(
+    (definition) => definition.chairItem && !definition.toilet,
+    'meal chair',
+  );
+  const tableItemId = findItemId(
+    (definition) => definition.tableItem,
+    'table',
+  );
+  const kitchenItemId = findItemId(
+    (definition) => definition.kitchen,
+    'kitchen',
+  );
+
+  const state = {
+    room: { inside_x: 8, inside_y: 8, outside_x: 0, outside_y: 0 },
+    next_instance_id: 4,
+    items: [
+      {
+        instance_id: 1,
+        item_id: chairItemId,
+        tile_x: 2,
+        tile_y: 3,
+        rotation: 0,
+        room_index: 0,
+      },
+      {
+        instance_id: 2,
+        item_id: tableItemId,
+        tile_x: 3,
+        tile_y: 3,
+        rotation: 0,
+        room_index: 0,
+      },
+      {
+        instance_id: 3,
+        item_id: kitchenItemId,
+        tile_x: 5,
+        tile_y: 2,
+        rotation: 0,
+        room_index: 0,
+      },
+    ],
+    floor_tiles: [],
+    wallpapers: [],
+    inventory: [
+      { item_id: chairItemId, owned: 1, placed: 1, available: 0 },
+      { item_id: tableItemId, owned: 1, placed: 1, available: 0 },
+      { item_id: kitchenItemId, owned: 1, placed: 1, available: 0 },
+    ],
+  };
+
+  return {
+    state,
+    ids: { chairItemId, tableItemId, kitchenItemId },
+    active: {
+      service_id: 1,
+      restaurant_mutation_sequence: 1,
+      customer_id: 1,
+      order_id: 1,
+      chair_instance_id: 1,
+      table_instance_id: 2,
+      chef_employee_id: 101,
+      kitchen_instance_id: 3,
+      waiter_employee_id: 201,
+      waiter_tile_x: 4,
+      waiter_tile_y: 5,
+      customer_state: 'waiting-for-food',
+      order_state: 'cooking',
+      customer_timer_ms: 120000,
+      order_timer_ms: 16000,
+    },
+  };
 }
 
 function visualOccupiedCells(item) {
@@ -895,7 +987,7 @@ const server = http.createServer(async (req, res) => {
       'Content-Type': 'application/json; charset=utf-8',
       'Cache-Control': 'no-store',
     });
-    res.end(JSON.stringify({ active: null }));
+    res.end(JSON.stringify({ active: fixtureActiveService }));
     return;
   }
 
@@ -2806,6 +2898,221 @@ try {
     WALLPAPER_TOP_GOLDEN,
   );
 
+  const actorFixture = serviceActorFixture();
+  fixtureState = structuredClone(actorFixture.state);
+  fixtureActiveService = null;
+  await cdp.send('Page.navigate', { url });
+  const actorBaselineState = await waitForRuntime(
+    cdp,
+    `(() => {
+      const status = document.querySelector('.rc-status');
+      const canvas = document.querySelector('#game-canvas-host canvas');
+      return {
+        phase: status?.dataset.phase ?? null,
+        actors: globalThis.__ANEWON_RC_SERVICE_ACTORS__ ?? null,
+        canvas: canvas ? (() => {
+          const rect = canvas.getBoundingClientRect();
+          return {
+            width: canvas.width,
+            height: canvas.height,
+            x: rect.x,
+            y: rect.y,
+            cssWidth: rect.width,
+            cssHeight: rect.height,
+          };
+        })() : null,
+      };
+    })()`,
+    (value) =>
+      value?.phase === 'editing' &&
+      Array.isArray(value?.actors) &&
+      value.actors.length === 0 &&
+      value?.canvas?.width === 760 &&
+      value?.canvas?.height === 600,
+    8000,
+    'service actor baseline without active service',
+  );
+  await delay(250);
+  const actorBaselineShot = await cdp.send('Page.captureScreenshot', {
+    format: 'png',
+    fromSurface: true,
+    captureBeyondViewport: false,
+    clip: {
+      x: actorBaselineState.canvas.x,
+      y: actorBaselineState.canvas.y,
+      width: actorBaselineState.canvas.cssWidth,
+      height: actorBaselineState.canvas.cssHeight,
+      scale: 1,
+    },
+  });
+  if (
+    typeof actorBaselineShot.data !== 'string' ||
+    actorBaselineShot.data.length === 0
+  ) {
+    throw new Error('CDP did not return actor baseline screenshot bytes');
+  }
+  const actorBaselinePng = PNG.sync.read(
+    Buffer.from(actorBaselineShot.data, 'base64'),
+  );
+
+  fixtureActiveService = structuredClone(actorFixture.active);
+  await cdp.send('Page.reload', { ignoreCache: true });
+  const actorState = await waitForRuntime(
+    cdp,
+    `(() => {
+      const status = document.querySelector('.rc-status');
+      const canvas = document.querySelector('#game-canvas-host canvas');
+      return {
+        phase: status?.dataset.phase ?? null,
+        active: globalThis.__ANEWON_RC_ACTIVE_SERVICE__ ?? null,
+        actors: globalThis.__ANEWON_RC_SERVICE_ACTORS__ ?? null,
+        canvas: canvas ? (() => {
+          const rect = canvas.getBoundingClientRect();
+          return {
+            width: canvas.width,
+            height: canvas.height,
+            x: rect.x,
+            y: rect.y,
+            cssWidth: rect.width,
+            cssHeight: rect.height,
+          };
+        })() : null,
+      };
+    })()`,
+    (value) => {
+      if (
+        value?.phase !== 'editing' ||
+        value?.active?.customerState !== 'waiting-for-food' ||
+        value?.active?.orderState !== 'cooking' ||
+        !Array.isArray(value?.actors) ||
+        value.actors.length !== 3 ||
+        value?.canvas?.width !== 760 ||
+        value?.canvas?.height !== 600
+      ) {
+        return false;
+      }
+      const byRole = new Map(value.actors.map((actor) => [actor?.role, actor]));
+      return (
+        byRole.get('customer')?.animation === 'sit' &&
+        byRole.get('chef')?.animation === 'cooking' &&
+        byRole.get('waiter')?.animation === 'idle' &&
+        value.actors.every(
+          (actor) =>
+            typeof actor?.frame === 'string' &&
+            actor.frame.startsWith('avatar_service/') &&
+            Number.isFinite(actor?.anchorPx?.x) &&
+            Number.isFinite(actor?.anchorPx?.y) &&
+            Number.isFinite(actor?.world?.x) &&
+            Number.isFinite(actor?.world?.y) &&
+            Number.isFinite(actor?.world?.depth),
+        )
+      );
+    },
+    8000,
+    'authoritative customer/chef/waiter actor projection',
+  );
+  await delay(300);
+
+  const actorShot = await cdp.send('Page.captureScreenshot', {
+    format: 'png',
+    fromSurface: true,
+    captureBeyondViewport: false,
+    clip: {
+      x: actorState.canvas.x,
+      y: actorState.canvas.y,
+      width: actorState.canvas.cssWidth,
+      height: actorState.canvas.cssHeight,
+      scale: 1,
+    },
+  });
+  if (typeof actorShot.data !== 'string' || actorShot.data.length === 0) {
+    throw new Error('CDP did not return service actor screenshot bytes');
+  }
+  fs.writeFileSync(
+    SERVICE_ACTOR_SCREENSHOT,
+    Buffer.from(actorShot.data, 'base64'),
+  );
+  const actorPng = PNG.sync.read(fs.readFileSync(SERVICE_ACTOR_SCREENSHOT));
+  if (
+    actorPng.width !== actorBaselinePng.width ||
+    actorPng.height !== actorBaselinePng.height
+  ) {
+    throw new Error('Service actor A/B screenshots have different dimensions');
+  }
+
+  let changedPixels = 0;
+  const perActorChangedPixels = {};
+  for (let y = 0; y < actorPng.height; y += 1) {
+    for (let x = 0; x < actorPng.width; x += 1) {
+      const offset = (y * actorPng.width + x) * 4;
+      let changed = false;
+      for (let channel = 0; channel < 4; channel += 1) {
+        if (actorPng.data[offset + channel] !== actorBaselinePng.data[offset + channel]) {
+          changed = true;
+          break;
+        }
+      }
+      if (changed) changedPixels += 1;
+    }
+  }
+
+  for (const actor of actorState.actors) {
+    const radius = 55;
+    const minX = Math.max(0, Math.floor(actor.world.x - radius));
+    const maxX = Math.min(actorPng.width - 1, Math.ceil(actor.world.x + radius));
+    const minY = Math.max(0, Math.floor(actor.world.y - radius));
+    const maxY = Math.min(actorPng.height - 1, Math.ceil(actor.world.y + radius));
+    let changed = 0;
+    for (let y = minY; y <= maxY; y += 1) {
+      for (let x = minX; x <= maxX; x += 1) {
+        const offset = (y * actorPng.width + x) * 4;
+        for (let channel = 0; channel < 4; channel += 1) {
+          if (actorPng.data[offset + channel] !== actorBaselinePng.data[offset + channel]) {
+            changed += 1;
+            break;
+          }
+        }
+      }
+    }
+    perActorChangedPixels[actor.role] = changed;
+  }
+
+  if (
+    changedPixels < 100 ||
+    actorState.actors.some(
+      (actor) => (perActorChangedPixels[actor.role] ?? 0) < 10,
+    )
+  ) {
+    throw new Error(
+      `Service actor framebuffer proof too weak: changed=${changedPixels} perActor=${JSON.stringify(perActorChangedPixels)}`,
+    );
+  }
+
+  const serviceActorMetadata = {
+    schemaVersion: 1,
+    fixture: 'authoritative-service-actors-waiting-for-food-cooking',
+    ids: actorFixture.ids,
+    state: actorState,
+    screenshot: path
+      .relative(REPO, SERVICE_ACTOR_SCREENSHOT)
+      .replaceAll('\\\\', '/'),
+    pngSha256: sha256(SERVICE_ACTOR_SCREENSHOT),
+    pixelSha256: bufferSha256(actorPng.data),
+    blockSize: 8,
+    quantizedBlockSha256: quantizedBlockSignature(actorPng, 8),
+    changedPixelsVsNoActiveService: changedPixels,
+    perActorChangedPixels,
+    goldenFrozen: false,
+  };
+  fs.writeFileSync(
+    SERVICE_ACTOR_META,
+    `${JSON.stringify(serviceActorMetadata, null, 2)}\n`,
+  );
+  console.log(
+    `SERVICE ACTOR VISUAL CANDIDATE | frames=98 | roles=customer,chef,waiter | changedPixels=${changedPixels} | perActor=${JSON.stringify(perActorChangedPixels)} | pixel=${serviceActorMetadata.pixelSha256} | png=${serviceActorMetadata.pngSha256} | block=${serviceActorMetadata.quantizedBlockSha256}`,
+  );
+  fixtureActiveService = null;
+
   const metadata = {
     schemaVersion: 2,
     browser,
@@ -2816,6 +3123,7 @@ try {
     diagnostics: diagnostics.slice(-20),
     wallRuntimeDiagnostics: wallDiagnostics,
     stackVisual: stackMetadata,
+    serviceActorVisual: serviceActorMetadata,
     floorVisual: floorMetadata,
     wallVisual: wallMetadata,
     doorProbeVisual: doorProbeMetadata,
