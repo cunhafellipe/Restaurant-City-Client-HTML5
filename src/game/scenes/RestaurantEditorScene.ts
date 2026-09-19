@@ -77,7 +77,6 @@ export class RestaurantEditorScene extends Phaser.Scene {
   private committedSprites: Phaser.GameObjects.Sprite[] = [];
   private floorSprites: Phaser.GameObjects.Sprite[] = [];
   private wallSprites: Phaser.GameObjects.Sprite[] = [];
-  private visualProbeControl: Phaser.GameObjects.Image | null = null;
   private previewSprite: Phaser.GameObjects.Sprite | null = null;
   private visualIndex: RestaurantItemVisualIndex | null = null;
   private authority!: RestaurantAuthority;
@@ -980,23 +979,6 @@ export class RestaurantEditorScene extends Phaser.Scene {
       ),
     );
 
-    if (
-      typeof window !== 'undefined' &&
-      new URLSearchParams(window.location.search).has('visualProbe')
-    ) {
-      this.visualProbeControl?.destroy();
-      this.visualProbeControl = this.add
-        .image(
-          650,
-          390,
-          'indoor_asset',
-          frameForRestaurantItemRotation(wallVisual, 1),
-        )
-        .setOrigin(0, 0)
-        .setDepth(1_000_000)
-        .setAlpha(1)
-        .setVisible(true);
-    }
 
     this.publishVisualProbeDiagnostics();
   }
@@ -1075,9 +1057,6 @@ export class RestaurantEditorScene extends Phaser.Scene {
       walls: this.wallSprites.map(describe),
       committed: this.committedSprites.map(describe),
       floor: this.floorSprites.map(describe),
-      control: this.visualProbeControl
-        ? describe(this.visualProbeControl)
-        : null,
     };
   }
 
