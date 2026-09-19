@@ -33,6 +33,7 @@ import {
   createRemoveMutationId,
   createTransformMutationId,
   RestaurantAuthorityError,
+  type AuthoritativeFloorTile,
   type AuthoritativeInventoryAvailability,
   type AuthoritativePlacedItem,
   type RestaurantAuthority,
@@ -70,6 +71,7 @@ export class RestaurantEditorScene extends Phaser.Scene {
   private committedGraphics!: Phaser.GameObjects.Graphics;
   private previewGraphics!: Phaser.GameObjects.Graphics;
   private committedSprites: Phaser.GameObjects.Sprite[] = [];
+  private floorSprites: Phaser.GameObjects.Sprite[] = [];
   private previewSprite: Phaser.GameObjects.Sprite | null = null;
   private visualIndex: RestaurantItemVisualIndex | null = null;
   private authority!: RestaurantAuthority;
@@ -82,6 +84,7 @@ export class RestaurantEditorScene extends Phaser.Scene {
     AuthoritativeInventoryAvailability
   >();
   private authoritativeItems: readonly AuthoritativePlacedItem[] = [];
+  private authoritativeFloorTiles: readonly AuthoritativeFloorTile[] = [];
 
   private room: RoomDimensions = INITIAL_ROOM;
   private selectedIndex = 0;
@@ -123,7 +126,34 @@ export class RestaurantEditorScene extends Phaser.Scene {
 
   private drawFloor(): void {
     this.floorGraphics.clear();
+    for (const sprite of this.floorSprites) sprite.destroy();
+    this.floorSprites = [];
     this.floorGraphics.lineStyle(1, 0x6f8b96, 0.75);
+
+    for (const tile of this.authoritativeFloorTiles) {
+      const definition = this.catalogById.get(tile.itemId);
+      if (!definition || !this.isAuthoritativeFloorTile(definition)) {
+        throw new Error(
+          `Authoritative floor references unsupported item #${tile.itemId}`,
+        );
+      }
+      const visual = this.itemVisual(definition);
+      if (!visual) {
+        throw new Error(
+          `Authoritative floor item #${tile.itemId} has no runtime atlas visual`,
+        );
+      }
+
+      const sprite = this.createItemSprite(
+        definition,
+        visual,
+        0,
+        { x: tile.tileX, y: tile.tileY },
+        1,
+      );
+      sprite.setDepth(-10_000 + tile.tileY * 20 + tile.tileX);
+      this.floorSprites.push(sprite);
+    }
 
     for (let x = 0; x < this.room.insideX; x += 1) {
       for (let y = 0; y < this.room.insideY; y += 1) {
@@ -241,7 +271,7 @@ export class RestaurantEditorScene extends Phaser.Scene {
         phase: 'editing',
         baseline: manifest.baseline,
         status:
-          `Loaded baseline ${manifest.baseline} and ${layout.items.length} persisted restaurant item(s).`,
+          `Loaded baseline ${manifest.baseline}, ${layout.items.length} persisted object(s), and ${layout.floorTiles.length} authoritative floor tile(s).`,
         selectedItem: this.selectedItemUi(),
         corpus: {
           restaurantRecords: catalog.length,
@@ -257,6 +287,21 @@ export class RestaurantEditorScene extends Phaser.Scene {
   private applyAuthoritativeLayout(layout: RestaurantLayout): void {
     if (layout.room.insideX === 0 || layout.room.insideY === 0) {
       throw new Error('Authoritative restaurant room has invalid zero dimensions');
+    }
+
+    for (const tile of layout.floorTiles) {
+      const definition = this.catalogById.get(tile.itemId);
+      if (!definition || !this.isAuthoritativeFloorTile(definition)) {
+        throw new Error(
+          `Authoritative floor references unsupported item #${tile.itemId}`,
+        );
+      }
+      const visual = this.itemVisual(definition);
+      if (!visual || visual.frames.length !== 1) {
+        throw new Error(
+          `Authoritative floor item #${tile.itemId} has invalid visual frame contract`,
+        );
+      }
     }
 
     for (const placed of layout.items) {
@@ -281,6 +326,7 @@ export class RestaurantEditorScene extends Phaser.Scene {
       outsideY: layout.room.outsideY,
     };
     this.authoritativeItems = [...layout.items];
+    this.authoritativeFloorTiles = [...layout.floorTiles];
     this.inventoryByItemId = new Map(
       layout.inventory.map((entry) => [entry.itemId, entry]),
     );
@@ -300,6 +346,22 @@ export class RestaurantEditorScene extends Phaser.Scene {
     this.drawFloor();
     this.drawCommittedPlacements();
     this.refreshSelectedItem();
+  }
+
+  private isAuthoritativeFloorTile(
+    item: RestaurantItemDefinition,
+  ): boolean {
+    const footprint = item.placementFootprint;
+    return (
+      footprint?.sizeX === 1 &&
+      footprint.sizeY === 1 &&
+      !isSystemOnlyRestaurantItem(item) &&
+      item.placement.floorTileItem === true &&
+      !item.placement.wallItem &&
+      !item.placement.wallDecorationItem &&
+      !item.placement.wallpaperItem &&
+      !item.placement.outdoor
+    );
   }
 
   private isOrdinaryPlaceable(item: RestaurantItemDefinition): boolean {
@@ -824,7 +886,7 @@ export class RestaurantEditorScene extends Phaser.Scene {
       this.applyAuthoritativeLayout(layout);
       this.drawPreview(false);
       this.publishUi(
-        `Authoritative state resynchronized: ${layout.items.length} persisted item(s).`,
+        `Authoritative state resynchronized: ${layout.items.length} object(s), ${layout.floorTiles.length} floor tile(s).`,
         this.currentValidation(),
       );
     } catch (error) {
