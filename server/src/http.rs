@@ -623,6 +623,37 @@ mod tests {
         service_with_rotation_count(4)
     }
 
+    fn wallpaper_service() -> RestaurantProductService<FakeVerifier, InMemoryProductStateStore> {
+        let catalog = PlacementCatalog::new([ItemPlacementDefinition {
+            item_id: 3_060_000,
+            footprint: Footprint {
+                size_x: 1,
+                size_y: 1,
+            },
+            rotation_count: 2,
+            flags: PlacementFlags {
+                wallpaper_item: true,
+                ..PlacementFlags::default()
+            },
+        }])
+        .unwrap();
+
+        RestaurantProductService::new(
+            FakeVerifier {
+                subject: AnewSubject::from_verified_platform_bytes([7; 16]).unwrap(),
+                session_id: ProductSessionId::from_verified_platform_bytes([9; 16]).unwrap(),
+            },
+            InMemoryProductStateStore::default(),
+            catalog,
+            RoomDimensions {
+                inside_x: 8,
+                inside_y: 8,
+                outside_x: 0,
+                outside_y: 0,
+            },
+        )
+    }
+
     fn context<'a>(
         session_token: Option<&'a str>,
         mutation_id: Option<&'a str>,
@@ -778,6 +809,82 @@ mod tests {
         let json: serde_json::Value = serde_json::from_slice(&duplicate).unwrap();
         assert_eq!(json["outcome"], "duplicate");
         assert_eq!(json["item"]["instance_id"], 1);
+    }
+
+    #[test]
+    fn wallpaper_transport_derives_orientation_and_is_idempotent() {
+        let service = wallpaper_service();
+        service
+            .apply_player_command(
+                "session",
+                MutationId::new("grant-wallpaper".to_owned()).unwrap(),
+                Command::GrantInventory {
+                    item_id: 3_060_000,
+                    quantity: 1,
+                },
+            )
+            .unwrap();
+
+        let applied = handle_apply_wallpaper(
+            &service,
+            context(Some("session"), Some("wallpaper-left")),
+            br#"{"item_id":3060000,"tile_x":0,"tile_y":2}"#,
+        )
+        .unwrap();
+        let duplicate = handle_apply_wallpaper(
+            &service,
+            context(Some("session"), Some("wallpaper-left")),
+            br#"{"item_id":3060000,"tile_x":0,"tile_y":6}"#,
+        )
+        .unwrap();
+
+        let applied_json: serde_json::Value = serde_json::from_slice(&applied).unwrap();
+        let duplicate_json: serde_json::Value = serde_json::from_slice(&duplicate).unwrap();
+        assert_eq!(applied_json["outcome"], "applied");
+        assert_eq!(applied_json["wallpaper"]["item_id"], 3_060_000);
+        assert_eq!(applied_json["wallpaper"]["rotation"], 0);
+        assert_eq!(duplicate_json["outcome"], "duplicate");
+
+        let layout =
+            handle_load_restaurant(&service, context(Some("session"), None)).unwrap();
+        let layout_json: serde_json::Value = serde_json::from_slice(&layout).unwrap();
+        assert_eq!(layout_json["wallpapers"].as_array().unwrap().len(), 1);
+        assert_eq!(layout_json["inventory"][0]["placed"], 1);
+        assert_eq!(layout_json["inventory"][0]["available"], 0);
+
+        let removed = handle_remove_wallpaper(
+            &service,
+            context(Some("session"), Some("wallpaper-remove-left")),
+            0,
+        )
+        .unwrap();
+        let removed_duplicate = handle_remove_wallpaper(
+            &service,
+            context(Some("session"), Some("wallpaper-remove-left")),
+            0,
+        )
+        .unwrap();
+        let removed_json: serde_json::Value = serde_json::from_slice(&removed).unwrap();
+        let removed_duplicate_json: serde_json::Value =
+            serde_json::from_slice(&removed_duplicate).unwrap();
+        assert_eq!(removed_json["outcome"], "applied");
+        assert_eq!(removed_duplicate_json["outcome"], "duplicate");
+
+        assert_eq!(
+            handle_remove_wallpaper(
+                &service,
+                context(Some("session"), Some("wallpaper-remove-invalid")),
+                2,
+            ),
+            Err(PublicProductError::Unprocessable)
+        );
+
+        let after =
+            handle_load_restaurant(&service, context(Some("session"), None)).unwrap();
+        let after_json: serde_json::Value = serde_json::from_slice(&after).unwrap();
+        assert_eq!(after_json["wallpapers"].as_array().unwrap().len(), 0);
+        assert_eq!(after_json["inventory"][0]["placed"], 0);
+        assert_eq!(after_json["inventory"][0]["available"], 1);
     }
 
     #[test]
