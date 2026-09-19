@@ -1626,6 +1626,190 @@ impl ProductAggregate {
         Ok(PlacementMutationOutcome::Applied(removed))
     }
 
+    pub fn start_active_service(
+        &mut self,
+        session: VerifiedProductSession,
+        catalog: &PlacementCatalog,
+        mutation_id: MutationId,
+        assignment: ActiveServiceAssignment,
+    ) -> Result<ActiveServiceMutationOutcome, ProductServiceError> {
+        self.require_subject(session)?;
+
+        if self.restaurant_mutations.contains_key(&mutation_id)
+            || self.floor_mutations.contains_key(&mutation_id)
+            || self.wallpaper_mutations.contains_key(&mutation_id)
+        {
+            return Err(ProductServiceError::MutationIdConflict);
+        }
+        if let Some(existing) = self.service_mutations.get(&mutation_id) {
+            return match existing.operation {
+                ServiceMutationOperation::Start {
+                    assignment: existing_assignment,
+                    ..
+                } if existing_assignment == assignment => {
+                    Ok(ActiveServiceMutationOutcome::Duplicate(existing.result))
+                }
+                _ => Err(ProductServiceError::MutationIdConflict),
+            };
+        }
+        if self.active_service.is_some() {
+            return Err(ProductServiceError::ActiveServiceInProgress);
+        }
+
+        let restaurant_mutation_sequence = self
+            .next_restaurant_mutation_sequence
+            .checked_sub(1)
+            .ok_or(ProductServiceError::Store(ProductStateStoreError::Corrupt))?;
+        let service_id = self.next_service_id;
+        let next_service_id = service_id
+            .checked_add(1)
+            .ok_or(ProductServiceError::ServiceIdExhausted)?;
+        let started = ActiveServiceRecord::start(
+            service_id,
+            restaurant_mutation_sequence,
+            assignment,
+            &self.restaurant.snapshot(),
+            catalog,
+        )
+        .map_err(ProductServiceError::ActiveServiceAuthority)?;
+
+        self.record_service_mutation(
+            mutation_id,
+            ServiceMutationOperation::Start {
+                restaurant_mutation_sequence,
+                assignment,
+            },
+            Some(started),
+        )?;
+        self.active_service = Some(started);
+        self.next_service_id = next_service_id;
+
+        Ok(ActiveServiceMutationOutcome::Applied(Some(started)))
+    }
+
+    pub fn transition_active_service(
+        &mut self,
+        session: VerifiedProductSession,
+        mutation_id: MutationId,
+        service_id: u64,
+        event: ServiceLoopEvent,
+    ) -> Result<ActiveServiceMutationOutcome, ProductServiceError> {
+        self.require_subject(session)?;
+
+        if self.restaurant_mutations.contains_key(&mutation_id)
+            || self.floor_mutations.contains_key(&mutation_id)
+            || self.wallpaper_mutations.contains_key(&mutation_id)
+        {
+            return Err(ProductServiceError::MutationIdConflict);
+        }
+        if let Some(existing) = self.service_mutations.get(&mutation_id) {
+            return match existing.operation {
+                ServiceMutationOperation::Transition {
+                    service_id: existing_service_id,
+                    event: existing_event,
+                } if existing_service_id == service_id && existing_event == event => {
+                    Ok(ActiveServiceMutationOutcome::Duplicate(existing.result))
+                }
+                _ => Err(ProductServiceError::MutationIdConflict),
+            };
+        }
+
+        let current = self
+            .active_service
+            .ok_or(ProductServiceError::ActiveServiceNotFound)?;
+        if current.identity.service_id != service_id {
+            return Err(ProductServiceError::ActiveServiceIdMismatch);
+        }
+        let transitioned = current
+            .transition(event)
+            .map_err(ProductServiceError::ServiceLoopAuthority)?;
+
+        self.record_service_mutation(
+            mutation_id,
+            ServiceMutationOperation::Transition { service_id, event },
+            Some(transitioned),
+        )?;
+        self.active_service = Some(transitioned);
+
+        Ok(ActiveServiceMutationOutcome::Applied(Some(transitioned)))
+    }
+
+    pub fn complete_active_service(
+        &mut self,
+        session: VerifiedProductSession,
+        mutation_id: MutationId,
+        service_id: u64,
+    ) -> Result<ActiveServiceMutationOutcome, ProductServiceError> {
+        self.require_subject(session)?;
+
+        if self.restaurant_mutations.contains_key(&mutation_id)
+            || self.floor_mutations.contains_key(&mutation_id)
+            || self.wallpaper_mutations.contains_key(&mutation_id)
+        {
+            return Err(ProductServiceError::MutationIdConflict);
+        }
+        if let Some(existing) = self.service_mutations.get(&mutation_id) {
+            return match existing.operation {
+                ServiceMutationOperation::Complete {
+                    service_id: existing_service_id,
+                } if existing_service_id == service_id => {
+                    Ok(ActiveServiceMutationOutcome::Duplicate(existing.result))
+                }
+                _ => Err(ProductServiceError::MutationIdConflict),
+            };
+        }
+
+        let current = self
+            .active_service
+            .ok_or(ProductServiceError::ActiveServiceNotFound)?;
+        if current.identity.service_id != service_id {
+            return Err(ProductServiceError::ActiveServiceIdMismatch);
+        }
+        if current.state.customer != CustomerServiceState::Left
+            || current.state.order != OrderServiceState::Settled
+        {
+            return Err(ProductServiceError::ActiveServiceNotComplete);
+        }
+
+        self.record_service_mutation(
+            mutation_id,
+            ServiceMutationOperation::Complete { service_id },
+            None,
+        )?;
+        self.active_service = None;
+
+        Ok(ActiveServiceMutationOutcome::Applied(None))
+    }
+
+    fn record_service_mutation(
+        &mut self,
+        mutation_id: MutationId,
+        operation: ServiceMutationOperation,
+        result: Option<ActiveServiceRecord>,
+    ) -> Result<(), ProductServiceError> {
+        let sequence = self.next_service_mutation_sequence;
+        let next_sequence = sequence
+            .checked_add(1)
+            .ok_or(ProductServiceError::ServiceMutationSequenceExhausted)?;
+
+        if self
+            .service_mutations
+            .insert(
+                mutation_id,
+                ServiceMutationRecord {
+                    sequence,
+                    operation,
+                    result,
+                },
+            )
+            .is_some()
+        {
+            return Err(ProductServiceError::Store(ProductStateStoreError::Corrupt));
+        }
+        self.next_service_mutation_sequence = next_sequence;
+        Ok(())
+    }
+
     fn record_restaurant_mutation(
         &mut self,
         mutation_id: MutationId,
