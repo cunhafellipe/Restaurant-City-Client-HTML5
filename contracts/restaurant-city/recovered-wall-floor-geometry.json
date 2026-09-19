@@ -11,6 +11,14 @@
       "artifactId": 10570215657,
       "artifactSha256": "260782560cac9da62a89b4577af07c2662e42321a164c23ff51e7ffd3e606ef0",
       "conclusion": "WALL_FLOOR_SENTINEL_TIMELINES_RECOVERED"
+    },
+    "r26": {
+      "runId": 35416261935,
+      "artifactId": 10576345663,
+      "artifactSha256": "ee295bcabf70d6c610e4b0845798eef30e8346d000bf7cb838271e91757ace9b",
+      "sourceXmlSha256": "5db59e9b6be40165a4a25e9139eb84515f22c5e9b2d78d61a43aaab28f133594",
+      "conclusion": "WINDOW_DOOR_RECURSIVE_BOUNDS_RECOVERED",
+      "policy": "Definition-only recursive frame-1 bounds; translation-only transforms; non-translation fails closed."
     }
   },
   "historicalSemantics": {
@@ -96,10 +104,26 @@
       "domain": "wallDecorationItem",
       "spriteId": 354,
       "rotationCount": 2,
-      "footprint": null,
-      "itemHeightTwips": null,
+      "footprint": {
+        "sizeX": 1,
+        "sizeY": 1
+      },
+      "itemHeightTwips": 1993,
+      "recursiveBounds": {
+        "xminTwips": 25,
+        "xmaxTwips": 769,
+        "yminTwips": -1266,
+        "ymaxTwips": 73,
+        "widthPx": 37.2,
+        "heightPx": 66.95
+      },
+      "child": {
+        "characterId": 353,
+        "translateXTwips": 397,
+        "translateYTwips": -596
+      },
       "serverCatalogEnabled": false,
-      "status": "R26 recursive bounds pending"
+      "status": "Geometry proven by R26; wallMap attachment authority still required."
     },
     "Door": {
       "itemIds": [
@@ -108,15 +132,48 @@
       "domain": "doorItem/wallDecorationItem",
       "spriteId": 1396,
       "rotationCount": 2,
-      "footprint": null,
-      "itemHeightTwips": null,
+      "footprint": {
+        "sizeX": 1,
+        "sizeY": 1
+      },
+      "itemHeightTwips": 1479,
+      "recursiveBounds": {
+        "xminTwips": 0,
+        "xmaxTwips": 863,
+        "yminTwips": -1505,
+        "ymaxTwips": 826,
+        "widthPx": 43.15,
+        "heightPx": 116.55
+      },
+      "mask": {
+        "instanceName": "mc_mask",
+        "characterId": 1313,
+        "bounds": {
+          "xminTwips": 0,
+          "xmaxTwips": 794,
+          "yminTwips": -1502,
+          "ymaxTwips": 794,
+          "widthPx": 39.7,
+          "heightPx": 114.8
+        }
+      },
+      "content": {
+        "instanceName": "mc_content",
+        "characterId": 1395,
+        "translateXTwips": 0,
+        "translateYTwips": -7,
+        "bounds": {
+          "xminTwips": 0,
+          "xmaxTwips": 863,
+          "yminTwips": -1498,
+          "ymaxTwips": 833,
+          "widthPx": 43.15,
+          "heightPx": 116.55
+        }
+      },
       "serverCatalogEnabled": false,
-      "namedInstances": [
-        "mc_mask",
-        "mc_content"
-      ],
-      "status": "R26 recursive bounds pending"
+      "status": "Geometry and erase-mask instance proven by R26; wallMap attachment authority still required."
     }
   },
-  "releasePolicy": "Only FloorTile #3050000 may enter the trusted server catalog from R25. Wall items, decorations, wallpapers and doors remain fail-closed until their wallMap/attachment/mask authority and recursive geometry are proven."
+  "releasePolicy": "FloorTile #3050000 is the only R25/R26 primitive currently enabled in the trusted server catalog. WindowInside/Door geometry is now proven but remains fail-closed until wallMap creation, server-derived attachment and mask semantics are recovered. Wall items and wallpapers remain disabled."
 }
