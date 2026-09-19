@@ -410,9 +410,11 @@ impl RestaurantState {
                     size_y: 1,
                 })
             {
-                return Err(RestaurantAuthorityError::UnsupportedWallAttachmentFootprint {
-                    item_id: definition.item_id,
-                });
+                return Err(
+                    RestaurantAuthorityError::UnsupportedWallAttachmentFootprint {
+                        item_id: definition.item_id,
+                    },
+                );
             }
 
             let rotation = default_wall_attachment_rotation(intent.tile, self.room).ok_or(
