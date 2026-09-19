@@ -7,33 +7,34 @@ Living tracker. Facts only; update when implementation evidence changes.
 - Product: **ANEWON Restaurant City**
 - Lifecycle: **incubation**
 - Execution/security profile: **SOCIAL_WEB**
-- Phase: **M1 — full historical baseline ingestion + permanent ANEWON boundaries**
+- Phase: **M3 — first historically grounded restaurant gameplay loop**
 - Architecture authority: `anewonhq/anew-docs` ADR-0009
 - Implementation branch: `anewon/revival-content`
 
 ## Current objective
 
-Advance the M2 world/editor vertical slice from authoritative ordinary objects,
-floor tiles, windows/doors and wallpapers toward the next historical content
-domain, while keeping every promoted family fail-closed behind recovered
-geometry, browser goldens and server-authoritative persistence.
+M2 world/editor parity is closed. Begin the first actual restaurant gameplay
+vertical slice from canonical `WorldRestaurantPlay`: customer admission/seating,
+`DishOrder`, chef cooking, waiter delivery, eating/empty-plate cleanup and the
+authoritative meal payout boundary.
 
-### Latest checkpoint — wallpaper domain
+### Latest checkpoint — canonical wallDivider closure / M2
 
-- **48/48 canonical wallpapers promoted** (3060000..3060047).
-- Trusted placement catalog: **87 definitions**.
-- Item → atlas authority mapping: **87 unique / 0 ambiguous / 0 missing**.
-- Wallpaper persistence: **V4 orientation slots** (left=0, top=1), independent
-  of historical itemMap, with idempotent apply/replace/remove and inventory
-  reconciliation.
-- Browser editor: browse → full-orientation preview → apply/reload → select
-  rendered slot → remove/reload.
-- Historical renderer parity: wallpaper is composed **inside the default wall**
-  before Door BlendMode.ERASE; corner wall is excluded.
-- Physical evidence: product gate run **35424279934**; frozen left/top wallpaper
-  goldens remain green together with both Door wall-orientation goldens.
-- Regression guard: trusted-catalog generation now fails unless all **48**
-  promoted wallpaper IDs enter the catalog as recovered wallpaperItems.
+- Canonical `wallDivider` inventory is exactly **5 items**:
+  `3020049..3020052` and `3020055`.
+- R36 proves **0/5 are wallItem**; they are ordinary `decorItem,wallDivider`
+  objects and therefore do not mutate `wallMap`/`wallItems`.
+- R37: **5/5 constructor geometries** recovered; all 1×1, no subItems.
+- R38: **12/12 atlas frame origins** recovered.
+- Physical 12-frame Edge golden: block
+  `34a15ba2363b951f7a4edc026e7653f8b6ccde761e8e15f6af8133fdf8b78e73`.
+- Trusted placement catalog: **92 definitions**.
+- Item → atlas authority mapping: **92 unique / 0 ambiguous / 0 missing**.
+- Browser E2E: White Wall place → select → rotate → move → remove.
+- Product gate **35426235929** is GREEN: **90/90 TypeScript**, **75/75 Rust**,
+  all prior Cannon/Floor/Window/Stack/Door/Wallpaper goldens unchanged.
+- Artifact `10579275728`, SHA-256
+  `a0b9ff6702f31a231e8432df0c50d7ab37533e671ee28d3014a05b7fc11d2bbb`.
 
 ## Verified foundation
 
@@ -80,6 +81,7 @@ RPC may be used for parity/replay, but must not become the native domain API.
 
 | Date | What |
 |---|---|
+| 2026-09-19 | M2 world/editor slice closed: R36 identified 5 canonical wallDividers as ordinary decor (0 wallItem), R37/R38 recovered 5/5 geometry + 12/12 origins, 92/92 trusted mapping and White Wall browser lifecycle green in run 35426235929. |
 | 2026-09-19 | Wallpaper domain closed as playable vertical slice: R34 48/48 exports + R35 96/96 frame origins, V4 authority/persistence, 87/87 trusted item-atlas mapping, frozen left/top browser goldens, and real Edge apply/select/remove flow green in run 35424279934. |
 | 2026-09-18 | ADR-0009 merged: Restaurant City formally routed as ANEWON SOCIAL_WEB Product; Platform/Runtime/product boundaries fixed. |
 | 2026-09-18 | Product authority Rust foundation added with opaque ANEWON subject and idempotent checked state mutations. |
