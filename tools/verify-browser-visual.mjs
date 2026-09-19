@@ -549,6 +549,7 @@ await new Promise((resolve, reject) => {
 });
 
 let browserProcess = null;
+let browserProfile = null;
 let cdp = null;
 
 try {
@@ -559,8 +560,12 @@ try {
 
   const browser = findBrowser();
   const url = `http://127.0.0.1:${address.port}/`;
-  const profile = path.join(WORK, 'profile-cdp');
-  const devToolsFile = path.join(profile, 'DevToolsActivePort');
+  browserProfile = path.join(
+    WORK,
+    `profile-cdp-${process.pid}-${Date.now()}`,
+  );
+  fs.mkdirSync(browserProfile, { recursive: true });
+  const devToolsFile = path.join(browserProfile, 'DevToolsActivePort');
   const processState = { exited: false, stderr: '' };
 
   browserProcess = spawn(
@@ -577,7 +582,7 @@ try {
       '--force-device-scale-factor=1',
       '--window-size=1052,656',
       '--remote-debugging-port=0',
-      `--user-data-dir=${profile}`,
+      `--user-data-dir=${browserProfile}`,
       url,
     ],
     {
@@ -1126,6 +1131,15 @@ try {
   }
   if (browserProcess && !browserProcess.killed) {
     browserProcess.kill();
+    await delay(150);
+  }
+  if (browserProfile) {
+    try {
+      fs.rmSync(browserProfile, { recursive: true, force: true });
+    } catch {
+      // A crashed Chromium may hold transient locks on Windows. Profiles are
+      // unique per probe, so cleanup is best-effort and never blocks another run.
+    }
   }
   await new Promise((resolve) => server.close(resolve));
 }
