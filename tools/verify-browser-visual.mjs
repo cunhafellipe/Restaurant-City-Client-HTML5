@@ -111,6 +111,8 @@ const fixtureSeed = {
     },
   ],
   floor_tiles: [],
+
+  wallpapers: [],
   inventory: [
     {
       item_id: 3020163,
@@ -125,6 +127,8 @@ const doorProbeFixtureSeed = {
   next_instance_id: 1,
   items: [],
   floor_tiles: [],
+
+  wallpapers: [],
   inventory: [],
 };
 const doorTopFixtureSeed = {
@@ -141,6 +145,8 @@ const doorTopFixtureSeed = {
     },
   ],
   floor_tiles: [],
+
+  wallpapers: [],
   inventory: [
     { item_id: 3010000, owned: 1, placed: 1, available: 0 },
   ],
@@ -159,6 +165,8 @@ const doorLeftFixtureSeed = {
     },
   ],
   floor_tiles: [],
+
+  wallpapers: [],
   inventory: [
     { item_id: 3010000, owned: 1, placed: 1, available: 0 },
   ],
@@ -177,6 +185,8 @@ const wallFixtureSeed = {
     },
   ],
   floor_tiles: [],
+
+  wallpapers: [],
   inventory: [
     {
       item_id: 3000001,
@@ -198,6 +208,7 @@ const floorFixtureSeed = {
       room_index: 0,
     },
   ],
+  wallpapers: [],
   inventory: [
     {
       item_id: 3050000,
@@ -229,6 +240,8 @@ const stackFixtureSeed = {
     },
   ],
   floor_tiles: [],
+
+  wallpapers: [],
   inventory: [
     { item_id: 3030000, owned: 1, placed: 1, available: 0 },
     { item_id: 3020179, owned: 1, placed: 1, available: 0 },
