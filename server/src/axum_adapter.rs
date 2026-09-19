@@ -1,6 +1,7 @@
 use crate::http::{
     ProductHttpContext, PublicProductError,
     handle_apply_wallpaper as handle_apply_wallpaper_contract, handle_load_restaurant,
+    handle_load_service_topology,
     handle_paint_floor_tile as handle_paint_floor_tile_contract,
     handle_place_item as handle_place_item_contract,
     handle_remove_item as handle_remove_item_contract,
@@ -60,6 +61,10 @@ where
 
     Router::new()
         .route("/api/v1/restaurant", get(load_restaurant::<V, S>))
+        .route(
+            "/api/v1/restaurant/topology",
+            get(load_service_topology::<V, S>),
+        )
         .route("/api/v1/restaurant/placements", post(place_item::<V, S>))
         .route(
             "/api/v1/restaurant/floor-tiles",
@@ -96,6 +101,35 @@ where
     };
 
     match handle_load_restaurant(
+        state.service.as_ref(),
+        ProductHttpContext {
+            session_token: Some(session_token),
+            mutation_id: None,
+        },
+    ) {
+        Ok(body) => success_response(StatusCode::OK, body),
+        Err(error) => error_response(error),
+    }
+}
+
+async fn load_service_topology<V, S>(
+    State(state): State<AppState<V, S>>,
+    headers: HeaderMap,
+) -> Response
+where
+    V: PlatformSessionVerifier + Send + Sync + 'static,
+    S: ProductStateStore + 'static,
+{
+    if let Err(error) = validate_request_security(&headers, &state.expected_origin, false) {
+        return error_response(error);
+    }
+
+    let session_token = match product_session_token(&headers) {
+        Ok(token) => token,
+        Err(error) => return error_response(error),
+    };
+
+    match handle_load_service_topology(
         state.service.as_ref(),
         ProductHttpContext {
             session_token: Some(session_token),
