@@ -13,6 +13,7 @@ import {
   recoveredEnabledWallFloorFootprint,
   recoveredWallFloorGeometry,
 } from './recoveredWallFloorGeometry';
+import { recoveredEnabledWallpaperFootprint } from './recoveredWallpaperGeometry';
 
 export interface RestaurantItemDefinition {
   readonly id: number;
@@ -121,7 +122,8 @@ export function buildRestaurantItemDefinition(
   const recoveredFootprint =
     sourceFootprint === null
       ? recoveredPlacementFootprint(id, className) ??
-        recoveredEnabledWallFloorFootprint(id, className)
+        recoveredEnabledWallFloorFootprint(id, className) ??
+        recoveredEnabledWallpaperFootprint(id, className)
       : null;
   const placementFootprint = sourceFootprint ?? recoveredFootprint;
   const roomGeometry = recoveredRoomItemGeometry(id, className);
