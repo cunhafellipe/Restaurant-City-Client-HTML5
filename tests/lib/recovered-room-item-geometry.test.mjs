@@ -74,6 +74,7 @@ describe('recovered RoomItem geometry contract', () => {
       3020055,
       3030000,
       3030002,
+      3040000,
       3070000,
       3070001,
       3070002,
@@ -85,6 +86,29 @@ describe('recovered RoomItem geometry contract', () => {
       3070008,
       3070009,
       3070010,
+    ]);
+  });
+
+  it('pins the first canonical meal seat to recovered service geometry', () => {
+    const chair = contract.classes.Chair01;
+    expect(chair.itemIds).toEqual([3040000]);
+    expect(chair.footprint).toEqual({ sizeX: 1, sizeY: 1 });
+    expect(chair.itemHeightTwips).toBe(809);
+    expect(chair.rotationCount).toBe(4);
+    expect(chair.visualFrameCount).toBe(4);
+    expect(chair.effectiveTypes).toContain('chairItem');
+    expect(chair.placementFootprintEnabled).toBe(true);
+    expect(chair.frames.map((frame) => frame.frame)).toEqual([
+      'indoor_asset/chair01/001',
+      'indoor_asset/chair01/002',
+      'indoor_asset/chair01/003',
+      'indoor_asset/chair01/004',
+    ]);
+    expect(chair.frames.map((frame) => frame.canvasOriginPx)).toEqual([
+      { x: -22.7, y: -30.3 },
+      { x: -22.7, y: -30.3 },
+      { x: -22.45, y: -30.25 },
+      { x: -22.8, y: -30 },
     ]);
   });
 
