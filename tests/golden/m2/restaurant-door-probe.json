@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "fixture": "simple-door-3010000-erase-probe-at-2-0",
+  "baseline": "0.9.143a",
+  "canvas": {
+    "width": 760,
+    "height": 600
+  },
+  "blockSize": 8,
+  "expectedQuantizedBlockSha256": "d6e744b704760a4e2dcf1310cd443ff449cf8b7afe8b8fb72c3f80cfbe21510e",
+  "referencePixelSha256": "729426165c58a1e782123c5f1556d235bf2dd38347d1fd8d5271c6813b5faa58",
+  "referencePngSha256": "66683f1a49dd5afb2c0bb6f9e7a5ade958675cc8ce315fc1c68e7d0e73e50927",
+  "provenance": {
+    "productSha": "f470deb028e5bcec1b352bfe26078a946514b9c8",
+    "verificationRunId": 35419836579,
+    "runner": "ANEWON-REVIVAL-01",
+    "browser": "Microsoft Edge headless",
+    "maskFrame": "indoor_asset/doorwaymask/001",
+    "wallFrame": "indoor_asset/wall2/002",
+    "doorFrame": "indoor_asset/door/002",
+    "maskLocal": {
+      "x": 40,
+      "y": 25.900000000000006
+    }
+  }
+}
