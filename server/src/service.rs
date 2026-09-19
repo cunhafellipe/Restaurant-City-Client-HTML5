@@ -1456,6 +1456,49 @@ mod tests {
         }
     }
 
+    fn floor_catalog() -> PlacementCatalog {
+        PlacementCatalog::new([
+            ItemPlacementDefinition {
+                item_id: 30,
+                footprint: Footprint {
+                    size_x: 1,
+                    size_y: 1,
+                },
+                rotation_count: 1,
+                flags: PlacementFlags {
+                    floor_tile_item: true,
+                    ..PlacementFlags::default()
+                },
+            },
+            ItemPlacementDefinition {
+                item_id: 31,
+                footprint: Footprint {
+                    size_x: 1,
+                    size_y: 1,
+                },
+                rotation_count: 1,
+                flags: PlacementFlags {
+                    floor_tile_item: true,
+                    ..PlacementFlags::default()
+                },
+            },
+        ])
+        .unwrap()
+    }
+
+    fn floor_service() -> RestaurantProductService<FakeVerifier, InMemoryProductStateStore> {
+        let verifier = FakeVerifier {
+            subject: subject(7),
+            session_id: ProductSessionId::from_verified_platform_bytes([9; 16]).unwrap(),
+        };
+        RestaurantProductService::new(
+            verifier,
+            InMemoryProductStateStore::default(),
+            floor_catalog(),
+            room(),
+        )
+    }
+
     fn service() -> RestaurantProductService<FakeVerifier, InMemoryProductStateStore> {
         let verifier = FakeVerifier {
             subject: subject(7),
@@ -1504,6 +1547,209 @@ mod tests {
         let encoded = aggregate.encode_persisted().unwrap();
         let restored = ProductAggregate::decode_persisted(&catalog, &encoded).unwrap();
         assert_eq!(restored, aggregate);
+    }
+
+    #[test]
+    fn v3_floor_tile_round_trip_replays_floor_journal() {
+        let session = VerifiedProductSession {
+            subject: subject(7),
+            session_id: ProductSessionId::from_verified_platform_bytes([9; 16]).unwrap(),
+        };
+        let catalog = floor_catalog();
+        let mut aggregate = ProductAggregate::new(subject(7), room());
+        aggregate
+            .apply_player_command(
+                session,
+                mutation("grant-floor"),
+                Command::GrantInventory {
+                    item_id: 30,
+                    quantity: 1,
+                },
+            )
+            .unwrap();
+        aggregate
+            .paint_owned_floor_tile(
+                session,
+                &catalog,
+                mutation("paint-floor"),
+                FloorTileIntent {
+                    item_id: 30,
+                    tile: TilePoint { x: 2, y: 3 },
+                },
+            )
+            .unwrap();
+
+        let encoded = aggregate.encode_persisted().unwrap();
+        let restored = ProductAggregate::decode_persisted(&catalog, &encoded).unwrap();
+        assert_eq!(restored, aggregate);
+        let snapshot = restored.restaurant_product_snapshot(session).unwrap();
+        assert_eq!(
+            snapshot.floor_tiles,
+            vec![PaintedFloorTile {
+                item_id: 30,
+                tile: TilePoint { x: 2, y: 3 },
+                room_index: 0,
+            }]
+        );
+        assert_eq!(snapshot.inventory[0].placed, 1);
+        assert_eq!(snapshot.inventory[0].available, 0);
+    }
+
+    #[test]
+    fn v2_state_migrates_to_empty_v3_floor_domain() {
+        let session = VerifiedProductSession {
+            subject: subject(7),
+            session_id: ProductSessionId::from_verified_platform_bytes([9; 16]).unwrap(),
+        };
+        let catalog = catalog();
+        let mut aggregate = ProductAggregate::new(subject(7), room());
+        aggregate
+            .apply_player_command(
+                session,
+                mutation("grant-v2"),
+                Command::GrantInventory {
+                    item_id: 10,
+                    quantity: 1,
+                },
+            )
+            .unwrap();
+        aggregate
+            .place_owned_item(
+                session,
+                &catalog,
+                mutation("place-v2"),
+                PlacementIntent {
+                    item_id: 10,
+                    tile: TilePoint { x: 2, y: 2 },
+                    rotation: 0,
+                },
+            )
+            .unwrap();
+
+        let encoded = aggregate.encode_persisted().unwrap();
+        let mut value: serde_json::Value = serde_json::from_slice(&encoded).unwrap();
+        value["schema_version"] = serde_json::json!(2);
+        value["restaurant"]
+            .as_object_mut()
+            .unwrap()
+            .remove("floor_tiles");
+        value.as_object_mut().unwrap().remove("next_floor_mutation_sequence");
+        value.as_object_mut().unwrap().remove("floor_mutations");
+        let legacy_v2 = serde_json::to_vec(&value).unwrap();
+
+        let restored = ProductAggregate::decode_persisted(&catalog, &legacy_v2).unwrap();
+        assert_eq!(restored.restaurant.snapshot(), aggregate.restaurant.snapshot());
+        assert!(restored.floor_tiles.is_empty());
+        assert!(restored.floor_mutations.is_empty());
+        assert_eq!(restored.next_floor_mutation_sequence, 1);
+    }
+
+    #[test]
+    fn floor_paint_is_idempotent_and_replacement_reconciles_inventory() {
+        let service = floor_service();
+        for (id, mutation_id) in [(30, "grant-floor-a"), (31, "grant-floor-b")] {
+            service
+                .apply_player_command(
+                    "valid-product-session",
+                    mutation(mutation_id),
+                    Command::GrantInventory {
+                        item_id: id,
+                        quantity: 1,
+                    },
+                )
+                .unwrap();
+        }
+
+        let first = service
+            .paint_floor_tile(
+                "valid-product-session",
+                mutation("paint-floor-a"),
+                FloorTileIntent {
+                    item_id: 30,
+                    tile: TilePoint { x: 2, y: 2 },
+                },
+            )
+            .unwrap();
+        assert_eq!(
+            service
+                .paint_floor_tile(
+                    "valid-product-session",
+                    mutation("paint-floor-a"),
+                    FloorTileIntent {
+                        item_id: 30,
+                        tile: TilePoint { x: 2, y: 2 },
+                    },
+                )
+                .unwrap(),
+            match first {
+                FloorTileMutationOutcome::Applied(tile) => {
+                    FloorTileMutationOutcome::Duplicate(tile)
+                }
+                FloorTileMutationOutcome::Duplicate(_) => unreachable!(),
+            }
+        );
+
+        service
+            .paint_floor_tile(
+                "valid-product-session",
+                mutation("paint-floor-b"),
+                FloorTileIntent {
+                    item_id: 31,
+                    tile: TilePoint { x: 2, y: 2 },
+                },
+            )
+            .unwrap();
+
+        let snapshot = service.load_restaurant("valid-product-session").unwrap();
+        assert_eq!(snapshot.floor_tiles.len(), 1);
+        assert_eq!(snapshot.floor_tiles[0].item_id, 31);
+        let a = snapshot.inventory.iter().find(|entry| entry.item_id == 30).unwrap();
+        let b = snapshot.inventory.iter().find(|entry| entry.item_id == 31).unwrap();
+        assert_eq!((a.placed, a.available), (0, 1));
+        assert_eq!((b.placed, b.available), (1, 0));
+    }
+
+    #[test]
+    fn consuming_inventory_cannot_orphan_a_painted_floor_tile() {
+        let service = floor_service();
+        service
+            .apply_player_command(
+                "valid-product-session",
+                mutation("grant-floor-consume"),
+                Command::GrantInventory {
+                    item_id: 30,
+                    quantity: 1,
+                },
+            )
+            .unwrap();
+        service
+            .paint_floor_tile(
+                "valid-product-session",
+                mutation("paint-floor-consume"),
+                FloorTileIntent {
+                    item_id: 30,
+                    tile: TilePoint { x: 2, y: 2 },
+                },
+            )
+            .unwrap();
+
+        assert_eq!(
+            service
+                .apply_player_command(
+                    "valid-product-session",
+                    mutation("consume-floor"),
+                    Command::ConsumeInventory {
+                        item_id: 30,
+                        quantity: 1,
+                    },
+                )
+                .unwrap_err(),
+            ProductServiceError::ItemUnavailable {
+                item_id: 30,
+                owned: 1,
+                placed: 1,
+            }
+        );
     }
 
     #[test]
