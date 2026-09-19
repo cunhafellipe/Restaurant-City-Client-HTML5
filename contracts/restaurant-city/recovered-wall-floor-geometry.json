@@ -19,6 +19,20 @@
       "sourceXmlSha256": "5db59e9b6be40165a4a25e9139eb84515f22c5e9b2d78d61a43aaab28f133594",
       "conclusion": "WINDOW_DOOR_RECURSIVE_BOUNDS_RECOVERED",
       "policy": "Definition-only recursive frame-1 bounds; translation-only transforms; non-translation fails closed."
+    },
+    "r30": {
+      "runId": 35417790932,
+      "artifactId": 10576517743,
+      "artifactSha256": "9bacbbf27048922809da1f080c0fb9689d5f7e371e2acfd0211ae58a6ad9981c",
+      "conclusion": "ALL_SENTINEL_ROTATION_BOUNDS_RECOVERED",
+      "policy": "Top-level DefineSprite display list simulated frame-by-frame; nested children resolved at frame 1; translation-only transforms."
+    },
+    "r31": {
+      "runId": 35417848547,
+      "artifactId": 10576622706,
+      "artifactSha256": "00f84fdbdbea5232d5aedc14ef5f23178d7b4041e4a07f8cb5e3f73c7426369b",
+      "conclusion": "WALL_ATLAS_ALPHA_BOUNDS_RECOVERED",
+      "policy": "Generated multiatlas crops scanned for exact non-transparent pixel bounds."
     }
   },
   "historicalSemantics": {
@@ -62,7 +76,61 @@
         "bottomPx": 40,
         "widthPx": 48.9,
         "heightPx": 141
-      }
+      },
+      "rotationFrames": [
+        {
+          "rotation": 0,
+          "frame": "indoor_asset/wall2/001",
+          "vectorBounds": {
+            "leftPx": -9,
+            "rightPx": 39.9,
+            "topPx": -101,
+            "bottomPx": 40,
+            "widthPx": 48.9,
+            "heightPx": 141
+          },
+          "atlasSize": {
+            "width": 80,
+            "height": 141
+          },
+          "alphaBounds": {
+            "x": 31,
+            "y": 0,
+            "width": 49,
+            "height": 141
+          },
+          "canvasOriginPx": {
+            "x": -40,
+            "y": -101
+          }
+        },
+        {
+          "rotation": 1,
+          "frame": "indoor_asset/wall2/002",
+          "vectorBounds": {
+            "leftPx": -40,
+            "rightPx": 8.9,
+            "topPx": -101,
+            "bottomPx": 40,
+            "widthPx": 48.9,
+            "heightPx": 141
+          },
+          "atlasSize": {
+            "width": 80,
+            "height": 141
+          },
+          "alphaBounds": {
+            "x": 0,
+            "y": 0,
+            "width": 49,
+            "height": 141
+          },
+          "canvasOriginPx": {
+            "x": -40,
+            "y": -101
+          }
+        }
+      ]
     },
     "WallCorner": {
       "itemIds": [
@@ -85,7 +153,35 @@
         "bottomPx": 40.5,
         "widthPx": 17.7,
         "heightPx": 125.5
-      }
+      },
+      "rotationFrames": [
+        {
+          "rotation": 0,
+          "frame": "indoor_asset/wallcorner/001",
+          "vectorBounds": {
+            "leftPx": -9,
+            "rightPx": 8.7,
+            "topPx": -85,
+            "bottomPx": 40.5,
+            "widthPx": 17.7,
+            "heightPx": 125.5
+          },
+          "atlasSize": {
+            "width": 18,
+            "height": 126
+          },
+          "alphaBounds": {
+            "x": 0,
+            "y": 0,
+            "width": 18,
+            "height": 126
+          },
+          "canvasOriginPx": {
+            "x": -9,
+            "y": -85
+          }
+        }
+      ]
     },
     "Wall1": {
       "itemIds": [
@@ -131,7 +227,35 @@
         "bottomPx": 41.2,
         "widthPx": 80.8,
         "heightPx": 40.4
-      }
+      },
+      "rotationFrames": [
+        {
+          "rotation": 0,
+          "frame": "indoor_asset/floortile/001",
+          "vectorBounds": {
+            "leftPx": -40.4,
+            "rightPx": 40.4,
+            "topPx": 0.8,
+            "bottomPx": 41.2,
+            "widthPx": 80.8,
+            "heightPx": 40.4
+          },
+          "atlasSize": {
+            "width": 81,
+            "height": 41
+          },
+          "alphaBounds": {
+            "x": 0,
+            "y": 0,
+            "width": 81,
+            "height": 41
+          },
+          "canvasOriginPx": {
+            "x": -40.4,
+            "y": 0.8
+          }
+        }
+      ]
     },
     "WindowInside": {
       "itemIds": [
@@ -168,7 +292,61 @@
         "bottomPx": 3.65,
         "widthPx": 37.2,
         "heightPx": 66.95
-      }
+      },
+      "rotationFrames": [
+        {
+          "rotation": 0,
+          "frame": "indoor_asset/windowinside/001",
+          "vectorBounds": {
+            "leftPx": 1.25,
+            "rightPx": 38.45,
+            "topPx": -63.3,
+            "bottomPx": 3.65,
+            "widthPx": 37.2,
+            "heightPx": 66.95
+          },
+          "atlasSize": {
+            "width": 77,
+            "height": 67
+          },
+          "alphaBounds": {
+            "x": 39,
+            "y": 0,
+            "width": 38,
+            "height": 67
+          },
+          "canvasOriginPx": {
+            "x": -37.75,
+            "y": -63.3
+          }
+        },
+        {
+          "rotation": 1,
+          "frame": "indoor_asset/windowinside/002",
+          "vectorBounds": {
+            "leftPx": -38.2,
+            "rightPx": -1,
+            "topPx": -63.3,
+            "bottomPx": 3.65,
+            "widthPx": 37.2,
+            "heightPx": 66.95
+          },
+          "atlasSize": {
+            "width": 77,
+            "height": 67
+          },
+          "alphaBounds": {
+            "x": 0,
+            "y": 0,
+            "width": 38,
+            "height": 67
+          },
+          "canvasOriginPx": {
+            "x": -38.2,
+            "y": -63.3
+          }
+        }
+      ]
     },
     "Door": {
       "itemIds": [
