@@ -369,17 +369,18 @@ pub fn derive_service_layout(
     let mut drinks = Vec::new();
 
     for item in &snapshot.items {
-        let definition = catalog
-            .get(item.item_id)
-            .ok_or(TopologyBuildError::UnknownCatalogItem {
-                item_id: item.item_id,
-            })?;
+        let definition =
+            catalog
+                .get(item.item_id)
+                .ok_or(TopologyBuildError::UnknownCatalogItem {
+                    item_id: item.item_id,
+                })?;
         let roles = catalog.service_flags(item.item_id);
-        let occupied_cells = catalog
-            .occupied_cells(item.item_id, item.rotation)
-            .ok_or(TopologyBuildError::UnknownCatalogItem {
+        let occupied_cells = catalog.occupied_cells(item.item_id, item.rotation).ok_or(
+            TopologyBuildError::UnknownCatalogItem {
                 item_id: item.item_id,
-            })?;
+            },
+        )?;
 
         for offset in occupied_cells {
             let tile = TilePoint {
@@ -473,10 +474,7 @@ pub struct ServiceTopologySnapshot {
     pub chef_chairs: Vec<(u64, Vec<u64>)>,
 }
 
-pub fn table_for_chair(
-    chair: ServiceChair,
-    tables: &[ServiceTable],
-) -> Option<&ServiceTable> {
+pub fn table_for_chair(chair: ServiceChair, tables: &[ServiceTable]) -> Option<&ServiceTable> {
     let facing = facing_tile(chair.tile, chair.rotation);
     tables.iter().find(|table| table.tile == facing)
 }
@@ -921,18 +919,25 @@ mod tests {
         // Composite kitchen rotation 2 keeps the anchor at (7,4) and
         // rotates sub1 from (+1,0) to (-1,0).
         assert_eq!(
-            layout.grid.cell(TilePoint { x: 6, y: 4 }).unwrap().item_count,
+            layout
+                .grid
+                .cell(TilePoint { x: 6, y: 4 })
+                .unwrap()
+                .item_count,
             1
         );
         assert_eq!(
-            layout.grid.cell(TilePoint { x: 7, y: 5 }).unwrap().item_count,
+            layout
+                .grid
+                .cell(TilePoint { x: 7, y: 5 })
+                .unwrap()
+                .item_count,
             0
         );
         assert!(layout.grid.is_walkable(TilePoint { x: 0, y: 3 }));
         assert!(!layout.grid.is_walkable(TilePoint { x: 0, y: 2 }));
         assert_eq!(
-            table_for_chair(layout.chairs[0], &layout.tables)
-                .map(|table| table.instance_id),
+            table_for_chair(layout.chairs[0], &layout.tables).map(|table| table.instance_id),
             Some(2)
         );
     }
