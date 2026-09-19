@@ -1,0 +1,290 @@
+{
+  "schemaVersion": 1,
+  "baseline": "0.9.143a",
+  "source": {
+    "canonicalArchiveSha256": "4493be9bc4c2f87ef80ca7afa5321e12bb94a7ec6ed2f0a673b4d48b19170ef4",
+    "canonicalActionScriptRepository": "n3r0-b1n4ry/RestaurantCity_SWF",
+    "canonicalActionScriptCommit": "d552cfa4767fe4fb5b7899493c30bfb375afc2c1",
+    "files": [
+      "decompile/game/src/com/playfish/games/cooking/GameWorld.as",
+      "decompile/game/src/com/playfish/games/cooking/Avatar3D.as",
+      "decompile/game/src/com/playfish/games/cooking/CachedAvatar3D.as",
+      "decompile/game/src/com/playfish/games/cooking/actors/AvatarActor.as",
+      "decompile/game/src/com/playfish/games/cooking/actors/Customer.as",
+      "decompile/game/src/com/playfish/games/cooking/actors/ChefActor.as",
+      "decompile/game/src/com/playfish/games/cooking/actors/Waitor.as"
+    ],
+    "r44": {
+      "runId": 35453473762,
+      "artifactId": 10587128932,
+      "artifactSha256": "d42b1b0e5bb09da60ce4d46a5663fad9799d5ac7495fad45df157162c7eab7d7",
+      "conclusion": "PLACEHOLDER_CONFIGURATION_AND_COLLADA_RIG_RECOVERED"
+    }
+  },
+  "originalRuntime": {
+    "modelInput": "model.bin",
+    "decodedFormat": "Collada XML",
+    "runtimeFlow": [
+      "zlib-uncompress model.bin",
+      "Collada.parse(...) into Away3D ObjectContainer3D",
+      "Avatar3D toggles model nodes/materials and advances the default SkinAnimation",
+      "CachedAvatar3D rasterizes animation/direction frames to 2D bitmap shapes"
+    ],
+    "productPolicy": "model.bin/Collada are offline build inputs only; browser consumes generated web-native avatar frames"
+  },
+  "model": {
+    "nodes": 78,
+    "geometries": 37,
+    "materials": [
+      "cleaner",
+      "hair",
+      "repair",
+      "texture",
+      "tray"
+    ],
+    "animationChannels": 24,
+    "skeletonPrefix": "Bip01",
+    "customizableObjectPrefixes": [
+      "pants",
+      "dress",
+      "shirt",
+      "hat",
+      "hair",
+      "armleft",
+      "armright"
+    ],
+    "serviceRelevantNodes": [
+      "pants01",
+      "shirt01",
+      "armleft",
+      "armright",
+      "hair05",
+      "tray"
+    ]
+  },
+  "canonicalPlaceholder": {
+    "skinColour": 16777215,
+    "hairColour": 16777215,
+    "items": [
+      {
+        "id": 1000000,
+        "group": "Pants",
+        "name": "Placeholder Pants",
+        "hash": "RA6vDH_x3upLHzGt0PGVIW",
+        "invisible": true,
+        "objects": [
+          "pants01"
+        ],
+        "texture": ""
+      },
+      {
+        "id": 1020000,
+        "group": "Shirt",
+        "name": "Placeholder Shirt",
+        "hash": "JzxcTQFeODsQ5NHDkMgU1q",
+        "invisible": true,
+        "objects": [
+          "shirt01",
+          "armleft",
+          "armright"
+        ],
+        "texture": ""
+      },
+      {
+        "id": 1040000,
+        "group": "Hair",
+        "name": "Placeholder Hair",
+        "hash": "NOJ6Ne7HqvZPjkoQbvrH0G",
+        "iconName": "Hair02",
+        "invisible": true,
+        "objects": [
+          "hair05"
+        ]
+      }
+    ]
+  },
+  "animation": {
+    "fps": 10,
+    "defaultFrameDelayMs": 80,
+    "definitions": [
+      {
+        "id": 0,
+        "name": "idle",
+        "sourceConstant": "ANIMATION_IDLE",
+        "frameStart": 20,
+        "frameEnd": 23,
+        "frameCount": 4,
+        "delayMultiplier": 2,
+        "frameDelayMs": 160,
+        "directions": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ]
+      },
+      {
+        "id": 1,
+        "name": "walk",
+        "sourceConstant": "ANIMATION_WALK",
+        "frameStart": 0,
+        "frameEnd": 3,
+        "frameCount": 4,
+        "delayMultiplier": 1.75,
+        "frameDelayMs": 140,
+        "directions": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ]
+      },
+      {
+        "id": 2,
+        "name": "sit",
+        "sourceConstant": "ANIMATION_SIT",
+        "frameStart": 35,
+        "frameEnd": 35,
+        "frameCount": 1,
+        "delayMultiplier": 1,
+        "frameDelayMs": 80,
+        "directions": [
+          1,
+          3,
+          5,
+          7
+        ]
+      },
+      {
+        "id": 3,
+        "name": "eat",
+        "sourceConstant": "ANIMATION_EAT",
+        "frameStart": 36,
+        "frameEnd": 39,
+        "frameCount": 4,
+        "delayMultiplier": 1,
+        "frameDelayMs": 80,
+        "directions": [
+          1,
+          3,
+          5,
+          7
+        ]
+      },
+      {
+        "id": 4,
+        "name": "waitor-walk",
+        "sourceConstant": "ANIMATION_WAITOR_WALK",
+        "frameStart": 10,
+        "frameEnd": 13,
+        "frameCount": 4,
+        "delayMultiplier": 2,
+        "frameDelayMs": 160,
+        "directions": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ],
+        "visibleObjects": [
+          "tray"
+        ]
+      },
+      {
+        "id": 5,
+        "name": "cooking",
+        "sourceConstant": "ANIMATION_COOKING",
+        "frameStart": 30,
+        "frameEnd": 33,
+        "frameCount": 4,
+        "delayMultiplier": 1,
+        "frameDelayMs": 80,
+        "directions": [
+          1,
+          3,
+          5,
+          7
+        ]
+      },
+      {
+        "id": 14,
+        "name": "waitor-working",
+        "sourceConstant": "ANIMATION_WAITOR_WORKING",
+        "frameStart": 30,
+        "frameEnd": 33,
+        "frameCount": 4,
+        "delayMultiplier": 1,
+        "frameDelayMs": 80,
+        "directions": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ]
+      }
+    ],
+    "displayMirroring": "CachedAvatar3D mirrors directions >=5 from cached direction 8-direction"
+  },
+  "servicePresentation": {
+    "customer": {
+      "admitted": "idle",
+      "walking-to-chair": "walk",
+      "deciding": "sit",
+      "waiting": "sit",
+      "waiting-for-food": "sit",
+      "eating": "eat",
+      "paying": "sit",
+      "leaving": "walk",
+      "left": "hidden"
+    },
+    "chef": {
+      "orderCooking": "cooking",
+      "otherwise": "idle"
+    },
+    "waiter": {
+      "orderCreated": "idle",
+      "orderQueued": "idle",
+      "orderCooking": "idle",
+      "orderCompleted": "walk",
+      "orderWaiterCollecting": "waitor-working",
+      "orderServing": "waitor-walk",
+      "orderEmptyPlate": "idle",
+      "orderSettled": "idle"
+    },
+    "sourceSemantics": [
+      "Customer.walkToChair => ANIMATION_WALK",
+      "Customer.sitOnChair => ANIMATION_SIT",
+      "Customer.eatOrder => ANIMATION_EAT",
+      "Customer.leave => ANIMATION_WALK when an entrance path exists",
+      "ChefActor.cook => ANIMATION_COOKING; completion returns ANIMATION_IDLE",
+      "Waitor.getOrderFromKitchen => ANIMATION_WALK",
+      "Waitor kitchen action => ANIMATION_WAITOR_WORKING",
+      "Waitor.serveCustomer => ANIMATION_WAITOR_WALK",
+      "Waitor.moveBack => ANIMATION_WALK or ANIMATION_IDLE"
+    ]
+  },
+  "failClosed": {
+    "noBrowserBinOrColladaParsing": true,
+    "noFlashOrAway3DRuntime": true,
+    "noInventedActorPath": true,
+    "movingPresentationRequiresAuthoritativePath": true,
+    "noBrowserAuthoredServiceTimers": true,
+    "noBrowserRewardAuthority": true
+  }
+}
