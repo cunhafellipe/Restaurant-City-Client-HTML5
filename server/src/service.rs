@@ -3246,16 +3246,36 @@ where
                 assignment,
                 effective_at_ms,
             )?;
+            let mut returned = outcome;
 
-            if matches!(outcome, ActiveServiceMutationOutcome::Duplicate(_)) {
-                return Ok(outcome);
+            if assignment.customer_entrance_tile.is_some() {
+                let service_id = outcome
+                    .record()
+                    .ok_or(ProductServiceError::Store(ProductStateStoreError::Corrupt))?
+                    .identity
+                    .service_id;
+                let path_mutation_id =
+                    internal_path_mutation_id("chair-start", service_id, effective_at_ms)?;
+                returned = state.start_customer_chair_path(
+                    session,
+                    &self.catalog,
+                    path_mutation_id,
+                    service_id,
+                    effective_at_ms,
+                )?;
+            }
+
+            if matches!(outcome, ActiveServiceMutationOutcome::Duplicate(_))
+                && matches!(returned, ActiveServiceMutationOutcome::Duplicate(_))
+            {
+                return Ok(returned);
             }
 
             match self
                 .store
                 .compare_and_swap(session.subject, expected_revision, state)
             {
-                Ok(_) => return Ok(outcome),
+                Ok(_) => return Ok(returned),
                 Err(ProductStateStoreError::Conflict) => continue,
                 Err(error) => return Err(ProductServiceError::Store(error)),
             }
@@ -3391,6 +3411,38 @@ where
                     .record()
                     .ok_or(ProductServiceError::Store(ProductStateStoreError::Corrupt))?;
                 changed = true;
+            }
+
+            if let Some(plan) = active.active_path {
+                if plan.kind != ServicePathKind::CustomerToChair
+                    || active.state.customer != CustomerServiceState::WalkingToChair
+                {
+                    return Err(ProductServiceError::ServicePathAuthority(
+                        ServicePathError::PathPlanMismatch,
+                    ));
+                }
+                if plan.is_complete_at(now_ms) {
+                    let mutation_id = internal_path_mutation_id(
+                        "chair-complete",
+                        active.identity.service_id,
+                        plan.completes_at_ms,
+                    )?;
+                    let outcome = state.complete_customer_chair_path(
+                        session,
+                        &self.catalog,
+                        mutation_id,
+                        active.identity.service_id,
+                        plan.completes_at_ms,
+                    )?;
+                    active = outcome
+                        .record()
+                        .ok_or(ProductServiceError::Store(ProductStateStoreError::Corrupt))?;
+                    changed = true;
+                }
+            } else if active.state.customer == CustomerServiceState::WalkingToChair {
+                return Err(ProductServiceError::ServicePathAuthority(
+                    ServicePathError::PathUnavailable,
+                ));
             }
 
             for _ in 0..8 {
