@@ -23,6 +23,12 @@ import { SWFS } from './lib/swf-config.mjs';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const WORKSPACE_ROOT = path.resolve(HERE, '..');
 const WORK = path.join(HERE, '.work');
+const INTERNAL_SPRITES_CONTRACT = path.join(
+  WORKSPACE_ROOT,
+  'contracts',
+  'restaurant-city',
+  'recovered-internal-sprites.json',
+);
 
 function readPngSize(file) {
   const buf = fs.readFileSync(file);
@@ -53,6 +59,7 @@ export function runExtract(swfName) {
   if (!cfg) {
     throw new Error(`unknown SWF "${swfName}" — see tools/lib/swf-config.mjs`);
   }
+  const recoveredInternal = recoveredInternalSpritesFor(swfName);
   const swfPath = path.join(WORKSPACE_ROOT, cfg.source);
   const work = path.join(WORK, swfName);
   const spriteDir = path.join(work, 'sprites');
@@ -184,6 +191,64 @@ export function runExtract(swfName) {
     );
   }
 
+  const recoveredInternalSymbols = [];
+  for (const entry of recoveredInternal) {
+    const linkedName = symbolsByName.get(entry.chid);
+    if (linkedName !== undefined) {
+      if (linkedName !== entry.name) {
+        throw new Error(
+          `recovered internal sprite chid ${entry.chid} expected "${entry.name}" but linkage table declares "${linkedName}"`,
+        );
+      }
+      continue;
+    }
+    if (symbols.some((symbol) => symbol.chid === entry.chid || symbol.name === entry.name)) {
+      throw new Error(
+        `recovered internal sprite conflicts with normalized symbols: chid=${entry.chid} name=${entry.name}`,
+      );
+    }
+    const dirName = spriteDirs.get(entry.chid);
+    if (!dirName) {
+      throw new Error(
+        `recovered internal sprite "${entry.name}" (chid ${entry.chid}) was not exported by FFDec`,
+      );
+    }
+    const dir = path.join(spriteDir, dirName);
+    const files = fs
+      .readdirSync(dir)
+      .filter((file) => /^\d+\.png$/.test(file))
+      .sort((a, b) => Number.parseInt(a, 10) - Number.parseInt(b, 10));
+    const labels = spriteFrames.get(entry.chid)?.frames ?? [];
+    const frames = files.map((file, i) => {
+      const label = labels[i]?.label ?? null;
+      const absolute = path.join(dir, file);
+      const { w, h } = readPngSize(absolute);
+      return {
+        file: path.relative(work, absolute),
+        key: frameKey(swfName, entry.name, label, i + 1),
+        label,
+        index: i + 1,
+        w,
+        h,
+      };
+    });
+    if (frames.length === 0) {
+      throw new Error(
+        `recovered internal sprite "${entry.name}" (chid ${entry.chid}) exported no frames`,
+      );
+    }
+    const symbol = {
+      chid: entry.chid,
+      name: entry.name,
+      kind: 'sprite',
+      provenance: 'recovered-internal',
+      frames,
+    };
+    symbols.push(symbol);
+    recoveredInternalSymbols.push(symbol);
+  }
+  symbols.sort((a, b) => a.chid - b.chid);
+
   const extract = {
     swf: swfName,
     source: cfg.source,
@@ -192,6 +257,7 @@ export function runExtract(swfName) {
     counts: {
       symbols: symbols.length,
       frames: symbols.reduce((n, s) => n + s.frames.length, 0),
+      recoveredInternalSymbols: recoveredInternalSymbols.length,
     },
     excluded,
     symbols,
@@ -200,7 +266,7 @@ export function runExtract(swfName) {
   fs.writeFileSync(extractFile, `${JSON.stringify(extract, null, 2)}\n`);
   const bitmapCount = symbols.filter((symbol) => symbol.kind === 'bitmap').length;
   console.log(
-    `extract: ${swfName} -> ${extract.counts.symbols} symbols, ${extract.counts.frames} frames, ${bitmapCount} bitmap linkage(s) (${extractFile})`,
+    `extract: ${swfName} -> ${extract.counts.symbols} symbols, ${extract.counts.frames} frames, ${bitmapCount} bitmap linkage(s), ${extract.counts.recoveredInternalSymbols} recovered internal sprite(s) (${extractFile})`,
   );
   return { extract, work };
 }
