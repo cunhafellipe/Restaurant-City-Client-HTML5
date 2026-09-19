@@ -34,6 +34,7 @@ pub enum ServicePathError {
     ArithmeticOverflow,
     PathUnavailable,
     PathPlanMismatch,
+    PathCompletionTimeMismatch,
 }
 
 pub fn canonical_waiter_walk_speed_y(work_percent: f64) -> Result<f64, ServicePathError> {
