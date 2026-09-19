@@ -133,6 +133,11 @@ export interface RestaurantActiveService {
   readonly orderState: AuthoritativeOrderServiceState;
   readonly customerTimerMs: number | null;
   readonly orderTimerMs: number | null;
+  readonly serverNowMs: number;
+  readonly customerDeadlineAtMs: number | null;
+  readonly orderDeadlineAtMs: number | null;
+  readonly customerRemainingMs: number | null;
+  readonly orderRemainingMs: number | null;
 }
 
 export interface RestaurantAuthoritativeSnapshot {
@@ -742,6 +747,10 @@ function parseActiveServiceEnvelope(value: unknown): RestaurantActiveService | n
   if (!isObject(value) || !('active' in value)) {
     throw new Error('Malformed authoritative active service envelope');
   }
+  const serverNowMs = requireSafeUInt(
+    value.server_now_ms,
+    'active_service.server_now_ms',
+  );
   if (value.active === null) return null;
   if (!isObject(value.active)) {
     throw new Error('Malformed authoritative active service');
@@ -776,7 +785,7 @@ function parseActiveServiceEnvelope(value: unknown): RestaurantActiveService | n
     throw new Error('Malformed authoritative active service identity');
   }
 
-  return {
+  const active: RestaurantActiveService = {
     serviceId,
     restaurantMutationSequence: requirePositiveSafeUInt(
       value.active.restaurant_mutation_sequence,
@@ -822,7 +831,44 @@ function parseActiveServiceEnvelope(value: unknown): RestaurantActiveService | n
       value.active.order_timer_ms,
       'active_service.order_timer_ms',
     ),
+    serverNowMs,
+    customerDeadlineAtMs: requireNullableSafeUInt(
+      value.active.customer_deadline_at_ms,
+      'active_service.customer_deadline_at_ms',
+    ),
+    orderDeadlineAtMs: requireNullableSafeUInt(
+      value.active.order_deadline_at_ms,
+      'active_service.order_deadline_at_ms',
+    ),
+    customerRemainingMs: requireNullableSafeUInt(
+      value.active.customer_remaining_ms,
+      'active_service.customer_remaining_ms',
+    ),
+    orderRemainingMs: requireNullableSafeUInt(
+      value.active.order_remaining_ms,
+      'active_service.order_remaining_ms',
+    ),
   };
+
+  const expectedCustomerRemaining =
+    active.customerDeadlineAtMs === null
+      ? null
+      : Math.max(active.customerDeadlineAtMs - active.serverNowMs, 0);
+  const expectedOrderRemaining =
+    active.orderDeadlineAtMs === null
+      ? null
+      : Math.max(active.orderDeadlineAtMs - active.serverNowMs, 0);
+  if (
+    (active.customerTimerMs === null) !==
+      (active.customerDeadlineAtMs === null) ||
+    (active.orderTimerMs === null) !== (active.orderDeadlineAtMs === null) ||
+    active.customerRemainingMs !== expectedCustomerRemaining ||
+    active.orderRemainingMs !== expectedOrderRemaining
+  ) {
+    throw new Error('Malformed authoritative active service timing');
+  }
+
+  return active;
 }
 
 function parseServiceTopology(value: unknown): RestaurantServiceTopology {
