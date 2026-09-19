@@ -30,6 +30,16 @@ const DOOR_LEFT_MASK_META = path.join(
   WORK,
   'restaurant-door-left-mask-probe.json',
 );
+const DOOR_AUTH_SCREENSHOT = path.join(WORK, 'restaurant-door-authoritative.png');
+const DOOR_AUTH_META = path.join(WORK, 'restaurant-door-authoritative.json');
+const DOOR_LEFT_AUTH_SCREENSHOT = path.join(
+  WORK,
+  'restaurant-door-left-authoritative.png',
+);
+const DOOR_LEFT_AUTH_META = path.join(
+  WORK,
+  'restaurant-door-left-authoritative.json',
+);
 const DOOR_PROBE_GOLDEN = path.join(
   REPO,
   'tests',
@@ -95,6 +105,42 @@ const doorProbeFixtureSeed = {
   items: [],
   floor_tiles: [],
   inventory: [],
+};
+const doorTopFixtureSeed = {
+  room: { inside_x: 8, inside_y: 8, outside_x: 0, outside_y: 0 },
+  next_instance_id: 2,
+  items: [
+    {
+      instance_id: 1,
+      item_id: 3010000,
+      tile_x: 2,
+      tile_y: 0,
+      rotation: 1,
+      room_index: 0,
+    },
+  ],
+  floor_tiles: [],
+  inventory: [
+    { item_id: 3010000, owned: 1, placed: 1, available: 0 },
+  ],
+};
+const doorLeftFixtureSeed = {
+  room: { inside_x: 8, inside_y: 8, outside_x: 0, outside_y: 0 },
+  next_instance_id: 2,
+  items: [
+    {
+      instance_id: 1,
+      item_id: 3010000,
+      tile_x: 0,
+      tile_y: 2,
+      rotation: 0,
+      room_index: 0,
+    },
+  ],
+  floor_tiles: [],
+  inventory: [
+    { item_id: 3010000, owned: 1, placed: 1, available: 0 },
+  ],
 };
 const wallFixtureSeed = {
   room: { inside_x: 8, inside_y: 8, outside_x: 0, outside_y: 0 },
