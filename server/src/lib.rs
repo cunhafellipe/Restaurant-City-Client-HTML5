@@ -7,6 +7,7 @@
 pub mod axum_adapter;
 pub mod domain;
 pub mod http;
+pub mod gameplay;
 pub mod persistence;
 pub mod placement;
 pub mod platform;
@@ -15,6 +16,13 @@ pub mod service;
 
 pub use domain::{
     AuthorityError, Command, Inventory, MutationId, MutationOutcome, PlayerState, Wallet,
+};
+pub use gameplay::{
+    CHEF_COOK_MAX_MS, CHEF_COOK_MIN_MS, CUSTOMER_DECISION_MS, CUSTOMER_EATING_MS,
+    CUSTOMER_PAYING_MS, CUSTOMER_WAIT_FOOD_MS, CUSTOMER_WAIT_ORDER_MS,
+    CUSTOMERS_PER_MINUTE_PER_DEMAND, GameplayRuleError, MAX_DEMAND, MealReward,
+    WAITER_ACTION_MAX_MS, WAITER_ACTION_MIN_MS, canonical_chef_base_cook_duration_ms,
+    canonical_customer_spawn_delay_ms, canonical_meal_reward,
 };
 pub use platform::{
     AnewSubject, PRODUCT_ID, PlatformSessionError, PlatformSessionVerifier, ProductSessionId,
