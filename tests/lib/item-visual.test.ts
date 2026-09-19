@@ -139,6 +139,42 @@ describe('Restaurant City item visuals', () => {
     ).toEqual({ x: -40, y: -40 });
   });
 
+  it('uses recovered Oak Chair frame order and exact runtime symbol', () => {
+    const index = buildRestaurantItemVisualIndex([
+      {
+        atlasId: 'indoor_asset',
+        frameNames: [
+          'indoor_asset/chair01/001',
+          'indoor_asset/chair01/002',
+          'indoor_asset/chair01/003',
+          'indoor_asset/chair01/004',
+        ],
+      },
+    ]);
+
+    const chair = resolveRestaurantItemVisual(
+      {
+        ...baseItem,
+        id: 3040000,
+        name: 'Oak Chair',
+        group: 'Chair',
+        className: 'Chair01',
+      },
+      index,
+    );
+
+    expect(chair).toEqual({
+      atlasId: 'indoor_asset',
+      symbol: 'chair01',
+      frames: [
+        'indoor_asset/chair01/001',
+        'indoor_asset/chair01/002',
+        'indoor_asset/chair01/003',
+        'indoor_asset/chair01/004',
+      ],
+    });
+  });
+
   it('uses proven runtime aliases and separates logical from visual kitchen rotations', () => {
     const index = buildRestaurantItemVisualIndex([
       {
