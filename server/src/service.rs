@@ -3133,7 +3133,10 @@ mod tests {
 
         let legacy_v4 = serde_json::to_vec(&value).unwrap();
         let restored = ProductAggregate::decode_persisted(&catalog, &legacy_v4).unwrap();
-        assert_eq!(restored.restaurant.snapshot(), aggregate.restaurant.snapshot());
+        assert_eq!(
+            restored.restaurant.snapshot(),
+            aggregate.restaurant.snapshot()
+        );
         assert_eq!(restored.active_service(), None);
         assert!(restored.service_mutations.is_empty());
         assert_eq!(restored.next_service_mutation_sequence, 1);
