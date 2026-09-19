@@ -480,7 +480,7 @@ function parseFloorTile(value: unknown): AuthoritativeFloorTile {
     itemId: requireUInt(value.item_id, 'floor_tile.item_id'),
     tileX: requireSafeInt(value.tile_x, 'floor_tile.tile_x'),
     tileY: requireSafeInt(value.tile_y, 'floor_tile.tile_y'),
-    roomIndex: requireUInt(value.room_index, 'floor_tile.room_index'),
+    roomIndex: requireRoomIndex(value.room_index),
   };
 }
 
@@ -570,13 +570,6 @@ function requireUInt(value: unknown, field: string): number {
     throw new Error(`Malformed authoritative field: ${field}`);
   }
   return value;
-}
-
-function requireSafeInt(value: unknown, field: string): number {
-  if (!Number.isSafeInteger(value)) {
-    throw new Error(`Malformed authoritative integer ${field}`);
-  }
-  return value as number;
 }
 
 function requireSafeUInt(value: unknown, field: string): number {
