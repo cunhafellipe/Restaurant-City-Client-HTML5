@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   decodeOwnedItemData,
+  defaultWallAt,
+  defaultWallAttachmentRotation,
   encodeOwnedItemData,
   footprintsOverlap,
   isItemOutOfBounds,
@@ -151,6 +153,21 @@ describe('Restaurant City grid contract', () => {
     expect(isItemOutOfBounds(item, { x: 0, y: 5 }, room)).toBe(true);
     expect(isItemOutOfBounds(item, { x: 5, y: 0 }, room)).toBe(true);
     expect(isItemOutOfBounds(item, { x: 1, y: 1 }, room)).toBe(false);
+  });
+
+  it('reconstructs the default wallMap border and copied rotations', () => {
+    expect(defaultWallAt({ x: 0, y: 0 }, room)).toEqual({
+      kind: 'corner',
+      rotation: 0,
+    });
+    expect(defaultWallAttachmentRotation({ x: 1, y: 0 }, room)).toBe(1);
+    expect(defaultWallAttachmentRotation({ x: 9, y: 0 }, room)).toBe(1);
+    expect(defaultWallAttachmentRotation({ x: 0, y: 1 }, room)).toBe(0);
+    expect(defaultWallAttachmentRotation({ x: 0, y: 9 }, room)).toBe(0);
+    expect(defaultWallAttachmentRotation({ x: 0, y: 0 }, room)).toBeNull();
+    expect(defaultWallAttachmentRotation({ x: 2, y: 2 }, room)).toBeNull();
+    expect(defaultWallAttachmentRotation({ x: 10, y: 0 }, room)).toBeNull();
+    expect(defaultWallAttachmentRotation({ x: 0, y: 10 }, room)).toBeNull();
   });
 
   it('allows wall-domain items on the historical zero border', () => {
