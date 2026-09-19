@@ -20,6 +20,8 @@ const FLOOR_SCREENSHOT = path.join(WORK, 'restaurant-floor.png');
 const FLOOR_META = path.join(WORK, 'restaurant-floor.json');
 const WALL_SCREENSHOT = path.join(WORK, 'restaurant-window.png');
 const WALL_META = path.join(WORK, 'restaurant-window.json');
+const DOOR_PROBE_SCREENSHOT = path.join(WORK, 'restaurant-door-probe.png');
+const DOOR_PROBE_META = path.join(WORK, 'restaurant-door-probe.json');
 const STACK_GOLDEN = path.join(
   REPO,
   'tests',
@@ -71,6 +73,13 @@ const fixtureSeed = {
       available: 1,
     },
   ],
+};
+const doorProbeFixtureSeed = {
+  room: { inside_x: 8, inside_y: 8, outside_x: 0, outside_y: 0 },
+  next_instance_id: 1,
+  items: [],
+  floor_tiles: [],
+  inventory: [],
 };
 const wallFixtureSeed = {
   room: { inside_x: 8, inside_y: 8, outside_x: 0, outside_y: 0 },
@@ -1238,6 +1247,89 @@ try {
   };
   fs.writeFileSync(STACK_META, `${JSON.stringify(stackMetadata, null, 2)}\n`);
 
+  fixtureState = structuredClone(doorProbeFixtureSeed);
+  await cdp.send('Page.navigate', { url: `${url}&doorProbe=1` });
+  const doorProbeState = await waitForRuntime(
+    cdp,
+    `(() => {
+      const status = document.querySelector('.rc-status');
+      const canvas = document.querySelector('#game-canvas-host canvas');
+      return {
+        phase: status?.dataset.phase ?? null,
+        status: status?.textContent ?? '',
+        probe: globalThis.__ANEWON_RC_DOOR_PROBE__ ?? null,
+        canvas: canvas ? (() => {
+          const rect = canvas.getBoundingClientRect();
+          return {
+            width: canvas.width,
+            height: canvas.height,
+            x: rect.x,
+            y: rect.y,
+            cssWidth: rect.width,
+            cssHeight: rect.height,
+          };
+        })() : null,
+      };
+    })()`,
+    (value) =>
+      value?.phase === 'editing' &&
+      value?.status?.includes(
+        'Loaded baseline 0.9.143a, 0 persisted object(s), and 0 authoritative floor tile(s).',
+      ) &&
+      value?.probe?.rotation === 1 &&
+      value?.probe?.wallFrame === 'indoor_asset/wall2/002' &&
+      value?.probe?.maskFrame === 'indoor_asset/doorwaymask/001' &&
+      value?.probe?.doorFrame === 'indoor_asset/door/002' &&
+      value?.canvas?.width === 760 &&
+      value?.canvas?.height === 600,
+    8000,
+    'Simple Door erase composition probe',
+  );
+  await delay(300);
+
+  const doorShot = await cdp.send('Page.captureScreenshot', {
+    format: 'png',
+    fromSurface: true,
+    captureBeyondViewport: false,
+    clip: {
+      x: doorProbeState.canvas.x,
+      y: doorProbeState.canvas.y,
+      width: doorProbeState.canvas.cssWidth,
+      height: doorProbeState.canvas.cssHeight,
+      scale: 1,
+    },
+  });
+  if (typeof doorShot.data !== 'string' || doorShot.data.length === 0) {
+    throw new Error('CDP did not return Simple Door erase probe screenshot bytes');
+  }
+  fs.writeFileSync(
+    DOOR_PROBE_SCREENSHOT,
+    Buffer.from(doorShot.data, 'base64'),
+  );
+  const doorPng = PNG.sync.read(fs.readFileSync(DOOR_PROBE_SCREENSHOT));
+  const doorPixelSha256 = bufferSha256(doorPng.data);
+  const doorQuantizedBlockSha256 = quantizedBlockSignature(doorPng, 8);
+  const doorProbeMetadata = {
+    schemaVersion: 1,
+    fixture: 'simple-door-3010000-erase-probe-at-2-0',
+    state: doorProbeState,
+    screenshot: path
+      .relative(REPO, DOOR_PROBE_SCREENSHOT)
+      .replaceAll('\\\\', '/'),
+    pngSha256: sha256(DOOR_PROBE_SCREENSHOT),
+    pixelSha256: doorPixelSha256,
+    blockSize: 8,
+    quantizedBlockSha256: doorQuantizedBlockSha256,
+    goldenFrozen: false,
+  };
+  fs.writeFileSync(
+    DOOR_PROBE_META,
+    `${JSON.stringify(doorProbeMetadata, null, 2)}\n`,
+  );
+  console.log(
+    `DOOR ERASE PROBE CANDIDATE | fixture=simple-door-3010000-erase-probe-at-2-0 | pixel=${doorPixelSha256} | png=${doorProbeMetadata.pngSha256} | block=${doorQuantizedBlockSha256} | maskLocal=${JSON.stringify(doorProbeState.probe.maskLocal)}`,
+  );
+
   const metadata = {
     schemaVersion: 2,
     browser,
@@ -1250,6 +1342,7 @@ try {
     stackVisual: stackMetadata,
     floorVisual: floorMetadata,
     wallVisual: wallMetadata,
+    doorProbeVisual: doorProbeMetadata,
     interaction: {
       selected: selectedState.selection,
       rotated: rotatedState,
