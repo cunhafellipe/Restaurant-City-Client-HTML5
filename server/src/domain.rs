@@ -19,7 +19,13 @@ impl Wallet {
         self.cash
     }
 
+    /// Raw historical storage units. Restaurant City stores one displayed
+    /// gourmet point as ten integer units.
     pub fn gourmet_points(&self) -> u64 {
+        self.gourmet_points
+    }
+
+    pub fn gourmet_point_tenths(&self) -> u64 {
         self.gourmet_points
     }
 }
@@ -75,6 +81,12 @@ pub enum Command {
     CreditCash { amount: u64 },
     DebitCash { amount: u64 },
     AwardGourmetPoints { amount: u64 },
+    /// Atomically settle one verified meal. Gourmet points use the historical
+    /// raw storage unit of tenths (GameWorld.addGourmetPoints multiplies by 10).
+    SettleMeal {
+        coins: u64,
+        gourmet_point_tenths: u64,
+    },
     GrantInventory { item_id: u32, quantity: u32 },
     ConsumeInventory { item_id: u32, quantity: u32 },
 }
@@ -257,6 +269,25 @@ impl PlayerState {
                     .checked_add(amount)
                     .ok_or(AuthorityError::ArithmeticOverflow)?,
             )),
+            Command::SettleMeal {
+                coins,
+                gourmet_point_tenths,
+            } => {
+                let coins = self
+                    .wallet
+                    .coins
+                    .checked_add(coins)
+                    .ok_or(AuthorityError::ArithmeticOverflow)?;
+                let gourmet_points = self
+                    .wallet
+                    .gourmet_points
+                    .checked_add(gourmet_point_tenths)
+                    .ok_or(AuthorityError::ArithmeticOverflow)?;
+                Ok(ValidatedCommand::Meal {
+                    coins,
+                    gourmet_points,
+                })
+            }
             Command::GrantInventory { item_id, quantity } => {
                 require_quantity(quantity)?;
                 let value = self
@@ -287,6 +318,13 @@ impl PlayerState {
             ValidatedCommand::Coins(value) => self.wallet.coins = value,
             ValidatedCommand::Cash(value) => self.wallet.cash = value,
             ValidatedCommand::GourmetPoints(value) => self.wallet.gourmet_points = value,
+            ValidatedCommand::Meal {
+                coins,
+                gourmet_points,
+            } => {
+                self.wallet.coins = coins;
+                self.wallet.gourmet_points = gourmet_points;
+            }
             ValidatedCommand::Inventory { item_id, value } => {
                 if value == 0 {
                     self.inventory.quantities.remove(&item_id);
@@ -303,6 +341,7 @@ enum ValidatedCommand {
     Coins(u64),
     Cash(u64),
     GourmetPoints(u64),
+    Meal { coins: u64, gourmet_points: u64 },
     Inventory { item_id: u32, value: u32 },
 }
 
@@ -469,4 +508,64 @@ mod tests {
         );
         assert_eq!(state.revision(), 0);
     }
+    #[test]
+    fn meal_settlement_is_atomic_and_idempotent() {
+        let mut state = player();
+
+        assert_eq!(
+            state
+                .apply(
+                    id("meal-1"),
+                    Command::SettleMeal {
+                        coins: 25,
+                        gourmet_point_tenths: 12,
+                    },
+                )
+                .unwrap(),
+            MutationOutcome::Applied { revision: 1 }
+        );
+        assert_eq!(state.wallet().coins(), 25);
+        assert_eq!(state.wallet().gourmet_point_tenths(), 12);
+
+        assert_eq!(
+            state
+                .apply(
+                    id("meal-1"),
+                    Command::SettleMeal {
+                        coins: 25,
+                        gourmet_point_tenths: 12,
+                    },
+                )
+                .unwrap(),
+            MutationOutcome::Duplicate { revision: 1 }
+        );
+        assert_eq!(state.wallet().coins(), 25);
+        assert_eq!(state.wallet().gourmet_point_tenths(), 12);
+    }
+
+    #[test]
+    fn meal_settlement_validates_both_balances_before_committing_either() {
+        let mut state = player();
+        state
+            .apply(
+                id("gp-max"),
+                Command::AwardGourmetPoints { amount: u64::MAX },
+            )
+            .unwrap();
+
+        assert_eq!(
+            state.apply(
+                id("meal-overflow"),
+                Command::SettleMeal {
+                    coins: 50,
+                    gourmet_point_tenths: 1,
+                },
+            ),
+            Err(AuthorityError::ArithmeticOverflow)
+        );
+        assert_eq!(state.revision(), 1);
+        assert_eq!(state.wallet().coins(), 0);
+        assert_eq!(state.wallet().gourmet_point_tenths(), u64::MAX);
+    }
+
 }
