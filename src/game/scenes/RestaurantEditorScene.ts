@@ -699,6 +699,7 @@ export class RestaurantEditorScene extends Phaser.Scene {
       status,
       selectedItem: this.selectedItemUi(),
       selectedPlacedItem: this.selectedPlacedItemUi(),
+      selectedWallpaper: this.selectedWallpaperUi(),
       placement:
         validation && this.hoverTile
           ? {
@@ -833,11 +834,99 @@ export class RestaurantEditorScene extends Phaser.Scene {
   }
 
   private async commitCurrentMutation(): Promise<void> {
+    if (this.selectedWallpaperRotation !== null) return;
+
     if (this.selectedPlacedInstanceId !== null) {
       await this.commitSelectedTransform();
       return;
     }
+
+    const item = this.candidates[this.selectedIndex];
+    if (item && this.isAuthoritativeWallpaper(item)) {
+      await this.commitCurrentWallpaper();
+      return;
+    }
+
     await this.commitCurrentPlacement();
+  }
+
+  private async commitCurrentWallpaper(): Promise<void> {
+    if (
+      this.placementInFlight ||
+      !this.hoverTile ||
+      this.candidates.length === 0 ||
+      !this.authorityLoaded
+    ) {
+      return;
+    }
+
+    if (!this.authoritySynchronized) {
+      await this.resynchronizeAuthority();
+      return;
+    }
+
+    const item = this.candidates[this.selectedIndex];
+    const validation = this.currentValidation();
+    const targetRotation = defaultWallAttachmentRotation(
+      this.hoverTile,
+      this.room,
+    );
+    if (
+      !item ||
+      !this.isAuthoritativeWallpaper(item) ||
+      !validation?.ok ||
+      (targetRotation !== 0 && targetRotation !== 1)
+    ) {
+      if (validation) {
+        this.publishUi('Wallpaper cannot be committed.', validation);
+      }
+      return;
+    }
+
+    const tile = { ...this.hoverTile };
+    const mutationId = createWallpaperMutationId();
+    this.placementInFlight = true;
+    this.publishUi(
+      `Saving ${targetRotation === 0 ? 'left' : 'top'} wallpaper #${item.id}…`,
+      validation,
+      'saving',
+    );
+
+    try {
+      const commit = await this.authority.applyWallpaper(
+        {
+          itemId: item.id,
+          tileX: tile.x,
+          tileY: tile.y,
+        },
+        mutationId,
+      );
+      const layout = await this.authority.loadRestaurant();
+      const persisted = layout.wallpapers.some(
+        (wallpaper) =>
+          wallpaper.itemId === commit.wallpaper.itemId &&
+          wallpaper.rotation === commit.wallpaper.rotation,
+      );
+      if (!persisted) {
+        throw new Error(
+          'Authoritative reload did not contain the wallpaper acknowledged by the server',
+        );
+      }
+
+      this.rotation = commit.wallpaper.rotation;
+      this.applyAuthoritativeLayout(layout);
+      this.drawPreview(false);
+      this.publishUi(
+        commit.outcome === 'duplicate'
+          ? `${commit.wallpaper.rotation === 0 ? 'Left' : 'Top'} wallpaper reconciled and reloaded.`
+          : `${commit.wallpaper.rotation === 0 ? 'Left' : 'Top'} wallpaper saved and applied to every matching wall segment.`,
+        this.currentValidation(),
+      );
+    } catch (error) {
+      this.handleMutationFailure('Wallpaper', error);
+    } finally {
+      this.placementInFlight = false;
+    }
   }
 
   private async commitCurrentPlacement(): Promise<void> {
@@ -857,7 +946,7 @@ export class RestaurantEditorScene extends Phaser.Scene {
 
     const item = this.candidates[this.selectedIndex];
     const validation = this.currentValidation();
-    if (!item || !validation?.ok) {
+    if (!item || this.isAuthoritativeWallpaper(item) || !validation?.ok) {
       if (validation) {
         this.publishUi('Placement cannot be committed.', validation);
       }
@@ -1013,6 +1102,64 @@ export class RestaurantEditorScene extends Phaser.Scene {
     }
   }
 
+  private async removeSelectedAuthorityState(): Promise<void> {
+    if (this.selectedWallpaperRotation !== null) {
+      await this.removeSelectedWallpaper();
+      return;
+    }
+    await this.removeSelectedPlacedItem();
+  }
+
+  private async removeSelectedWallpaper(): Promise<void> {
+    const selected = this.selectedWallpaper();
+    if (this.placementInFlight || !selected || !this.authorityLoaded) return;
+
+    if (!this.authoritySynchronized) {
+      await this.resynchronizeAuthority();
+      return;
+    }
+
+    const mutationId = createWallpaperMutationId();
+    this.placementInFlight = true;
+    this.publishUi(
+      `Removing ${selected.rotation === 0 ? 'left' : 'top'} wallpaper…`,
+      null,
+      'saving',
+    );
+
+    try {
+      const commit = await this.authority.removeWallpaper(
+        selected.rotation,
+        mutationId,
+      );
+      const layout = await this.authority.loadRestaurant();
+      if (
+        layout.wallpapers.some(
+          (wallpaper) => wallpaper.rotation === commit.wallpaper.rotation,
+        )
+      ) {
+        throw new Error(
+          'Authoritative reload still contains the wallpaper acknowledged as removed',
+        );
+      }
+
+      this.selectedWallpaperRotation = null;
+      this.rotation = 0;
+      this.applyAuthoritativeLayout(layout);
+      this.drawPreview(false);
+      this.publishUi(
+        commit.outcome === 'duplicate'
+          ? `${commit.wallpaper.rotation === 0 ? 'Left' : 'Top'} wallpaper removal reconciled.`
+          : `${commit.wallpaper.rotation === 0 ? 'Left' : 'Top'} wallpaper removed and inventory reconciled.`,
+        this.currentValidation(),
+      );
+    } catch (error) {
+      this.handleMutationFailure('Wallpaper removal', error);
+    } finally {
+      this.placementInFlight = false;
+    }
+  }
+
   private async removeSelectedPlacedItem(): Promise<void> {
     const selected = this.selectedPlacedItem();
     if (this.placementInFlight || !selected || !this.authorityLoaded) return;
@@ -1097,7 +1244,7 @@ export class RestaurantEditorScene extends Phaser.Scene {
       this.applyAuthoritativeLayout(layout);
       this.drawPreview(false);
       this.publishUi(
-        `Authoritative state resynchronized: ${layout.items.length} object(s), ${layout.floorTiles.length} floor tile(s).`,
+        `Authoritative state resynchronized: ${layout.items.length} object(s), ${layout.floorTiles.length} floor tile(s), ${layout.wallpapers.length} wallpaper slot(s).`,
         this.currentValidation(),
       );
     } catch (error) {
