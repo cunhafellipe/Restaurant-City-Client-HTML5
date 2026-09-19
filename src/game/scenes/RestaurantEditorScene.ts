@@ -64,6 +64,16 @@ import {
   gameUiBridge,
   type GameUiState,
 } from '../../shell/gameBridge';
+import {
+  parseAvatarAtlasRuntime,
+  resolveAvatarAtlasFrame,
+  type AvatarAtlasRuntimeDescriptor,
+} from '../avatarAtlas';
+import {
+  projectActiveServiceActors,
+  type ProjectedServiceActor,
+  type ServiceActorRole,
+} from '../serviceActorProjection';
 import { requireRestaurantAuthority } from '../services';
 
 /**
@@ -101,6 +111,16 @@ type EditorPlacementValidation =
         | 'authority-desynced'
         | 'wall-required';
     };
+
+interface ServiceActorSpriteState {
+  readonly actor: ProjectedServiceActor;
+  readonly sprite: Phaser.GameObjects.Sprite;
+  frameIndex: number;
+  elapsedMs: number;
+}
+
+const AVATAR_ATLAS_KEY = 'restaurant-avatar-placeholder';
+const AVATAR_RUNTIME_KEY = 'restaurant-avatar-placeholder-runtime';
 
 export class RestaurantEditorScene extends Phaser.Scene {
   private floorGraphics!: Phaser.GameObjects.Graphics;
@@ -142,6 +162,8 @@ export class RestaurantEditorScene extends Phaser.Scene {
   private authoritativeWallpapers: readonly AuthoritativeWallpaper[] = [];
   private serviceTopology: RestaurantServiceTopology | null = null;
   private activeService: RestaurantActiveService | null = null;
+  private avatarAtlas: AvatarAtlasRuntimeDescriptor | null = null;
+  private serviceActorSprites = new Map<ServiceActorRole, ServiceActorSpriteState>();
 
   private room: RoomDimensions = INITIAL_ROOM;
   private selectedIndex = 0;
@@ -162,6 +184,14 @@ export class RestaurantEditorScene extends Phaser.Scene {
       'indoor_asset',
       'assets/generated/atlases/indoor_asset.json',
     );
+    this.load.multiatlas(
+      AVATAR_ATLAS_KEY,
+      'assets/generated/actors/restaurant-avatar-placeholder.json',
+    );
+    this.load.json(
+      AVATAR_RUNTIME_KEY,
+      'assets/generated/actors/restaurant-avatar-placeholder.runtime.json',
+    );
   }
 
   create(): void {
@@ -180,6 +210,25 @@ export class RestaurantEditorScene extends Phaser.Scene {
     this.drawFloor();
     this.bindInput();
     void this.initializeEditor();
+  }
+
+  update(_time: number, delta: number): void {
+    if (!this.avatarAtlas || this.serviceActorSprites.size === 0) return;
+    for (const state of this.serviceActorSprites.values()) {
+      const animation = this.avatarAtlas.animations[state.actor.animation];
+      if (!animation || animation.frameDelayMs <= 0) {
+        throw new Error(
+          `Avatar animation metadata missing for ${state.actor.animation}`,
+        );
+      }
+      state.elapsedMs += delta;
+      if (state.elapsedMs < animation.frameDelayMs) continue;
+
+      const advance = Math.floor(state.elapsedMs / animation.frameDelayMs);
+      state.elapsedMs -= advance * animation.frameDelayMs;
+      state.frameIndex += advance;
+      this.applyServiceActorFrame(state);
+    }
   }
 
   private drawFloor(): void {
@@ -278,6 +327,7 @@ export class RestaurantEditorScene extends Phaser.Scene {
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       this.unsubscribeCommands?.();
       this.unsubscribeCommands = null;
+      this.clearServiceActors();
     });
 
     this.input.on(Phaser.Input.Events.POINTER_DOWN, () => {
@@ -298,6 +348,21 @@ export class RestaurantEditorScene extends Phaser.Scene {
           frameNames: this.requireAtlasFrameNames('indoor_asset'),
         },
       ]);
+
+      this.avatarAtlas = parseAvatarAtlasRuntime(
+        this.cache.json.get(AVATAR_RUNTIME_KEY),
+      );
+      if (!this.textures.exists(this.avatarAtlas.atlasKey)) {
+        throw new Error('Recovered service-avatar atlas failed to load');
+      }
+      for (const frameKey of Object.keys(this.avatarAtlas.frames)) {
+        if (!this.textures.getFrame(this.avatarAtlas.atlasKey, frameKey)) {
+          throw new Error(
+            `Recovered service-avatar frame missing at runtime: ${frameKey}`,
+          );
+        }
+      }
+
       this.candidates = catalog.filter(
         (item) =>
           this.isOrdinaryPlaceable(item) || this.isAuthoritativeWallpaper(item),
@@ -360,6 +425,7 @@ export class RestaurantEditorScene extends Phaser.Scene {
     this.serviceTopology = snapshot.topology;
     this.activeService = snapshot.activeService;
     this.applyAuthoritativeLayout(snapshot.layout);
+    this.drawServiceActors();
     this.publishServiceTopologyDiagnostics();
     this.publishActiveServiceDiagnostics();
   }
@@ -402,6 +468,125 @@ export class RestaurantEditorScene extends Phaser.Scene {
     target.__ANEWON_RC_ACTIVE_SERVICE__ = this.activeService
       ? { ...this.activeService }
       : null;
+  }
+
+  private clearServiceActors(): void {
+    for (const state of this.serviceActorSprites.values()) {
+      state.sprite.destroy();
+    }
+    this.serviceActorSprites.clear();
+    const target = globalThis as typeof globalThis & {
+      __ANEWON_RC_SERVICE_ACTORS__?: unknown;
+    };
+    target.__ANEWON_RC_SERVICE_ACTORS__ = [];
+  }
+
+  private actorDrawPriority(tile: TilePoint): number {
+    const projected = projectTile(tile);
+    const withinTileY = ((projected.y % 40) + 40) % 40;
+    // AvatarActor.setPosition: getTileDrawPriority(tileX,tileY) + y % tileHeight.
+    return this.itemDrawPriority(tile) + withinTileY;
+  }
+
+  private applyServiceActorFrame(state: ServiceActorSpriteState): void {
+    const atlas = this.avatarAtlas;
+    if (!atlas) throw new Error('Service-avatar descriptor is unavailable');
+
+    const resolved = resolveAvatarAtlasFrame(
+      atlas,
+      state.actor.animation,
+      state.actor.direction,
+      state.frameIndex,
+    );
+    const atlasFrame = this.textures.getFrame(atlas.atlasKey, resolved.frameKey);
+    if (!atlasFrame) {
+      throw new Error(`Service-avatar atlas frame missing: ${resolved.frameKey}`);
+    }
+    if (
+      atlasFrame.width !== atlas.frames[resolved.frameKey]?.crop.width ||
+      atlasFrame.height !== atlas.frames[resolved.frameKey]?.crop.height
+    ) {
+      throw new Error(
+        `Service-avatar frame geometry drift: ${resolved.frameKey}`,
+      );
+    }
+
+    state.sprite
+      .setFrame(resolved.frameKey)
+      .setOrigin(
+        resolved.anchorPx.x / atlasFrame.width,
+        resolved.anchorPx.y / atlasFrame.height,
+      )
+      .setFlipX(resolved.flipX);
+  }
+
+  private drawServiceActors(): void {
+    this.clearServiceActors();
+    if (!this.avatarAtlas) return;
+
+    const projectedActors = projectActiveServiceActors(
+      this.activeService,
+      this.serviceTopology,
+    );
+    const diagnostics: Array<Record<string, unknown>> = [];
+
+    for (const actor of projectedActors) {
+      const resolved = resolveAvatarAtlasFrame(
+        this.avatarAtlas,
+        actor.animation,
+        actor.direction,
+        0,
+      );
+      const frame = this.textures.getFrame(
+        this.avatarAtlas.atlasKey,
+        resolved.frameKey,
+      );
+      if (!frame) {
+        throw new Error(`Service-avatar initial frame missing: ${resolved.frameKey}`);
+      }
+
+      const projected = projectTile(actor.tile);
+      const sprite = this.add
+        .sprite(
+          ORIGIN.x + projected.x,
+          ORIGIN.y + projected.y,
+          this.avatarAtlas.atlasKey,
+          resolved.frameKey,
+        )
+        .setDepth(this.actorDrawPriority(actor.tile))
+        .setFlipX(resolved.flipX)
+        .setOrigin(
+          resolved.anchorPx.x / frame.width,
+          resolved.anchorPx.y / frame.height,
+        );
+
+      const state: ServiceActorSpriteState = {
+        actor,
+        sprite,
+        frameIndex: 0,
+        elapsedMs: 0,
+      };
+      this.serviceActorSprites.set(actor.role, state);
+      diagnostics.push({
+        role: actor.role,
+        animation: actor.animation,
+        tile: { ...actor.tile },
+        direction: actor.direction,
+        frame: resolved.frameKey,
+        flipX: resolved.flipX,
+        anchorPx: { ...resolved.anchorPx },
+        world: {
+          x: sprite.x,
+          y: sprite.y,
+          depth: sprite.depth,
+        },
+      });
+    }
+
+    const target = globalThis as typeof globalThis & {
+      __ANEWON_RC_SERVICE_ACTORS__?: unknown;
+    };
+    target.__ANEWON_RC_SERVICE_ACTORS__ = diagnostics;
   }
 
   private applyAuthoritativeLayout(layout: RestaurantLayout): void {
