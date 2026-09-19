@@ -6,6 +6,7 @@
 //! wallet mutation.
 
 use crate::domain::Command;
+use serde::{Deserialize, Serialize};
 use std::fmt;
 
 pub const CUSTOMER_DECISION_MS: u64 = 1_000;
@@ -96,7 +97,8 @@ pub fn canonical_chef_base_cook_duration_ms(work_percent: f64) -> Result<u64, Ga
     Ok(interpolated.trunc() as u64)
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum CustomerServiceState {
     Admitted,
     WalkingToChair,
@@ -109,7 +111,8 @@ pub enum CustomerServiceState {
     Left,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum OrderServiceState {
     Created,
     Queued,
@@ -121,7 +124,8 @@ pub enum OrderServiceState {
     Settled,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ServiceLoopState {
     pub customer: CustomerServiceState,
     pub order: OrderServiceState,
@@ -140,7 +144,8 @@ impl Default for ServiceLoopState {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum ServiceLoopEvent {
     StartChairWalk,
     ReachChair,
