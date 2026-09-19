@@ -336,6 +336,34 @@ for (const group of database.groups ?? []) {
 }
 
 definitions.sort((a, b) => a.itemId - b.itemId);
+
+if (recoveredWallpaperGeometry.serverCatalogEnabled === true) {
+  const promotedWallpaperIds = new Set(
+    (recoveredWallpaperGeometry.items ?? []).map((entry) => entry.itemId),
+  );
+  const trustedWallpapers = definitions.filter(
+    (entry) =>
+      promotedWallpaperIds.has(entry.itemId) &&
+      entry.wallpaperItem === true &&
+      entry.recoveredGeometrySource === 'wallpaper',
+  );
+  const trustedWallpaperIds = new Set(
+    trustedWallpapers.map((entry) => entry.itemId),
+  );
+  const missingWallpaperIds = [...promotedWallpaperIds]
+    .filter((itemId) => !trustedWallpaperIds.has(itemId))
+    .sort((a, b) => a - b);
+  if (
+    promotedWallpaperIds.size !== 48 ||
+    trustedWallpaperIds.size !== promotedWallpaperIds.size ||
+    missingWallpaperIds.length !== 0
+  ) {
+    throw new Error(
+      `Promoted wallpaper catalog coverage mismatch: contract=${promotedWallpaperIds.size} trusted=${trustedWallpaperIds.size} missing=${missingWallpaperIds.join(',') || '<none>'}`,
+    );
+  }
+}
+
 fs.mkdirSync(OUT_DIR, { recursive: true });
 
 const bool = (value) => (value ? '1' : '0');
