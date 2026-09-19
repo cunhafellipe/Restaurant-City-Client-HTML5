@@ -183,7 +183,7 @@ describe('HttpRestaurantAuthority', () => {
       .mockResolvedValueOnce(okJson(staleTopology))
       .mockResolvedValueOnce(okJson(layout))
       .mockResolvedValueOnce(okJson(topology))
-      .mockResolvedValueOnce(okJson({ active: null }));
+      .mockResolvedValueOnce(okJson({ server_now_ms: 100_000, active: null }));
 
     const authority = new HttpRestaurantAuthority('/api/v1', fetcher);
     const snapshot = await authority.loadRestaurantSnapshot();
@@ -207,6 +207,7 @@ describe('HttpRestaurantAuthority', () => {
   it('loads and validates the read-only active service projection', async () => {
     const fetcher = vi.fn(async () =>
       okJson({
+        server_now_ms: 100_000,
         active: {
           service_id: 7,
           restaurant_mutation_sequence: 3,
@@ -223,6 +224,10 @@ describe('HttpRestaurantAuthority', () => {
           order_state: 'cooking',
           customer_timer_ms: 120000,
           order_timer_ms: 24000,
+          customer_deadline_at_ms: 220000,
+          order_deadline_at_ms: 124000,
+          customer_remaining_ms: 120000,
+          order_remaining_ms: 24000,
         },
       }),
     );
@@ -244,6 +249,11 @@ describe('HttpRestaurantAuthority', () => {
       orderState: 'cooking',
       customerTimerMs: 120000,
       orderTimerMs: 24000,
+      serverNowMs: 100000,
+      customerDeadlineAtMs: 220000,
+      orderDeadlineAtMs: 124000,
+      customerRemainingMs: 120000,
+      orderRemainingMs: 24000,
     });
     expect(fetcher.mock.calls[0]?.[0]).toBe('/api/v1/restaurant/service');
     expect(fetcher.mock.calls[0]?.[1]?.method).toBe('GET');
@@ -258,6 +268,7 @@ describe('HttpRestaurantAuthority', () => {
       '/api/v1',
       async () =>
         okJson({
+          server_now_ms: 100_000,
           active: {
             service_id: 1,
             restaurant_mutation_sequence: 3,
@@ -274,6 +285,10 @@ describe('HttpRestaurantAuthority', () => {
             order_state: 'created',
             customer_timer_ms: null,
             order_timer_ms: null,
+            customer_deadline_at_ms: null,
+            order_deadline_at_ms: null,
+            customer_remaining_ms: null,
+            order_remaining_ms: null,
           },
         }),
     );
@@ -285,6 +300,7 @@ describe('HttpRestaurantAuthority', () => {
       '/api/v1',
       async () =>
         okJson({
+          server_now_ms: 100_000,
           active: {
             service_id: 1,
             restaurant_mutation_sequence: 3,
@@ -301,11 +317,50 @@ describe('HttpRestaurantAuthority', () => {
             order_state: 'created',
             customer_timer_ms: null,
             order_timer_ms: null,
+            customer_deadline_at_ms: null,
+            order_deadline_at_ms: null,
+            customer_remaining_ms: null,
+            order_remaining_ms: null,
           },
         }),
     );
     await expect(invalidState.loadActiveService()).rejects.toThrow(
       'active service state',
+    );
+  });
+
+  it('rejects inconsistent authoritative active-service timing', async () => {
+    const authority = new HttpRestaurantAuthority(
+      '/api/v1',
+      async () =>
+        okJson({
+          server_now_ms: 100_000,
+          active: {
+            service_id: 1,
+            restaurant_mutation_sequence: 3,
+            customer_id: 1,
+            order_id: 1,
+            chair_instance_id: 11,
+            table_instance_id: 12,
+            chef_employee_id: 101,
+            kitchen_instance_id: 13,
+            waiter_employee_id: 201,
+            waiter_tile_x: 4,
+            waiter_tile_y: 4,
+            customer_state: 'waiting-for-food',
+            order_state: 'cooking',
+            customer_timer_ms: 120000,
+            order_timer_ms: 24000,
+            customer_deadline_at_ms: 220000,
+            order_deadline_at_ms: 124000,
+            customer_remaining_ms: 119999,
+            order_remaining_ms: 24000,
+          },
+        }),
+    );
+
+    await expect(authority.loadActiveService()).rejects.toThrow(
+      'active service timing',
     );
   });
 
