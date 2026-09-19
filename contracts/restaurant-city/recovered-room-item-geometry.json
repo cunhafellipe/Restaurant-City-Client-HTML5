@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 2,
+  "schemaVersion": 3,
   "baseline": "0.9.143a",
   "source": {
     "canonicalArchiveSha256": "4493be9bc4c2f87ef80ca7afa5321e12bb94a7ec6ed2f0a673b4d48b19170ef4",
@@ -24,6 +24,24 @@
       "artifactId": 10564628002,
       "artifactSha256": "5e752a45f0a168184f9f7e8a22f0ee115d0f80a6045f254161c386d747158d11",
       "conclusion": "VIOLINCASE_FRAME1_GEOMETRY_RECOVERED"
+    },
+    "r36": {
+      "runId": 35425465142,
+      "artifactId": 10578522964,
+      "artifactSha256": "6111da3bc3bf455bb1e12f19d6c05ada5a4da818ad764bcac4c27a7589367ab8",
+      "conclusion": "5 canonical wallDivider items; 0 wallItem; all decorItem/wallDivider"
+    },
+    "r37": {
+      "runId": 35425691765,
+      "artifactId": 10578484587,
+      "artifactSha256": "0b8edd05be61a920f997cd342651518ca0896d65268b9048083ea7c1cec156f0",
+      "conclusion": "ALL_WALL_DIVIDER_VECTOR_GEOMETRY_RECOVERED"
+    },
+    "r38": {
+      "runId": 35425780733,
+      "artifactId": 10579117598,
+      "artifactSha256": "43b1f64c567d5859d547c80c2e05a21f7d062e477d40138fa2d0a8e5b7ff8991",
+      "conclusion": "ALL_WALL_DIVIDER_ATLAS_ORIGINS_RECOVERED"
     }
   },
   "constructor": {
@@ -92,6 +110,212 @@
       "itemHeightTwips": 439,
       "placementFootprintEnabled": false,
       "note": "RoomItem constructor computes itemHeight once on frame 1; later rotation frames do not recompute it."
+    },
+    "WhiteWall": {
+      "itemIds": [
+        3020049
+      ],
+      "spriteId": 441,
+      "footprint": {
+        "sizeX": 1,
+        "sizeY": 1
+      },
+      "itemHeightTwips": 2328,
+      "rotationCount": 2,
+      "effectiveTypes": [
+        "decorItem",
+        "wallDivider"
+      ],
+      "wallItem": false,
+      "subItemCount": 0,
+      "frames": [
+        {
+          "rotation": 0,
+          "frame": "indoor_asset/whitewall/001",
+          "canvasOriginPx": {
+            "x": -24.7,
+            "y": -108.7
+          }
+        },
+        {
+          "rotation": 1,
+          "frame": "indoor_asset/whitewall/002",
+          "canvasOriginPx": {
+            "x": -24.65,
+            "y": -109
+          }
+        }
+      ],
+      "placementFootprintEnabled": false,
+      "note": "R36 proves this is an ordinary interior decor item tagged wallDivider, not wallItem. Kept fail-closed until the physical 12-frame browser golden is frozen."
+    },
+    "WhiteWallCorner": {
+      "itemIds": [
+        3020050
+      ],
+      "spriteId": 438,
+      "footprint": {
+        "sizeX": 1,
+        "sizeY": 1
+      },
+      "itemHeightTwips": 2334,
+      "rotationCount": 4,
+      "effectiveTypes": [
+        "decorItem",
+        "wallDivider"
+      ],
+      "wallItem": false,
+      "subItemCount": 0,
+      "frames": [
+        {
+          "rotation": 0,
+          "frame": "indoor_asset/whitewallcorner/001",
+          "canvasOriginPx": {
+            "x": -24.3,
+            "y": -109
+          }
+        },
+        {
+          "rotation": 1,
+          "frame": "indoor_asset/whitewallcorner/002",
+          "canvasOriginPx": {
+            "x": -24.65,
+            "y": -109.35
+          }
+        },
+        {
+          "rotation": 2,
+          "frame": "indoor_asset/whitewallcorner/003",
+          "canvasOriginPx": {
+            "x": -24.65,
+            "y": -109.35
+          }
+        },
+        {
+          "rotation": 3,
+          "frame": "indoor_asset/whitewallcorner/004",
+          "canvasOriginPx": {
+            "x": -24.65,
+            "y": -109
+          }
+        }
+      ],
+      "placementFootprintEnabled": false,
+      "note": "R36 proves this is an ordinary interior decor item tagged wallDivider, not wallItem. Kept fail-closed until the physical 12-frame browser golden is frozen."
+    },
+    "WhiteWallCross": {
+      "itemIds": [
+        3020051
+      ],
+      "spriteId": 428,
+      "footprint": {
+        "sizeX": 1,
+        "sizeY": 1
+      },
+      "itemHeightTwips": 2340,
+      "rotationCount": 1,
+      "effectiveTypes": [
+        "decorItem",
+        "wallDivider"
+      ],
+      "wallItem": false,
+      "subItemCount": 0,
+      "frames": [
+        {
+          "rotation": 0,
+          "frame": "indoor_asset/whitewallcross/001",
+          "canvasOriginPx": {
+            "x": -24.65,
+            "y": -109
+          }
+        }
+      ],
+      "placementFootprintEnabled": false,
+      "note": "R36 proves this is an ordinary interior decor item tagged wallDivider, not wallItem. Kept fail-closed until the physical 12-frame browser golden is frozen."
+    },
+    "WhiteWallT": {
+      "itemIds": [
+        3020052
+      ],
+      "spriteId": 433,
+      "footprint": {
+        "sizeX": 1,
+        "sizeY": 1
+      },
+      "itemHeightTwips": 2340,
+      "rotationCount": 4,
+      "effectiveTypes": [
+        "decorItem",
+        "wallDivider"
+      ],
+      "wallItem": false,
+      "subItemCount": 0,
+      "frames": [
+        {
+          "rotation": 0,
+          "frame": "indoor_asset/whitewallt/001",
+          "canvasOriginPx": {
+            "x": -24.65,
+            "y": -109
+          }
+        },
+        {
+          "rotation": 1,
+          "frame": "indoor_asset/whitewallt/002",
+          "canvasOriginPx": {
+            "x": -24.65,
+            "y": -109.35
+          }
+        },
+        {
+          "rotation": 2,
+          "frame": "indoor_asset/whitewallt/003",
+          "canvasOriginPx": {
+            "x": -24.65,
+            "y": -109
+          }
+        },
+        {
+          "rotation": 3,
+          "frame": "indoor_asset/whitewallt/004",
+          "canvasOriginPx": {
+            "x": -24.65,
+            "y": -109.35
+          }
+        }
+      ],
+      "placementFootprintEnabled": false,
+      "note": "R36 proves this is an ordinary interior decor item tagged wallDivider, not wallItem. Kept fail-closed until the physical 12-frame browser golden is frozen."
+    },
+    "JapaneseLamp": {
+      "itemIds": [
+        3020055
+      ],
+      "spriteId": 1466,
+      "footprint": {
+        "sizeX": 1,
+        "sizeY": 1
+      },
+      "itemHeightTwips": 1742,
+      "rotationCount": 1,
+      "effectiveTypes": [
+        "decorItem",
+        "wallDivider"
+      ],
+      "wallItem": false,
+      "subItemCount": 0,
+      "frames": [
+        {
+          "rotation": 0,
+          "frame": "indoor_asset/japaneselamp/001",
+          "canvasOriginPx": {
+            "x": -17.55,
+            "y": -76.55
+          }
+        }
+      ],
+      "placementFootprintEnabled": false,
+      "note": "R36 proves this is an ordinary interior decor item tagged wallDivider, not wallItem. Kept fail-closed until the physical 12-frame browser golden is frozen."
     }
   },
   "composites": {
@@ -126,5 +350,5 @@
       ]
     }
   },
-  "releasePolicy": "Recovered Table and WhiteTable1x1 footprints may be promoted only together with deterministic historical curHeight rendering; all other implicit-footprint surfaces remain fail-closed."
+  "releasePolicy": "Recovered ordinary-item geometry is promoted only after source-grounded constructor geometry and physical browser validation. The five canonical wallDivider items are proven ordinary interior decor (not wallItem); R36/R37/R38 evidence is present but placement stays fail-closed until their 12-frame golden is frozen."
 }
