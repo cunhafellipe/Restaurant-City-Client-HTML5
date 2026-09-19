@@ -183,6 +183,35 @@ pub fn waiter_path_duration_ms(
 /// speeds to reach zero. A segment therefore takes the slower axis duration.
 /// We ceil each segment so the server can never declare completion before the
 /// historical actor could have reached its target.
+pub fn segment_duration_ms(
+    from: TilePoint,
+    to: TilePoint,
+    speed_x_px_per_ms: f64,
+    speed_y_px_per_ms: f64,
+) -> Result<u64, ServicePathError> {
+    if !speed_x_px_per_ms.is_finite()
+        || !speed_y_px_per_ms.is_finite()
+        || speed_x_px_per_ms <= 0.0
+        || speed_y_px_per_ms <= 0.0
+    {
+        return Err(ServicePathError::InvalidSpeed);
+    }
+
+    let tile_dx = i64::from(to.x) - i64::from(from.x);
+    let tile_dy = i64::from(to.y) - i64::from(from.y);
+    let screen_dx =
+        ((tile_dx - tile_dy) * i64::from(HISTORICAL_TILE_WIDTH_HALF_PX)).unsigned_abs() as f64;
+    let screen_dy =
+        ((tile_dx + tile_dy) * i64::from(HISTORICAL_TILE_HEIGHT_HALF_PX)).unsigned_abs() as f64;
+    let segment_ms = (screen_dx / speed_x_px_per_ms)
+        .max(screen_dy / speed_y_px_per_ms)
+        .ceil();
+    if !segment_ms.is_finite() || segment_ms < 0.0 || segment_ms > u64::MAX as f64 {
+        return Err(ServicePathError::ArithmeticOverflow);
+    }
+    Ok(segment_ms as u64)
+}
+
 pub fn path_duration_ms(
     start: TilePoint,
     path: &HistoricalPath,
@@ -200,21 +229,10 @@ pub fn path_duration_ms(
     let mut total_ms = 0_u64;
     let mut from = start;
     for to in &path.tiles {
-        let tile_dx = i64::from(to.x) - i64::from(from.x);
-        let tile_dy = i64::from(to.y) - i64::from(from.y);
-        let screen_dx =
-            ((tile_dx - tile_dy) * i64::from(HISTORICAL_TILE_WIDTH_HALF_PX)).unsigned_abs() as f64;
-        let screen_dy =
-            ((tile_dx + tile_dy) * i64::from(HISTORICAL_TILE_HEIGHT_HALF_PX)).unsigned_abs() as f64;
-
-        let segment_ms = (screen_dx / speed_x_px_per_ms)
-            .max(screen_dy / speed_y_px_per_ms)
-            .ceil();
-        if !segment_ms.is_finite() || segment_ms < 0.0 || segment_ms > u64::MAX as f64 {
-            return Err(ServicePathError::ArithmeticOverflow);
-        }
+        let segment_ms =
+            segment_duration_ms(from, *to, speed_x_px_per_ms, speed_y_px_per_ms)?;
         total_ms = total_ms
-            .checked_add(segment_ms as u64)
+            .checked_add(segment_ms)
             .ok_or(ServicePathError::ArithmeticOverflow)?;
         from = *to;
     }
@@ -252,6 +270,20 @@ impl ServicePathPlan {
     pub fn remaining_ms(self, server_now_ms: u64) -> u64 {
         self.completes_at_ms.saturating_sub(server_now_ms)
     }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ServicePathSegmentProjection {
+    pub kind: ServicePathKind,
+    pub from: TilePoint,
+    pub to: TilePoint,
+    pub step_index: u16,
+    pub step_count: u16,
+    pub segment_started_at_ms: u64,
+    pub segment_completes_at_ms: u64,
+    pub path_started_at_ms: u64,
+    pub path_completes_at_ms: u64,
+    pub path_remaining_ms: u64,
 }
 
 pub fn historical_path_signature(path: &HistoricalPath) -> u64 {
@@ -311,6 +343,57 @@ pub fn validate_customer_path_to_chair_plan(
         return Err(ServicePathError::PathPlanMismatch);
     }
     Ok(())
+}
+
+pub fn project_customer_path_to_chair_segment(
+    layout: &ServiceLayoutSnapshot,
+    chair_instance_id: u64,
+    plan: ServicePathPlan,
+    server_now_ms: u64,
+) -> Result<ServicePathSegmentProjection, ServicePathError> {
+    validate_customer_path_to_chair_plan(layout, chair_instance_id, plan)?;
+    if plan.is_complete_at(server_now_ms) {
+        return Err(ServicePathError::PathCompletionTimeMismatch);
+    }
+
+    let path = customer_path_to_chair(layout, plan.start, chair_instance_id)
+        .ok_or(ServicePathError::PathUnavailable)?;
+    if path.tiles.is_empty() {
+        return Err(ServicePathError::PathPlanMismatch);
+    }
+
+    let mut from = plan.start;
+    let mut segment_started_at_ms = plan.started_at_ms;
+    for (index, to) in path.tiles.iter().copied().enumerate() {
+        let segment_ms = segment_duration_ms(
+            from,
+            to,
+            CUSTOMER_MOVE_SPEED_X_PX_PER_MS,
+            CUSTOMER_MOVE_SPEED_Y_PX_PER_MS,
+        )?;
+        let segment_completes_at_ms = segment_started_at_ms
+            .checked_add(segment_ms)
+            .ok_or(ServicePathError::ArithmeticOverflow)?;
+        if server_now_ms < segment_completes_at_ms {
+            return Ok(ServicePathSegmentProjection {
+                kind: plan.kind,
+                from,
+                to,
+                step_index: u16::try_from(index)
+                    .map_err(|_| ServicePathError::ArithmeticOverflow)?,
+                step_count: plan.step_count,
+                segment_started_at_ms,
+                segment_completes_at_ms,
+                path_started_at_ms: plan.started_at_ms,
+                path_completes_at_ms: plan.completes_at_ms,
+                path_remaining_ms: plan.remaining_ms(server_now_ms),
+            });
+        }
+        segment_started_at_ms = segment_completes_at_ms;
+        from = to;
+    }
+
+    Err(ServicePathError::PathPlanMismatch)
 }
 
 #[cfg(test)]
@@ -515,6 +598,43 @@ mod tests {
             TilePoint { x: 0, y: 7 }
         )
         .unwrap());
+    }
+
+
+    #[test]
+    fn customer_segment_projection_advances_without_browser_path_authority() {
+        let layout = layout();
+        let plan =
+            plan_customer_path_to_chair(&layout, TilePoint { x: 1, y: 4 }, 11, 50_000).unwrap();
+        let first =
+            project_customer_path_to_chair_segment(&layout, 11, plan, 50_000).unwrap();
+        assert_eq!(first.step_index, 0);
+        assert_eq!(first.from, TilePoint { x: 1, y: 4 });
+        assert!(first.segment_completes_at_ms > first.segment_started_at_ms);
+
+        let next_now = first.segment_completes_at_ms;
+        if next_now < plan.completes_at_ms {
+            let next =
+                project_customer_path_to_chair_segment(&layout, 11, plan, next_now).unwrap();
+            assert!(next.step_index > first.step_index);
+            assert_eq!(next.from, first.to);
+        }
+    }
+
+    #[test]
+    fn completed_path_has_no_moving_segment_projection() {
+        let layout = layout();
+        let plan =
+            plan_customer_path_to_chair(&layout, TilePoint { x: 1, y: 4 }, 11, 50_000).unwrap();
+        assert_eq!(
+            project_customer_path_to_chair_segment(
+                &layout,
+                11,
+                plan,
+                plan.completes_at_ms
+            ),
+            Err(ServicePathError::PathCompletionTimeMismatch)
+        );
     }
 
 
