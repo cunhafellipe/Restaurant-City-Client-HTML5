@@ -1,0 +1,149 @@
+{
+  "schemaVersion": 1,
+  "baseline": "0.9.143a",
+  "source": {
+    "canonicalArchiveSha256": "4493be9bc4c2f87ef80ca7afa5321e12bb94a7ec6ed2f0a673b4d48b19170ef4",
+    "canonicalActionScriptRepository": "n3r0-b1n4ry/RestaurantCity_SWF",
+    "canonicalActionScriptCommit": "d552cfa4767fe4fb5b7899493c30bfb375afc2c1",
+    "files": [
+      "decompile/game/src/com/playfish/games/cooking/WorldRestaurantPlay.as",
+      "decompile/game/src/com/playfish/games/cooking/actors/Customer.as",
+      "decompile/game/src/com/playfish/games/cooking/actors/ChefActor.as",
+      "decompile/game/src/com/playfish/games/cooking/actors/Waitor.as",
+      "decompile/game/src/com/playfish/games/cooking/DishOrder.as",
+      "decompile/game/src/com/playfish/games/cooking/GameWorld.as",
+      "decompile/game/src/com/playfish/games/cooking/Recipe.as"
+    ]
+  },
+  "customer": {
+    "states": {
+      "walking": 0,
+      "deciding": 1,
+      "ordering": 2,
+      "waiting": 3,
+      "waitingForFood": 4,
+      "eating": 5,
+      "paying": 6,
+      "angry": 7,
+      "leaving": 8,
+      "left": 9,
+      "waitingToSit": 10,
+      "pedestrian": 11,
+      "tooMuchTrash": 12,
+      "noTable": 13,
+      "playingInteractiveItem": 14,
+      "walkingToToilet": 15,
+      "onToilet": 16,
+      "noCleanTable": 17,
+      "walkingToSink": 18,
+      "usingSink": 19,
+      "walkingToEntrance": 20,
+      "restaurantClosed": 21
+    },
+    "timersMs": {
+      "decisionAfterSitting": 1000,
+      "waitingForOrder": 10000,
+      "waitingForTable": 20000,
+      "waitingForFood": 120000,
+      "waitingForChair": 5000,
+      "eating": 25000,
+      "paying": 2000,
+      "interactiveItem": 30000,
+      "toilet": 10000,
+      "sink": 4000,
+      "restaurantClosed": 2000
+    }
+  },
+  "admission": {
+    "customersPerMinutePerDemand": 0.05,
+    "maxDemand": 550,
+    "randomJitterMs": {
+      "minInclusive": -3000,
+      "maxExclusive": 3000
+    },
+    "formula": "60000 / (min(demandPoints, 550) * 0.05) + rnd(-3000, 3000)",
+    "chairSelectionOrder": [
+      "empty chair with compatible recipe, table and free table",
+      "empty chair with compatible recipe and table",
+      "empty chair with table and free table",
+      "empty chair with table",
+      "any empty non-toilet chair"
+    ],
+    "chairRules": {
+      "toiletExcluded": true,
+      "mustHaveNoCustomer": true,
+      "foodRequiresCanOrderFoodWhenRecipeKnown": true,
+      "drinkRequiresCanOrderDrinkWhenRecipeKnown": true,
+      "tableIsFacingChair": true
+    }
+  },
+  "recipes": {
+    "menuRecipeTypes": 4,
+    "drinkType": 3,
+    "drinkStartLevel": 15,
+    "selection": "random currently selected recipe from a randomly selected unlocked menu type"
+  },
+  "chef": {
+    "cookDurationMs": {
+      "min": 16000,
+      "max": 32000
+    },
+    "workTimePercentRules": {
+      "below20": 32000,
+      "atLeast80": 16000,
+      "between20And80": "32000 - (32000 - 16000) * (workPct - 20) / 60"
+    },
+    "assignment": "highest-workTime free chef that can serve the customer"
+  },
+  "waiter": {
+    "actionDelayMs": {
+      "min": 2000,
+      "max": 6000
+    },
+    "drinkMakingDelayMs": {
+      "min": 12000,
+      "max": 24000
+    },
+    "completedFood": "closest reachable free waiter that can serve the customer",
+    "emptyPlate": "closest reachable free waiter to plate tile, falling back to chair tile"
+  },
+  "happyPath": [
+    "customer admitted",
+    "customer reaches chair",
+    "1000ms decision",
+    "order attached to facing free table and queued",
+    "free compatible chef takes food order",
+    "customer enters waitingForFood",
+    "chef cooks for recovered stamina-dependent duration",
+    "completed order queued",
+    "free compatible waiter travels to kitchen and performs action delay",
+    "waiter serves customer",
+    "customer eats for 25000ms",
+    "empty plate queued and customer enters paying for 2000ms",
+    "plate clear settles meal exactly once",
+    "customer leaves happy unless optional post-meal toilet branch is taken"
+  ],
+  "payout": {
+    "trigger": "clearEmptyPlate(order)",
+    "coins": "recipe.cost",
+    "gourmetPointsDisplay": "1 + 0.2 * (recipe.level - 1)",
+    "gourmetPointStorage": {
+      "unit": "tenths",
+      "formula": "floor(displayPoints * 10)",
+      "integerEquivalentForLevelAtLeast1": "10 + 2 * (recipe.level - 1)"
+    },
+    "mustBeIdempotent": true,
+    "mustBeServerAuthoritative": true,
+    "notTriggeredBy": [
+      "customer finishing eating",
+      "customer entering paying",
+      "customer leaving"
+    ]
+  },
+  "determinism": {
+    "browserNeverGrantsReward": true,
+    "randomAndPathResultsBecomeExplicitInputs": true,
+    "stateTransitionsAreReplayable": true,
+    "networkRetryMustNotDuplicateSettlement": true
+  }
+}
