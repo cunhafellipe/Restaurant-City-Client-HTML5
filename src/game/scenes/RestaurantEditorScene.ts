@@ -12,6 +12,7 @@ import {
   type TilePoint,
 } from '../../core/restaurantGrid';
 import { computeHistoricalCurHeights } from '../../core/restaurantStacking';
+import { recoveredChairOverlayRotation } from '../../content/recoveredChairOverlay';
 import {
   recoveredRoomItemFrame,
   recoveredRoomItemFrameOffset,
@@ -164,6 +165,7 @@ export class RestaurantEditorScene extends Phaser.Scene {
   private activeService: RestaurantActiveService | null = null;
   private avatarAtlas: AvatarAtlasRuntimeDescriptor | null = null;
   private serviceActorSprites = new Map<ServiceActorRole, ServiceActorSpriteState>();
+  private serviceActorOverlaySprites: Phaser.GameObjects.Sprite[] = [];
 
   private room: RoomDimensions = INITIAL_ROOM;
   private selectedIndex = 0;
@@ -475,6 +477,8 @@ export class RestaurantEditorScene extends Phaser.Scene {
       state.sprite.destroy();
     }
     this.serviceActorSprites.clear();
+    for (const sprite of this.serviceActorOverlaySprites) sprite.destroy();
+    this.serviceActorOverlaySprites = [];
     const target = globalThis as typeof globalThis & {
       __ANEWON_RC_SERVICE_ACTORS__?: unknown;
     };
@@ -567,6 +571,91 @@ export class RestaurantEditorScene extends Phaser.Scene {
         elapsedMs: 0,
       };
       this.serviceActorSprites.set(actor.role, state);
+
+      let chairOverlay: Record<string, unknown> | null = null;
+      if (
+        actor.role === 'customer' &&
+        (actor.animation === 'sit' || actor.animation === 'eat')
+      ) {
+        const active = this.activeService;
+        const topology = this.serviceTopology;
+        if (!active || !topology) {
+          throw new Error(
+            'Seated customer cannot render without active service topology',
+          );
+        }
+        const chair = topology.chairs.find(
+          (candidate) => candidate.instanceId === active.chairInstanceId,
+        );
+        const chairSource = topology.source.items.find(
+          (candidate) => candidate.instanceId === active.chairInstanceId,
+        );
+        if (!chair || !chairSource) {
+          throw new Error(
+            `Seated customer chair #${active.chairInstanceId} is missing from topology`,
+          );
+        }
+        const definition = this.catalogById.get(chairSource.itemId);
+        if (!definition) {
+          throw new Error(
+            `Seated customer chair item #${chairSource.itemId} is missing from catalog`,
+          );
+        }
+        const overlay = recoveredChairOverlayRotation(
+          definition.id,
+          definition.className,
+          chair.rotation,
+        );
+        if (!overlay) {
+          throw new Error(
+            `Chair #${definition.id} has no recovered seated-customer overlay contract`,
+          );
+        }
+
+        chairOverlay = {
+          visible: overlay.visible,
+          rotation: overlay.rotation,
+          frame: overlay.frame,
+          canvasOriginPx: overlay.canvasOriginPx,
+          world: null,
+        };
+
+        if (overlay.visible) {
+          if (!overlay.frame || !overlay.canvasOriginPx) {
+            throw new Error(
+              `Visible chair overlay is missing raster geometry for #${definition.id}`,
+            );
+          }
+          const overlayFrame = this.textures.getFrame(
+            'indoor_asset',
+            overlay.frame,
+          );
+          if (!overlayFrame) {
+            throw new Error(
+              `Recovered chair overlay atlas frame missing: ${overlay.frame}`,
+            );
+          }
+          const overlaySprite = this.add
+            .sprite(
+              ORIGIN.x + projected.x + overlay.canvasOriginPx.x,
+              ORIGIN.y + projected.y + overlay.canvasOriginPx.y,
+              'indoor_asset',
+              overlay.frame,
+            )
+            .setOrigin(0, 0)
+            .setDepth(sprite.depth + 1);
+          this.serviceActorOverlaySprites.push(overlaySprite);
+          chairOverlay = {
+            ...chairOverlay,
+            world: {
+              x: overlaySprite.x,
+              y: overlaySprite.y,
+              depth: overlaySprite.depth,
+            },
+          };
+        }
+      }
+
       diagnostics.push({
         role: actor.role,
         animation: actor.animation,
@@ -575,6 +664,7 @@ export class RestaurantEditorScene extends Phaser.Scene {
         frame: resolved.frameKey,
         flipX: resolved.flipX,
         anchorPx: { ...resolved.anchorPx },
+        chairOverlay,
         world: {
           x: sprite.x,
           y: sprite.y,
