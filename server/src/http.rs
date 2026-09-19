@@ -354,7 +354,8 @@ fn map_service_error(error: ProductServiceError) -> PublicProductError {
         ) => PublicProductError::Internal,
         ProductServiceError::RestaurantAuthority(_) => PublicProductError::Unprocessable,
         ProductServiceError::MutationIdConflict => PublicProductError::Conflict,
-        ProductServiceError::RestaurantMutationSequenceExhausted => PublicProductError::Internal,
+        ProductServiceError::RestaurantMutationSequenceExhausted
+        | ProductServiceError::FloorMutationSequenceExhausted => PublicProductError::Internal,
     }
 }
 
