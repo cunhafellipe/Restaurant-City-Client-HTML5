@@ -10,6 +10,7 @@ use crate::restaurant::{
     PlacementIntent, RestaurantAuthorityError, RestaurantSnapshot, RestaurantState,
     WallpaperIntent, WallpaperOrientation, validate_floor_tile_intent, validate_wallpaper_intent,
 };
+use crate::topology::{ServiceLayoutSnapshot, derive_service_layout};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
@@ -1834,6 +1835,23 @@ where
             .map(|loaded| loaded.state)
             .unwrap_or_else(|| ProductAggregate::new(session.subject, self.initial_room));
         state.restaurant_product_snapshot(session)
+    }
+
+    pub fn load_restaurant_with_topology(
+        &self,
+        session_token: &str,
+    ) -> Result<(RestaurantProductSnapshot, ServiceLayoutSnapshot), ProductServiceError> {
+        let session = self.verify(session_token)?;
+        let state = self
+            .store
+            .load(session.subject)
+            .map_err(ProductServiceError::Store)?
+            .map(|loaded| loaded.state)
+            .unwrap_or_else(|| ProductAggregate::new(session.subject, self.initial_room));
+        let snapshot = state.restaurant_product_snapshot(session)?;
+        let topology = derive_service_layout(&snapshot.restaurant, &self.catalog)
+            .map_err(|_| ProductServiceError::Store(ProductStateStoreError::Corrupt))?;
+        Ok((snapshot, topology))
     }
 
     pub fn into_store(self) -> S {
