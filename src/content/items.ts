@@ -128,7 +128,8 @@ export function buildRestaurantItemDefinition(
   const wallFloorGeometry = recoveredWallFloorGeometry(id, className);
   const itemHeightTwips =
     roomGeometry?.itemHeightTwips ??
-    (wallFloorGeometry?.serverCatalogEnabled
+    (wallFloorGeometry?.runtimeGeometryEnabled ||
+    wallFloorGeometry?.serverCatalogEnabled
       ? wallFloorGeometry.itemHeightTwips
       : null);
   const stackable =
