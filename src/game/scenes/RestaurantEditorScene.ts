@@ -59,6 +59,8 @@ const INITIAL_ROOM: RoomDimensions = {
 
 const ORIGIN = { x: 380, y: 105 };
 const SIMPLE_WINDOW_ITEM_ID = 3000001;
+const DEFAULT_WALL_ITEM_ID = 3090000;
+const DEFAULT_WALL_CORNER_ITEM_ID = 3090001;
 
 type EditorPlacementValidation =
   | ReturnType<typeof validateStructuralPlacement>
@@ -73,6 +75,7 @@ export class RestaurantEditorScene extends Phaser.Scene {
   private previewGraphics!: Phaser.GameObjects.Graphics;
   private committedSprites: Phaser.GameObjects.Sprite[] = [];
   private floorSprites: Phaser.GameObjects.Sprite[] = [];
+  private wallSprites: Phaser.GameObjects.Sprite[] = [];
   private previewSprite: Phaser.GameObjects.Sprite | null = null;
   private visualIndex: RestaurantItemVisualIndex | null = null;
   private authority!: RestaurantAuthority;
@@ -349,6 +352,7 @@ export class RestaurantEditorScene extends Phaser.Scene {
     }
 
     this.drawFloor();
+    this.drawDefaultWalls();
     this.drawCommittedPlacements();
     this.refreshSelectedItem();
   }
@@ -922,6 +926,57 @@ export class RestaurantEditorScene extends Phaser.Scene {
     } finally {
       this.placementInFlight = false;
     }
+  }
+
+  private drawDefaultWalls(): void {
+    for (const sprite of this.wallSprites) sprite.destroy();
+    this.wallSprites = [];
+
+    if (!this.visualIndex || this.catalogById.size === 0) return;
+
+    const wall = this.catalogById.get(DEFAULT_WALL_ITEM_ID);
+    const corner = this.catalogById.get(DEFAULT_WALL_CORNER_ITEM_ID);
+    if (!wall?.placementFootprint || !corner?.placementFootprint) {
+      throw new Error('Recovered default wall geometry is unavailable');
+    }
+
+    const wallVisual = this.itemVisual(wall);
+    const cornerVisual = this.itemVisual(corner);
+    if (!wallVisual || wallVisual.frames.length < 2 || !cornerVisual) {
+      throw new Error('Recovered default wall visuals are unavailable');
+    }
+
+    for (let x = 1; x < this.room.insideX; x += 1) {
+      const sprite = this.createItemSprite(
+        wall,
+        wallVisual,
+        1,
+        { x, y: 0 },
+        1,
+      );
+      this.wallSprites.push(sprite);
+    }
+
+    for (let y = 1; y < this.room.insideY; y += 1) {
+      const sprite = this.createItemSprite(
+        wall,
+        wallVisual,
+        0,
+        { x: 0, y },
+        1,
+      );
+      this.wallSprites.push(sprite);
+    }
+
+    this.wallSprites.push(
+      this.createItemSprite(
+        corner,
+        cornerVisual,
+        0,
+        { x: 0, y: 0 },
+        1,
+      ),
+    );
   }
 
   private drawCommittedPlacements(): void {
