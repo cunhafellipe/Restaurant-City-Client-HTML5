@@ -906,11 +906,7 @@ mod tests {
         let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
         assert_eq!(json["wallpaper"]["rotation"], 1);
 
-        let layout = app
-            .clone()
-            .oneshot(authenticated_get())
-            .await
-            .unwrap();
+        let layout = app.clone().oneshot(authenticated_get()).await.unwrap();
         assert_eq!(layout.status(), StatusCode::OK);
         let body = to_bytes(layout.into_body(), MAX_REQUEST_BODY_BYTES)
             .await
