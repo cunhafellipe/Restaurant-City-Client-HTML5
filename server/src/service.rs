@@ -16,7 +16,10 @@ use crate::restaurant::{
     PlacementIntent, RestaurantAuthorityError, RestaurantSnapshot, RestaurantState,
     WallpaperIntent, WallpaperOrientation, validate_floor_tile_intent, validate_wallpaper_intent,
 };
-use crate::service_clock::{ServiceDeadlines, ServiceTimingError, validate_service_deadlines};
+use crate::service_clock::{
+    ServiceDeadlines, ServiceTimeSource, ServiceTimingError, SystemServiceTimeSource,
+    due_service_event, validate_service_deadlines,
+};
 use crate::topology::{ServiceLayoutSnapshot, derive_service_layout};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -29,6 +32,34 @@ const FLOOR_TILE_PERSISTENCE_SCHEMA_VERSION: u8 = 3;
 const JOURNALED_OBJECT_PERSISTENCE_SCHEMA_VERSION: u8 = 2;
 const LEGACY_PRODUCT_PERSISTENCE_SCHEMA_VERSION: u8 = 1;
 const MAX_STORE_RETRIES: usize = 3;
+
+fn timed_event_key(event: ServiceLoopEvent) -> Option<&'static str> {
+    match event {
+        ServiceLoopEvent::DecisionElapsed => Some("decision"),
+        ServiceLoopEvent::CookElapsed => Some("cook"),
+        ServiceLoopEvent::WaiterActionElapsed => Some("waiter"),
+        ServiceLoopEvent::EatingElapsed => Some("eating"),
+        ServiceLoopEvent::PayingElapsed => Some("paying"),
+        _ => None,
+    }
+}
+
+fn internal_service_mutation_id(
+    kind: &str,
+    service_id: u64,
+    effective_at_ms: u64,
+    event: Option<ServiceLoopEvent>,
+) -> Result<MutationId, ProductServiceError> {
+    let event_key = match event {
+        Some(event) => timed_event_key(event)
+            .ok_or(ProductServiceError::Store(ProductStateStoreError::Corrupt))?,
+        None => "none",
+    };
+    MutationId::new(format!(
+        "__anewon_service_{kind}_{service_id}_{effective_at_ms}_{event_key}"
+    ))
+    .map_err(|_| ProductServiceError::Store(ProductStateStoreError::Corrupt))
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum PlacementMutationOutcome {
@@ -52,6 +83,14 @@ pub enum WallpaperMutationOutcome {
 pub enum ActiveServiceMutationOutcome {
     Applied(Option<ActiveServiceRecord>),
     Duplicate(Option<ActiveServiceRecord>),
+}
+
+impl ActiveServiceMutationOutcome {
+    fn record(self) -> Option<ActiveServiceRecord> {
+        match self {
+            Self::Applied(record) | Self::Duplicate(record) => record,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -2490,6 +2529,7 @@ pub struct RestaurantProductService<V, S> {
     store: S,
     catalog: PlacementCatalog,
     initial_room: RoomDimensions,
+    clock: Arc<dyn ServiceTimeSource>,
 }
 
 impl<V, S> RestaurantProductService<V, S>
@@ -2503,11 +2543,28 @@ where
         catalog: PlacementCatalog,
         initial_room: RoomDimensions,
     ) -> Self {
+        Self::new_with_clock(
+            verifier,
+            store,
+            catalog,
+            initial_room,
+            Arc::new(SystemServiceTimeSource),
+        )
+    }
+
+    pub fn new_with_clock(
+        verifier: V,
+        store: S,
+        catalog: PlacementCatalog,
+        initial_room: RoomDimensions,
+        clock: Arc<dyn ServiceTimeSource>,
+    ) -> Self {
         Self {
             verifier,
             store,
             catalog,
             initial_room,
+            clock,
         }
     }
 
@@ -2742,11 +2799,16 @@ where
 
         for _ in 0..MAX_STORE_RETRIES {
             let (expected_revision, mut state) = self.load_or_initialize(session.subject)?;
-            let outcome = state.start_active_service(
+            let effective_at_ms = self
+                .clock
+                .now_ms()
+                .map_err(ProductServiceError::ServiceTimingAuthority)?;
+            let outcome = state.start_active_service_at(
                 session,
                 &self.catalog,
                 mutation_id.clone(),
                 assignment,
+                effective_at_ms,
             )?;
 
             if matches!(outcome, ActiveServiceMutationOutcome::Duplicate(_)) {
@@ -2777,8 +2839,17 @@ where
 
         for _ in 0..MAX_STORE_RETRIES {
             let (expected_revision, mut state) = self.load_or_initialize(session.subject)?;
-            let outcome =
-                state.transition_active_service(session, mutation_id.clone(), service_id, event)?;
+            let effective_at_ms = self
+                .clock
+                .now_ms()
+                .map_err(ProductServiceError::ServiceTimingAuthority)?;
+            let outcome = state.transition_active_service_at(
+                session,
+                mutation_id.clone(),
+                service_id,
+                event,
+                effective_at_ms,
+            )?;
 
             if matches!(outcome, ActiveServiceMutationOutcome::Duplicate(_)) {
                 return Ok(outcome);
@@ -2832,14 +2903,96 @@ where
         session_token: &str,
     ) -> Result<Option<ActiveServiceRecord>, ProductServiceError> {
         let session = self.verify(session_token)?;
-        let state = self
-            .store
-            .load(session.subject)
-            .map_err(ProductServiceError::Store)?
-            .map(|loaded| loaded.state)
-            .unwrap_or_else(|| ProductAggregate::new(session.subject, self.initial_room));
-        state.require_subject(session)?;
-        Ok(state.active_service())
+
+        for _ in 0..MAX_STORE_RETRIES {
+            let loaded = self
+                .store
+                .load(session.subject)
+                .map_err(ProductServiceError::Store)?;
+            let Some(loaded) = loaded else {
+                return Ok(None);
+            };
+            let expected_revision = Some(loaded.store_revision);
+            let mut state = loaded.state;
+            state.require_subject(session)?;
+
+            let Some(mut active) = state.active_service() else {
+                return Ok(None);
+            };
+            let now_ms = self
+                .clock
+                .now_ms()
+                .map_err(ProductServiceError::ServiceTimingAuthority)?;
+            let mut changed = false;
+
+            if !active.timing_anchored {
+                let mutation_id = internal_service_mutation_id(
+                    "anchor",
+                    active.identity.service_id,
+                    now_ms,
+                    None,
+                )?;
+                let outcome = state.anchor_active_service_timing(
+                    session,
+                    mutation_id,
+                    active.identity.service_id,
+                    now_ms,
+                )?;
+                active = outcome
+                    .record()
+                    .ok_or(ProductServiceError::Store(ProductStateStoreError::Corrupt))?;
+                changed = true;
+            }
+
+            for _ in 0..8 {
+                let Some(due) = due_service_event(active.state, active.deadlines, now_ms)
+                    .map_err(ProductServiceError::ServiceTimingAuthority)?
+                else {
+                    break;
+                };
+                let mutation_id = internal_service_mutation_id(
+                    "timer",
+                    active.identity.service_id,
+                    due.effective_at_ms,
+                    Some(due.event),
+                )?;
+                let outcome = state.transition_active_service_at(
+                    session,
+                    mutation_id,
+                    active.identity.service_id,
+                    due.event,
+                    due.effective_at_ms,
+                )?;
+                active = outcome
+                    .record()
+                    .ok_or(ProductServiceError::Store(ProductStateStoreError::Corrupt))?;
+                changed = true;
+            }
+
+            if due_service_event(active.state, active.deadlines, now_ms)
+                .map_err(ProductServiceError::ServiceTimingAuthority)?
+                .is_some()
+            {
+                return Err(ProductServiceError::ServiceTimingAuthority(
+                    ServiceTimingError::CatchUpLoop,
+                ));
+            }
+
+            if !changed {
+                return Ok(Some(active));
+            }
+
+            match self
+                .store
+                .compare_and_swap(session.subject, expected_revision, state)
+            {
+                Ok(_) => return Ok(Some(active)),
+                Err(ProductStateStoreError::Conflict) => continue,
+                Err(error) => return Err(ProductServiceError::Store(error)),
+            }
+        }
+
+        Err(ProductServiceError::StoreConflict)
     }
 
     pub fn load_restaurant(
