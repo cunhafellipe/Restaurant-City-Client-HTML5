@@ -228,6 +228,7 @@ describe('HttpRestaurantAuthority', () => {
           order_deadline_at_ms: 124000,
           customer_remaining_ms: 120000,
           order_remaining_ms: 24000,
+          path: null,
         },
       }),
     );
@@ -254,6 +255,7 @@ describe('HttpRestaurantAuthority', () => {
       orderDeadlineAtMs: 124000,
       customerRemainingMs: 120000,
       orderRemainingMs: 24000,
+      path: null,
     });
     expect(fetcher.mock.calls[0]?.[0]).toBe('/api/v1/restaurant/service');
     expect(fetcher.mock.calls[0]?.[1]?.method).toBe('GET');
@@ -289,6 +291,7 @@ describe('HttpRestaurantAuthority', () => {
             order_deadline_at_ms: null,
             customer_remaining_ms: null,
             order_remaining_ms: null,
+            path: null,
           },
         }),
     );
@@ -321,11 +324,157 @@ describe('HttpRestaurantAuthority', () => {
             order_deadline_at_ms: null,
             customer_remaining_ms: null,
             order_remaining_ms: null,
+            path: null,
           },
         }),
     );
     await expect(invalidState.loadActiveService()).rejects.toThrow(
       'active service state',
+    );
+  });
+
+  it('loads and validates a read-only authoritative customer chair path', async () => {
+    const authority = new HttpRestaurantAuthority(
+      '/api/v1',
+      async () =>
+        okJson({
+          server_now_ms: 100_500,
+          active: {
+            service_id: 1,
+            restaurant_mutation_sequence: 3,
+            customer_id: 1,
+            order_id: 1,
+            chair_instance_id: 11,
+            table_instance_id: 12,
+            chef_employee_id: 101,
+            kitchen_instance_id: 13,
+            waiter_employee_id: 201,
+            waiter_tile_x: 4,
+            waiter_tile_y: 4,
+            customer_state: 'walking-to-chair',
+            order_state: 'created',
+            customer_timer_ms: null,
+            order_timer_ms: null,
+            customer_deadline_at_ms: null,
+            order_deadline_at_ms: null,
+            customer_remaining_ms: null,
+            order_remaining_ms: null,
+            path: {
+              kind: 'customer-to-chair',
+              from_tile_x: 0,
+              from_tile_y: 8,
+              to_tile_x: 1,
+              to_tile_y: 7,
+              step_index: 0,
+              step_count: 4,
+              segment_started_at_ms: 100_000,
+              segment_completes_at_ms: 100_667,
+              path_started_at_ms: 100_000,
+              path_completes_at_ms: 103_335,
+              path_remaining_ms: 2_835,
+            },
+          },
+        }),
+    );
+
+    await expect(authority.loadActiveService()).resolves.toMatchObject({
+      customerState: 'walking-to-chair',
+      serverNowMs: 100500,
+      path: {
+        kind: 'customer-to-chair',
+        fromTileX: 0,
+        fromTileY: 8,
+        toTileX: 1,
+        toTileY: 7,
+        stepIndex: 0,
+        stepCount: 4,
+        segmentStartedAtMs: 100000,
+        segmentCompletesAtMs: 100667,
+        pathStartedAtMs: 100000,
+        pathCompletesAtMs: 103335,
+        pathRemainingMs: 2835,
+      },
+    });
+  });
+
+  it('rejects missing or forged active-service path authority', async () => {
+    const missing = new HttpRestaurantAuthority(
+      '/api/v1',
+      async () =>
+        okJson({
+          server_now_ms: 100_500,
+          active: {
+            service_id: 1,
+            restaurant_mutation_sequence: 3,
+            customer_id: 1,
+            order_id: 1,
+            chair_instance_id: 11,
+            table_instance_id: 12,
+            chef_employee_id: 101,
+            kitchen_instance_id: 13,
+            waiter_employee_id: 201,
+            waiter_tile_x: 4,
+            waiter_tile_y: 4,
+            customer_state: 'walking-to-chair',
+            order_state: 'created',
+            customer_timer_ms: null,
+            order_timer_ms: null,
+            customer_deadline_at_ms: null,
+            order_deadline_at_ms: null,
+            customer_remaining_ms: null,
+            order_remaining_ms: null,
+            path: null,
+          },
+        }),
+    );
+    await expect(missing.loadActiveService()).rejects.toThrow(
+      'active service path',
+    );
+
+    const forged = new HttpRestaurantAuthority(
+      '/api/v1',
+      async () =>
+        okJson({
+          server_now_ms: 100_500,
+          active: {
+            service_id: 1,
+            restaurant_mutation_sequence: 3,
+            customer_id: 1,
+            order_id: 1,
+            chair_instance_id: 11,
+            table_instance_id: 12,
+            chef_employee_id: 101,
+            kitchen_instance_id: 13,
+            waiter_employee_id: 201,
+            waiter_tile_x: 4,
+            waiter_tile_y: 4,
+            customer_state: 'walking-to-chair',
+            order_state: 'created',
+            customer_timer_ms: null,
+            order_timer_ms: null,
+            customer_deadline_at_ms: null,
+            order_deadline_at_ms: null,
+            customer_remaining_ms: null,
+            order_remaining_ms: null,
+            path: {
+              kind: 'customer-to-chair',
+              from_tile_x: 0,
+              from_tile_y: 8,
+              to_tile_x: 1,
+              to_tile_y: 7,
+              step_index: 0,
+              step_count: 4,
+              segment_started_at_ms: 100_000,
+              segment_completes_at_ms: 100_667,
+              path_started_at_ms: 100_000,
+              path_completes_at_ms: 103_335,
+              path_remaining_ms: 2_834,
+            },
+          },
+        }),
+    );
+    await expect(forged.loadActiveService()).rejects.toThrow(
+      'active service path timing',
     );
   });
 
