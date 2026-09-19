@@ -22,6 +22,14 @@ const WALL_SCREENSHOT = path.join(WORK, 'restaurant-window.png');
 const WALL_META = path.join(WORK, 'restaurant-window.json');
 const DOOR_PROBE_SCREENSHOT = path.join(WORK, 'restaurant-door-probe.png');
 const DOOR_PROBE_META = path.join(WORK, 'restaurant-door-probe.json');
+const DOOR_LEFT_MASK_SCREENSHOT = path.join(
+  WORK,
+  'restaurant-door-left-mask-probe.png',
+);
+const DOOR_LEFT_MASK_META = path.join(
+  WORK,
+  'restaurant-door-left-mask-probe.json',
+);
 const DOOR_PROBE_GOLDEN = path.join(
   REPO,
   'tests',
@@ -1371,6 +1379,94 @@ try {
     `${JSON.stringify(doorProbeMetadata, null, 2)}\n`,
   );
 
+  fixtureState = structuredClone(doorProbeFixtureSeed);
+  await cdp.send('Page.navigate', {
+    url: `${url}&doorProbe=1&doorProbeRotation=0&doorMaskOnly=1`,
+  });
+  const doorLeftMaskState = await waitForRuntime(
+    cdp,
+    `(() => {
+      const status = document.querySelector('.rc-status');
+      const canvas = document.querySelector('#game-canvas-host canvas');
+      return {
+        phase: status?.dataset.phase ?? null,
+        status: status?.textContent ?? '',
+        probe: globalThis.__ANEWON_RC_DOOR_PROBE__ ?? null,
+        canvas: canvas ? (() => {
+          const rect = canvas.getBoundingClientRect();
+          return {
+            width: canvas.width,
+            height: canvas.height,
+            x: rect.x,
+            y: rect.y,
+            cssWidth: rect.width,
+            cssHeight: rect.height,
+          };
+        })() : null,
+      };
+    })()`,
+    (value) =>
+      value?.phase === 'editing' &&
+      value?.probe?.rotation === 0 &&
+      value?.probe?.tile?.x === 0 &&
+      value?.probe?.tile?.y === 2 &&
+      value?.probe?.maskOnly === true &&
+      value?.probe?.wallFrame === 'indoor_asset/wall2/001' &&
+      value?.probe?.maskFrame === 'indoor_asset/doorwaymask/001' &&
+      value?.probe?.doorFrame === null &&
+      value?.canvas?.width === 760 &&
+      value?.canvas?.height === 600,
+    8000,
+    'Simple Door left-wall erase-mask probe',
+  );
+  await delay(300);
+
+  const doorLeftMaskShot = await cdp.send('Page.captureScreenshot', {
+    format: 'png',
+    fromSurface: true,
+    captureBeyondViewport: false,
+    clip: {
+      x: doorLeftMaskState.canvas.x,
+      y: doorLeftMaskState.canvas.y,
+      width: doorLeftMaskState.canvas.cssWidth,
+      height: doorLeftMaskState.canvas.cssHeight,
+      scale: 1,
+    },
+  });
+  if (
+    typeof doorLeftMaskShot.data !== 'string' ||
+    doorLeftMaskShot.data.length === 0
+  ) {
+    throw new Error('CDP did not return Simple Door left-wall mask screenshot');
+  }
+  fs.writeFileSync(
+    DOOR_LEFT_MASK_SCREENSHOT,
+    Buffer.from(doorLeftMaskShot.data, 'base64'),
+  );
+  const doorLeftMaskPng = PNG.sync.read(
+    fs.readFileSync(DOOR_LEFT_MASK_SCREENSHOT),
+  );
+  const doorLeftMaskMetadata = {
+    schemaVersion: 1,
+    fixture: 'simple-door-3010000-left-mask-probe-at-0-2',
+    state: doorLeftMaskState,
+    screenshot: path
+      .relative(REPO, DOOR_LEFT_MASK_SCREENSHOT)
+      .replaceAll('\\\\', '/'),
+    pngSha256: sha256(DOOR_LEFT_MASK_SCREENSHOT),
+    pixelSha256: bufferSha256(doorLeftMaskPng.data),
+    blockSize: 8,
+    quantizedBlockSha256: quantizedBlockSignature(doorLeftMaskPng, 8),
+    goldenFrozen: false,
+  };
+  fs.writeFileSync(
+    DOOR_LEFT_MASK_META,
+    `${JSON.stringify(doorLeftMaskMetadata, null, 2)}\n`,
+  );
+  console.log(
+    `DOOR LEFT MASK PROBE CANDIDATE | fixture=simple-door-3010000-left-mask-probe-at-0-2 | pixel=${doorLeftMaskMetadata.pixelSha256} | png=${doorLeftMaskMetadata.pngSha256} | block=${doorLeftMaskMetadata.quantizedBlockSha256} | maskLocal=${JSON.stringify(doorLeftMaskState.probe.maskLocal)}`,
+  );
+
   const metadata = {
     schemaVersion: 2,
     browser,
@@ -1384,6 +1480,7 @@ try {
     floorVisual: floorMetadata,
     wallVisual: wallMetadata,
     doorProbeVisual: doorProbeMetadata,
+    doorLeftMaskProbeVisual: doorLeftMaskMetadata,
     interaction: {
       selected: selectedState.selection,
       rotated: rotatedState,
