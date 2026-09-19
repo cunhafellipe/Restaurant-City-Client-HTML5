@@ -2503,18 +2503,27 @@ pub enum ProductServiceError {
     SubjectMismatch,
     PlayerAuthority(AuthorityError),
     RestaurantAuthority(RestaurantAuthorityError),
+    ActiveServiceAuthority(ActiveServiceError),
+    ServiceLoopAuthority(ServiceLoopError),
     ItemUnavailable {
         item_id: u32,
         owned: u32,
         placed: u32,
     },
     MutationIdConflict,
+    ActiveServiceInProgress,
+    ActiveServiceLayoutLocked,
+    ActiveServiceNotFound,
+    ActiveServiceIdMismatch,
+    ActiveServiceNotComplete,
     WallpaperNotApplied {
         rotation: u8,
     },
     RestaurantMutationSequenceExhausted,
     FloorMutationSequenceExhausted,
     WallpaperMutationSequenceExhausted,
+    ServiceMutationSequenceExhausted,
+    ServiceIdExhausted,
 }
 
 #[cfg(test)]
