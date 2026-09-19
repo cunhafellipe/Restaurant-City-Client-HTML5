@@ -1074,17 +1074,25 @@ export class RestaurantEditorScene extends Phaser.Scene {
     maskStamp.destroy();
     this.doorProbeWall = rt;
 
-    const doorSprite = this.createItemSprite(
-      door,
-      doorVisual,
-      rotation,
-      tile,
-      1,
+    const maskOnly = new URLSearchParams(window.location.search).has(
+      'doorMaskOnly',
     );
-    // WorldRestaurant.placeRoomItem: door rotation 1 uses
-    // getTileDrawPriority(x - 1, y + 1).
-    doorSprite.setDepth(this.itemDrawPriority({ x: tile.x - 1, y: tile.y + 1 }));
-    this.doorProbeDoor = doorSprite;
+    let doorSprite: Phaser.GameObjects.Sprite | null = null;
+    if (!maskOnly) {
+      doorSprite = this.createItemSprite(
+        door,
+        doorVisual,
+        rotation,
+        tile,
+        1,
+      );
+      // WorldRestaurant.placeRoomItem: door rotation 1 uses
+      // getTileDrawPriority(x - 1, y + 1).
+      doorSprite.setDepth(
+        this.itemDrawPriority({ x: tile.x - 1, y: tile.y + 1 }),
+      );
+      this.doorProbeDoor = doorSprite;
+    }
 
     const target = globalThis as typeof globalThis & {
       __ANEWON_RC_DOOR_PROBE__?: unknown;
@@ -1092,18 +1100,21 @@ export class RestaurantEditorScene extends Phaser.Scene {
     target.__ANEWON_RC_DOOR_PROBE__ = {
       tile,
       rotation,
+      maskOnly,
       wallFrame: wallFrameName,
       wallCanvas: { width: wallFrame.width, height: wallFrame.height },
       wallWorld: { x: wallX, y: wallY, depth: sourceWall.depth },
       maskFrame: mask.frame,
       maskLocal: { x: maskX, y: maskY },
       maskCanvas: mask.atlasSize,
-      doorFrame: doorSprite.frame.name,
-      doorWorld: {
-        x: doorSprite.x,
-        y: doorSprite.y,
-        depth: doorSprite.depth,
-      },
+      doorFrame: doorSprite?.frame.name ?? null,
+      doorWorld: doorSprite
+        ? {
+            x: doorSprite.x,
+            y: doorSprite.y,
+            depth: doorSprite.depth,
+          }
+        : null,
     };
   }
 
