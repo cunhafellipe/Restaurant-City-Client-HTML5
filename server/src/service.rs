@@ -1495,6 +1495,22 @@ mod tests {
         .unwrap()
     }
 
+    fn door_catalog() -> PlacementCatalog {
+        PlacementCatalog::new([ItemPlacementDefinition {
+            item_id: 3_010_000,
+            footprint: Footprint {
+                size_x: 1,
+                size_y: 1,
+            },
+            rotation_count: 2,
+            flags: PlacementFlags {
+                wall_decoration_item: true,
+                ..PlacementFlags::default()
+            },
+        }])
+        .unwrap()
+    }
+
     fn floor_catalog() -> PlacementCatalog {
         PlacementCatalog::new([
             ItemPlacementDefinition {
@@ -1678,6 +1694,132 @@ mod tests {
         assert_eq!(snapshot.restaurant.items, vec![moved]);
         assert_eq!(snapshot.inventory[0].placed, 1);
         assert_eq!(snapshot.inventory[0].available, 0);
+    }
+
+    #[test]
+    fn simple_door_place_transform_remove_idempotency_and_reopen() {
+        let session = VerifiedProductSession {
+            subject: subject(7),
+            session_id: ProductSessionId::from_verified_platform_bytes([9; 16]).unwrap(),
+        };
+        let catalog = door_catalog();
+        let mut aggregate = ProductAggregate::new(subject(7), room());
+        aggregate
+            .apply_player_command(
+                session,
+                mutation("grant-simple-door"),
+                Command::GrantInventory {
+                    item_id: 3_010_000,
+                    quantity: 1,
+                },
+            )
+            .unwrap();
+
+        let first = aggregate
+            .place_owned_item(
+                session,
+                &catalog,
+                mutation("place-simple-door"),
+                PlacementIntent {
+                    item_id: 3_010_000,
+                    tile: TilePoint { x: 2, y: 0 },
+                    rotation: 0,
+                },
+            )
+            .unwrap();
+        let placed = match first {
+            PlacementMutationOutcome::Applied(item) => item,
+            PlacementMutationOutcome::Duplicate(_) => unreachable!(),
+        };
+        assert_eq!(placed.rotation, 1);
+        assert_eq!(
+            aggregate
+                .place_owned_item(
+                    session,
+                    &catalog,
+                    mutation("place-simple-door"),
+                    PlacementIntent {
+                        item_id: 3_010_000,
+                        tile: TilePoint { x: 2, y: 0 },
+                        rotation: 15,
+                    },
+                )
+                .unwrap(),
+            PlacementMutationOutcome::Duplicate(placed)
+        );
+
+        let moved = aggregate
+            .transform_owned_item(
+                session,
+                &catalog,
+                mutation("move-simple-door"),
+                placed.instance_id,
+                TilePoint { x: 0, y: 3 },
+                15,
+            )
+            .unwrap();
+        let moved = match moved {
+            PlacementMutationOutcome::Applied(item) => item,
+            PlacementMutationOutcome::Duplicate(_) => unreachable!(),
+        };
+        assert_eq!(moved.rotation, 0);
+        assert_eq!(
+            aggregate
+                .transform_owned_item(
+                    session,
+                    &catalog,
+                    mutation("move-simple-door"),
+                    placed.instance_id,
+                    TilePoint { x: 0, y: 3 },
+                    0,
+                )
+                .unwrap(),
+            PlacementMutationOutcome::Duplicate(moved)
+        );
+
+        let encoded = aggregate.encode_persisted().unwrap();
+        let mut restored = ProductAggregate::decode_persisted(&catalog, &encoded).unwrap();
+        assert_eq!(restored, aggregate);
+        let before_remove = restored.restaurant_product_snapshot(session).unwrap();
+        assert_eq!(before_remove.restaurant.items, vec![moved]);
+        assert_eq!(before_remove.inventory[0].placed, 1);
+        assert_eq!(before_remove.inventory[0].available, 0);
+
+        let removed = restored
+            .remove_owned_item(
+                session,
+                mutation("remove-simple-door"),
+                moved.instance_id,
+            )
+            .unwrap();
+        assert_eq!(removed, PlacementMutationOutcome::Applied(moved));
+        assert_eq!(
+            restored
+                .remove_owned_item(
+                    session,
+                    mutation("remove-simple-door"),
+                    moved.instance_id,
+                )
+                .unwrap(),
+            PlacementMutationOutcome::Duplicate(moved)
+        );
+
+        let after_remove = restored.restaurant_product_snapshot(session).unwrap();
+        assert!(after_remove.restaurant.items.is_empty());
+        assert_eq!(after_remove.inventory[0].placed, 0);
+        assert_eq!(after_remove.inventory[0].available, 1);
+
+        let encoded_removed = restored.encode_persisted().unwrap();
+        let reopened = ProductAggregate::decode_persisted(&catalog, &encoded_removed).unwrap();
+        assert_eq!(reopened, restored);
+        assert_eq!(
+            reopened
+                .restaurant_product_snapshot(session)
+                .unwrap()
+                .inventory[0]
+                .available,
+            1
+        );
     }
 
     #[test]
