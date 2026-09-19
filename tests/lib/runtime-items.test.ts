@@ -54,6 +54,31 @@ describe('Restaurant City runtime item definitions', () => {
     expect(definition.explicitFootprint).toBeNull();
   });
 
+  it('keeps canonical wallDivider as ordinary decor while its recovered footprint is fail-closed', () => {
+    const definition = buildRestaurantItemDefinition(
+      {
+        ...group,
+        attributes: {
+          name: 'Decoration',
+          type: ['decorItem'],
+        },
+      },
+      item({
+        id: '3020049',
+        name: 'White Wall',
+        className: 'WhiteWall',
+        type: ['wallDivider'],
+      }),
+    );
+
+    expect(definition.types).toEqual(['decorItem', 'wallDivider']);
+    expect(definition.placement.wallItem).toBe(false);
+    expect(definition.placement.wallDecorationItem).toBe(false);
+    expect(definition.placement.wallpaperItem).toBe(false);
+    expect(definition.explicitFootprint).toBeNull();
+    expect(definition.placementFootprint).toBeNull();
+  });
+
   it('preserves duplicate ids like the original loader', () => {
     const db = {
       schemaVersion: 1 as const,
