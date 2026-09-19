@@ -96,6 +96,11 @@ export interface RestaurantServiceTopology {
   readonly drinks: readonly AuthoritativeServiceDrink[];
 }
 
+export interface RestaurantAuthoritativeSnapshot {
+  readonly layout: RestaurantLayout;
+  readonly topology: RestaurantServiceTopology;
+}
+
 export interface PlacementCommand {
   readonly itemId: number;
   readonly tileX: number;
@@ -139,6 +144,7 @@ export interface WallpaperCommit {
 export interface RestaurantAuthority {
   loadRestaurant(): Promise<RestaurantLayout>;
   loadServiceTopology(): Promise<RestaurantServiceTopology>;
+  loadRestaurantSnapshot(): Promise<RestaurantAuthoritativeSnapshot>;
   placeItem(
     command: PlacementCommand,
     mutationId: string,
@@ -255,6 +261,19 @@ export class HttpRestaurantAuthority implements RestaurantAuthority {
     }
 
     return parseServiceTopology(await response.json());
+  }
+
+  async loadRestaurantSnapshot(): Promise<RestaurantAuthoritativeSnapshot> {
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const layout = await this.loadRestaurant();
+      const topology = await this.loadServiceTopology();
+      if (serviceTopologyMatchesLayout(topology, layout)) {
+        return { layout, topology };
+      }
+    }
+    throw new Error(
+      'Authoritative service topology does not match the current restaurant layout',
+    );
   }
 
   async placeItem(
@@ -568,6 +587,35 @@ async function authorityError(
     // Public failures intentionally remain coarse even if the body is missing.
   }
   return new RestaurantAuthorityError(response.status, code);
+}
+
+export function serviceTopologyMatchesLayout(
+  topology: RestaurantServiceTopology,
+  layout: RestaurantLayout,
+): boolean {
+  const room = topology.source.room;
+  if (
+    room.insideX !== layout.room.insideX ||
+    room.insideY !== layout.room.insideY ||
+    room.outsideX !== layout.room.outsideX ||
+    room.outsideY !== layout.room.outsideY ||
+    topology.source.items.length !== layout.items.length
+  ) {
+    return false;
+  }
+
+  return topology.source.items.every((source, index) => {
+    const current = layout.items[index];
+    return (
+      current !== undefined &&
+      source.instanceId === current.instanceId &&
+      source.itemId === current.itemId &&
+      source.tileX === current.tileX &&
+      source.tileY === current.tileY &&
+      source.rotation === current.rotation &&
+      source.roomIndex === current.roomIndex
+    );
+  });
 }
 
 function parseServiceTopology(value: unknown): RestaurantServiceTopology {
