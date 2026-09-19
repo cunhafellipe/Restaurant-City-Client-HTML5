@@ -645,6 +645,117 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (
+    requestUrl.pathname === '/api/v1/restaurant/wallpapers' &&
+    req.method === 'PUT'
+  ) {
+    try {
+      if (!req.headers['idempotency-key']) {
+        throw new Error('missing idempotency key');
+      }
+      const body = await readJsonBody(req);
+      const itemId = integerAttribute(body.item_id, 'item_id');
+      const tileX = integerAttribute(body.tile_x, 'tile_x');
+      const tileY = integerAttribute(body.tile_y, 'tile_y');
+      const rotation =
+        tileX === 0 && tileY > 0 && tileY < fixtureState.room.inside_y
+          ? 0
+          : tileY === 0 && tileX > 0 && tileX < fixtureState.room.inside_x
+            ? 1
+            : null;
+      if (rotation === null) {
+        res.writeHead(422, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ error: { code: 'UNPROCESSABLE' } }));
+        return;
+      }
+
+      const existingIndex = fixtureState.wallpapers.findIndex(
+        (wallpaper) => wallpaper.rotation === rotation,
+      );
+      const existing =
+        existingIndex >= 0 ? fixtureState.wallpapers[existingIndex] : null;
+      const nextInventory = fixtureState.inventory.find(
+        (entry) => entry.item_id === itemId,
+      );
+      if (!nextInventory) {
+        res.writeHead(409, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ error: { code: 'CONFLICT' } }));
+        return;
+      }
+
+      if (!existing || existing.item_id !== itemId) {
+        if (nextInventory.available <= 0) {
+          res.writeHead(409, { 'Content-Type': 'application/json; charset=utf-8' });
+          res.end(JSON.stringify({ error: { code: 'CONFLICT' } }));
+          return;
+        }
+        if (existing) {
+          const previousInventory = fixtureState.inventory.find(
+            (entry) => entry.item_id === existing.item_id,
+          );
+          if (!previousInventory) {
+            throw new Error('missing previous wallpaper inventory');
+          }
+          previousInventory.placed = Math.max(0, previousInventory.placed - 1);
+          previousInventory.available =
+            previousInventory.owned - previousInventory.placed;
+        }
+        nextInventory.placed += 1;
+        nextInventory.available = nextInventory.owned - nextInventory.placed;
+      }
+
+      const wallpaper = { item_id: itemId, rotation };
+      if (existingIndex >= 0) fixtureState.wallpapers[existingIndex] = wallpaper;
+      else fixtureState.wallpapers.push(wallpaper);
+
+      res.writeHead(200, {
+        'Content-Type': 'application/json; charset=utf-8',
+        'Cache-Control': 'no-store',
+      });
+      res.end(JSON.stringify({ outcome: 'applied', wallpaper }));
+      return;
+    } catch {
+      res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify({ error: { code: 'INVALID_REQUEST' } }));
+      return;
+    }
+  }
+
+  const wallpaperMatch = requestUrl.pathname.match(
+    /^\/api\/v1\/restaurant\/wallpapers\/([01])$/,
+  );
+  if (wallpaperMatch && req.method === 'DELETE') {
+    if (!req.headers['idempotency-key']) {
+      res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify({ error: { code: 'INVALID_REQUEST' } }));
+      return;
+    }
+    const rotation = Number.parseInt(wallpaperMatch[1], 10);
+    const index = fixtureState.wallpapers.findIndex(
+      (wallpaper) => wallpaper.rotation === rotation,
+    );
+    if (index < 0) {
+      res.writeHead(409, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify({ error: { code: 'CONFLICT' } }));
+      return;
+    }
+    const [wallpaper] = fixtureState.wallpapers.splice(index, 1);
+    const inventory = fixtureState.inventory.find(
+      (entry) => entry.item_id === wallpaper.item_id,
+    );
+    if (!inventory) {
+      throw new Error('missing removed wallpaper inventory');
+    }
+    inventory.placed = Math.max(0, inventory.placed - 1);
+    inventory.available = inventory.owned - inventory.placed;
+    res.writeHead(200, {
+      'Content-Type': 'application/json; charset=utf-8',
+      'Cache-Control': 'no-store',
+    });
+    res.end(JSON.stringify({ outcome: 'applied', wallpaper }));
+    return;
+  }
+
   const placementMatch = requestUrl.pathname.match(
     /^\/api\/v1\/restaurant\/placements\/(\d+)$/,
   );
