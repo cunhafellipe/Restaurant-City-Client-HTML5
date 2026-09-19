@@ -14,6 +14,13 @@ export interface AuthoritativePlacedItem {
   readonly roomIndex: number;
 }
 
+export interface AuthoritativeFloorTile {
+  readonly itemId: number;
+  readonly tileX: number;
+  readonly tileY: number;
+  readonly roomIndex: number;
+}
+
 export interface AuthoritativeInventoryAvailability {
   readonly itemId: number;
   readonly owned: number;
@@ -25,6 +32,7 @@ export interface RestaurantLayout {
   readonly room: AuthoritativeRoom;
   readonly nextInstanceId: number;
   readonly items: readonly AuthoritativePlacedItem[];
+  readonly floorTiles: readonly AuthoritativeFloorTile[];
   readonly inventory: readonly AuthoritativeInventoryAvailability[];
 }
 
@@ -41,9 +49,20 @@ export interface TransformCommand {
   readonly rotation: number;
 }
 
+export interface FloorTileCommand {
+  readonly itemId: number;
+  readonly tileX: number;
+  readonly tileY: number;
+}
+
 export interface PlacementCommit {
   readonly outcome: 'applied' | 'duplicate';
   readonly item: AuthoritativePlacedItem;
+}
+
+export interface FloorTileCommit {
+  readonly outcome: 'applied' | 'duplicate';
+  readonly tile: AuthoritativeFloorTile;
 }
 
 export interface RestaurantAuthority {
@@ -52,6 +71,10 @@ export interface RestaurantAuthority {
     command: PlacementCommand,
     mutationId: string,
   ): Promise<PlacementCommit>;
+  paintFloorTile(
+    command: FloorTileCommand,
+    mutationId: string,
+  ): Promise<FloorTileCommit>;
   transformItem(
     instanceId: number,
     command: TransformCommand,
@@ -171,6 +194,39 @@ export class HttpRestaurantAuthority implements RestaurantAuthority {
     return parsePlacementCommit(await response.json());
   }
 
+  async paintFloorTile(
+    command: FloorTileCommand,
+    mutationId: string,
+  ): Promise<FloorTileCommit> {
+    validateMutationId(mutationId);
+    validateFloorTileCommand(command);
+
+    const response = await this.fetcher(
+      `${this.basePath}/restaurant/floor-tiles`,
+      {
+        method: 'PUT',
+        credentials: 'same-origin',
+        cache: 'no-store',
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+          'Idempotency-Key': mutationId,
+        },
+        body: JSON.stringify({
+          item_id: command.itemId,
+          tile_x: command.tileX,
+          tile_y: command.tileY,
+        }),
+      },
+    );
+
+    if (!response.ok) {
+      throw await authorityError(response);
+    }
+
+    return parseFloorTileCommit(await response.json());
+  }
+
   async transformItem(
     instanceId: number,
     command: TransformCommand,
@@ -240,6 +296,12 @@ export function createPlacementMutationId(
   return createMutationId('placement', uuid);
 }
 
+export function createFloorTileMutationId(
+  uuid: () => string = () => crypto.randomUUID(),
+): string {
+  return createMutationId('floor', uuid);
+}
+
 export function createTransformMutationId(
   uuid: () => string = () => crypto.randomUUID(),
 ): string {
@@ -253,7 +315,7 @@ export function createRemoveMutationId(
 }
 
 function createMutationId(
-  operation: 'placement' | 'transform' | 'remove',
+  operation: 'placement' | 'floor' | 'transform' | 'remove',
   uuid: () => string,
 ): string {
   const value = `rc-${operation}-${uuid()}`;
@@ -274,6 +336,16 @@ function validateMutationId(value: string): void {
 function validatePlacementCommand(command: PlacementCommand): void {
   if (!isUInt32(command.itemId) || !isValidTransformCommand(command)) {
     throw new Error('Invalid Restaurant City placement command');
+  }
+}
+
+function validateFloorTileCommand(command: FloorTileCommand): void {
+  if (
+    !isUInt32(command.itemId) ||
+    !Number.isSafeInteger(command.tileX) ||
+    !Number.isSafeInteger(command.tileY)
+  ) {
+    throw new Error('Invalid Restaurant City floor tile command');
   }
 }
 
@@ -324,6 +396,7 @@ function parseRestaurantLayout(value: unknown): RestaurantLayout {
     !isObject(value) ||
     !isObject(value.room) ||
     !Array.isArray(value.items) ||
+    !Array.isArray(value.floor_tiles) ||
     !Array.isArray(value.inventory)
   ) {
     throw new Error('Malformed authoritative restaurant layout');
@@ -340,6 +413,7 @@ function parseRestaurantLayout(value: unknown): RestaurantLayout {
     'next_instance_id',
   );
   const items = value.items.map(parsePlacedItem);
+  const floorTiles = value.floor_tiles.map(parseFloorTile);
   const inventory = value.inventory.map(parseInventoryAvailability);
 
   if (room.insideX === 0 || room.insideY === 0 || nextInstanceId === 0) {
@@ -360,6 +434,16 @@ function parseRestaurantLayout(value: unknown): RestaurantLayout {
 
   if (maxInstanceId >= nextInstanceId) {
     throw new Error('Malformed authoritative next instance id');
+  }
+
+  const floorKeys = new Set<string>();
+  for (const tile of floorTiles) {
+    const key = `${tile.roomIndex}:${tile.tileX}:${tile.tileY}`;
+    if (floorKeys.has(key)) {
+      throw new Error('Malformed authoritative duplicate floor tile cell');
+    }
+    floorKeys.add(key);
+    placedByItem.set(tile.itemId, (placedByItem.get(tile.itemId) ?? 0) + 1);
   }
 
   const inventoryIds = new Set<number>();
@@ -383,7 +467,33 @@ function parseRestaurantLayout(value: unknown): RestaurantLayout {
     room,
     nextInstanceId,
     items,
+    floorTiles,
     inventory,
+  };
+}
+
+function parseFloorTile(value: unknown): AuthoritativeFloorTile {
+  if (!isObject(value)) {
+    throw new Error('Malformed authoritative floor tile');
+  }
+  return {
+    itemId: requireUInt(value.item_id, 'floor_tile.item_id'),
+    tileX: requireSafeInt(value.tile_x, 'floor_tile.tile_x'),
+    tileY: requireSafeInt(value.tile_y, 'floor_tile.tile_y'),
+    roomIndex: requireUInt(value.room_index, 'floor_tile.room_index'),
+  };
+}
+
+function parseFloorTileCommit(value: unknown): FloorTileCommit {
+  if (
+    !isObject(value) ||
+    (value.outcome !== 'applied' && value.outcome !== 'duplicate')
+  ) {
+    throw new Error('Malformed authoritative floor tile response');
+  }
+  return {
+    outcome: value.outcome,
+    tile: parseFloorTile(value.tile),
   };
 }
 
@@ -460,6 +570,13 @@ function requireUInt(value: unknown, field: string): number {
     throw new Error(`Malformed authoritative field: ${field}`);
   }
   return value;
+}
+
+function requireSafeInt(value: unknown, field: string): number {
+  if (!Number.isSafeInteger(value)) {
+    throw new Error(`Malformed authoritative integer ${field}`);
+  }
+  return value as number;
 }
 
 function requireSafeUInt(value: unknown, field: string): number {
