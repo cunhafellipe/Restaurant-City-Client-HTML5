@@ -155,12 +155,11 @@ pub fn validate_floor_tile_intent(
     room: RoomDimensions,
     intent: FloorTileIntent,
 ) -> Result<PaintedFloorTile, RestaurantAuthorityError> {
-    let definition =
-        *catalog
-            .get(intent.item_id)
-            .ok_or(RestaurantAuthorityError::UnknownItem {
-                item_id: intent.item_id,
-            })?;
+    let definition = *catalog
+        .get(intent.item_id)
+        .ok_or(RestaurantAuthorityError::UnknownItem {
+            item_id: intent.item_id,
+        })?;
 
     if !definition.flags.floor_tile_item {
         return Err(RestaurantAuthorityError::NotFloorTile {
