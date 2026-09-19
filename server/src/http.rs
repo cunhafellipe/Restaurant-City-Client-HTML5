@@ -845,8 +845,7 @@ mod tests {
         assert_eq!(applied_json["wallpaper"]["rotation"], 0);
         assert_eq!(duplicate_json["outcome"], "duplicate");
 
-        let layout =
-            handle_load_restaurant(&service, context(Some("session"), None)).unwrap();
+        let layout = handle_load_restaurant(&service, context(Some("session"), None)).unwrap();
         let layout_json: serde_json::Value = serde_json::from_slice(&layout).unwrap();
         assert_eq!(layout_json["wallpapers"].as_array().unwrap().len(), 1);
         assert_eq!(layout_json["inventory"][0]["placed"], 1);
@@ -879,8 +878,7 @@ mod tests {
             Err(PublicProductError::Unprocessable)
         );
 
-        let after =
-            handle_load_restaurant(&service, context(Some("session"), None)).unwrap();
+        let after = handle_load_restaurant(&service, context(Some("session"), None)).unwrap();
         let after_json: serde_json::Value = serde_json::from_slice(&after).unwrap();
         assert_eq!(after_json["wallpapers"].as_array().unwrap().len(), 0);
         assert_eq!(after_json["inventory"][0]["placed"], 0);
