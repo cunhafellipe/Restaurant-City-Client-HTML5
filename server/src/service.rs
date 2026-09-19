@@ -187,6 +187,12 @@ pub struct RestaurantProductSnapshot {
     pub inventory: Vec<InventoryAvailability>,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ActiveServiceReadSnapshot {
+    pub server_now_ms: u64,
+    pub active: Option<ActiveServiceRecord>,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ProductAggregate {
     player: PlayerState,
@@ -2902,6 +2908,13 @@ where
         &self,
         session_token: &str,
     ) -> Result<Option<ActiveServiceRecord>, ProductServiceError> {
+        Ok(self.load_active_service_read(session_token)?.active)
+    }
+
+    pub fn load_active_service_read(
+        &self,
+        session_token: &str,
+    ) -> Result<ActiveServiceReadSnapshot, ProductServiceError> {
         let session = self.verify(session_token)?;
 
         for _ in 0..MAX_STORE_RETRIES {
@@ -2909,20 +2922,26 @@ where
                 .store
                 .load(session.subject)
                 .map_err(ProductServiceError::Store)?;
+            let now_ms = self
+                .clock
+                .now_ms()
+                .map_err(ProductServiceError::ServiceTimingAuthority)?;
             let Some(loaded) = loaded else {
-                return Ok(None);
+                return Ok(ActiveServiceReadSnapshot {
+                    server_now_ms: now_ms,
+                    active: None,
+                });
             };
             let expected_revision = Some(loaded.store_revision);
             let mut state = loaded.state;
             state.require_subject(session)?;
 
             let Some(mut active) = state.active_service() else {
-                return Ok(None);
+                return Ok(ActiveServiceReadSnapshot {
+                    server_now_ms: now_ms,
+                    active: None,
+                });
             };
-            let now_ms = self
-                .clock
-                .now_ms()
-                .map_err(ProductServiceError::ServiceTimingAuthority)?;
             let mut changed = false;
 
             if !active.timing_anchored {
@@ -2979,14 +2998,22 @@ where
             }
 
             if !changed {
-                return Ok(Some(active));
+                return Ok(ActiveServiceReadSnapshot {
+                    server_now_ms: now_ms,
+                    active: Some(active),
+                });
             }
 
             match self
                 .store
                 .compare_and_swap(session.subject, expected_revision, state)
             {
-                Ok(_) => return Ok(Some(active)),
+                Ok(_) => {
+                    return Ok(ActiveServiceReadSnapshot {
+                        server_now_ms: now_ms,
+                        active: Some(active),
+                    });
+                }
                 Err(ProductStateStoreError::Conflict) => continue,
                 Err(error) => return Err(ProductServiceError::Store(error)),
             }
