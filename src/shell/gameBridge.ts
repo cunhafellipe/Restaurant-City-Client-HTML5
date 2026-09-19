@@ -35,6 +35,12 @@ export interface GameUiState {
     readonly tileY: number;
     readonly rotation: number;
   };
+  readonly selectedWallpaper?: {
+    readonly itemId: number;
+    readonly name: string;
+    readonly rotation: 0 | 1;
+    readonly orientation: 'left' | 'top';
+  };
   readonly placement?: {
     readonly tileX: number;
     readonly tileY: number;
