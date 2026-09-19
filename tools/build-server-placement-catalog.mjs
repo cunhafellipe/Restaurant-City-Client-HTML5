@@ -143,20 +143,18 @@ function recoveredGeometryFor(itemId, className) {
   const leaf = leafClassName(className);
   if (!leaf) return null;
 
-  for (const [contract, source] of [
-    [recoveredGeometry, 'room-item'],
-    [recoveredWallFloorGeometry, 'wall-floor'],
-  ]) {
-    const entry = contract.classes?.[leaf];
-    if (
-      entry &&
-      Array.isArray(entry.itemIds) &&
-      entry.itemIds.includes(itemId)
-    ) {
-      return { ...entry, recoveredGeometrySource: source };
-    }
+  const roomItem = recoveredGeometry.classes?.[leaf];
+  if (
+    roomItem &&
+    Array.isArray(roomItem.itemIds) &&
+    roomItem.itemIds.includes(itemId)
+  ) {
+    return { ...roomItem, recoveredGeometrySource: 'room-item' };
   }
 
+  // Wall1 is both historical wall runtime evidence and the canonical first
+  // wallpaper class. A disabled wall-floor runtime entry must not shadow an
+  // explicitly promoted wallpaper contract for the same item/class pair.
   const wallpaper = recoveredWallpaperGeometry.items?.find(
     (entry) => entry.itemId === itemId && entry.className === leaf,
   );
@@ -169,6 +167,16 @@ function recoveredGeometryFor(itemId, className) {
       recoveredGeometrySource: 'wallpaper',
     };
   }
+
+  const wallFloor = recoveredWallFloorGeometry.classes?.[leaf];
+  if (
+    wallFloor &&
+    Array.isArray(wallFloor.itemIds) &&
+    wallFloor.itemIds.includes(itemId)
+  ) {
+    return { ...wallFloor, recoveredGeometrySource: 'wall-floor' };
+  }
+
   return null;
 }
 
