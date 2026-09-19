@@ -66,6 +66,17 @@ fn internal_service_mutation_id(
     .map_err(|_| ProductServiceError::Store(ProductStateStoreError::Corrupt))
 }
 
+fn internal_path_mutation_id(
+    kind: &str,
+    service_id: u64,
+    effective_at_ms: u64,
+) -> Result<MutationId, ProductServiceError> {
+    MutationId::new_internal(format!(
+        "__anewon_internal__:service:path:{kind}:{service_id}:{effective_at_ms}"
+    ))
+    .map_err(|_| ProductServiceError::Store(ProductStateStoreError::Corrupt))
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum PlacementMutationOutcome {
     Applied(PlacedItem),
@@ -2183,6 +2194,163 @@ impl ProductAggregate {
         Ok(ActiveServiceMutationOutcome::Applied(Some(transitioned)))
     }
 
+    pub fn start_customer_chair_path(
+        &mut self,
+        session: VerifiedProductSession,
+        catalog: &PlacementCatalog,
+        mutation_id: MutationId,
+        service_id: u64,
+        start_tile: TilePoint,
+        effective_at_ms: u64,
+    ) -> Result<ActiveServiceMutationOutcome, ProductServiceError> {
+        self.require_subject(session)?;
+
+        if self.restaurant_mutations.contains_key(&mutation_id)
+            || self.floor_mutations.contains_key(&mutation_id)
+            || self.wallpaper_mutations.contains_key(&mutation_id)
+        {
+            return Err(ProductServiceError::MutationIdConflict);
+        }
+        if let Some(existing) = self.service_mutations.get(&mutation_id) {
+            return match existing.operation {
+                ServiceMutationOperation::StartCustomerChairPath {
+                    service_id: existing_service_id,
+                    start_tile: existing_start,
+                    effective_at_ms: existing_at,
+                } if existing_service_id == service_id
+                    && existing_start == start_tile
+                    && existing_at == effective_at_ms =>
+                {
+                    Ok(ActiveServiceMutationOutcome::Duplicate(existing.result))
+                }
+                _ => Err(ProductServiceError::MutationIdConflict),
+            };
+        }
+
+        let current = self
+            .active_service
+            .ok_or(ProductServiceError::ActiveServiceNotFound)?;
+        if current.identity.service_id != service_id {
+            return Err(ProductServiceError::ActiveServiceIdMismatch);
+        }
+        if current.active_path.is_some() {
+            return Err(ProductServiceError::ServicePathAuthority(
+                ServicePathError::PathPlanMismatch,
+            ));
+        }
+
+        let layout = derive_service_layout(&self.restaurant.snapshot(), catalog).map_err(|_| {
+            ProductServiceError::ServicePathAuthority(ServicePathError::PathUnavailable)
+        })?;
+        let plan = plan_customer_path_to_chair(
+            &layout,
+            start_tile,
+            current.identity.chair_instance_id,
+            effective_at_ms,
+        )
+        .map_err(ProductServiceError::ServicePathAuthority)?;
+        let (walking, effect) = current
+            .transition_at(ServiceLoopEvent::StartChairWalk, effective_at_ms)
+            .map_err(ProductServiceError::ServiceTimingAuthority)?;
+        if effect.is_some() {
+            return Err(ProductServiceError::Store(ProductStateStoreError::Corrupt));
+        }
+        let walking = ActiveServiceRecord {
+            active_path: Some(plan),
+            ..walking
+        };
+
+        self.record_service_mutation(
+            mutation_id,
+            ServiceMutationOperation::StartCustomerChairPath {
+                service_id,
+                start_tile,
+                effective_at_ms,
+            },
+            Some(walking),
+        )?;
+        self.active_service = Some(walking);
+        Ok(ActiveServiceMutationOutcome::Applied(Some(walking)))
+    }
+
+    pub fn complete_customer_chair_path(
+        &mut self,
+        session: VerifiedProductSession,
+        catalog: &PlacementCatalog,
+        mutation_id: MutationId,
+        service_id: u64,
+        effective_at_ms: u64,
+    ) -> Result<ActiveServiceMutationOutcome, ProductServiceError> {
+        self.require_subject(session)?;
+
+        if self.restaurant_mutations.contains_key(&mutation_id)
+            || self.floor_mutations.contains_key(&mutation_id)
+            || self.wallpaper_mutations.contains_key(&mutation_id)
+        {
+            return Err(ProductServiceError::MutationIdConflict);
+        }
+        if let Some(existing) = self.service_mutations.get(&mutation_id) {
+            return match existing.operation {
+                ServiceMutationOperation::CompleteCustomerChairPath {
+                    service_id: existing_service_id,
+                    effective_at_ms: existing_at,
+                } if existing_service_id == service_id && existing_at == effective_at_ms => {
+                    Ok(ActiveServiceMutationOutcome::Duplicate(existing.result))
+                }
+                _ => Err(ProductServiceError::MutationIdConflict),
+            };
+        }
+
+        let current = self
+            .active_service
+            .ok_or(ProductServiceError::ActiveServiceNotFound)?;
+        if current.identity.service_id != service_id {
+            return Err(ProductServiceError::ActiveServiceIdMismatch);
+        }
+        let plan = current.active_path.ok_or(ProductServiceError::ServicePathAuthority(
+            ServicePathError::PathUnavailable,
+        ))?;
+        if plan.kind != ServicePathKind::CustomerToChair
+            || effective_at_ms != plan.completes_at_ms
+        {
+            return Err(ProductServiceError::ServicePathAuthority(
+                ServicePathError::PathCompletionTimeMismatch,
+            ));
+        }
+
+        let layout = derive_service_layout(&self.restaurant.snapshot(), catalog).map_err(|_| {
+            ProductServiceError::ServicePathAuthority(ServicePathError::PathUnavailable)
+        })?;
+        validate_customer_path_to_chair_plan(
+            &layout,
+            current.identity.chair_instance_id,
+            plan,
+        )
+        .map_err(ProductServiceError::ServicePathAuthority)?;
+
+        let (deciding, effect) = current
+            .transition_at(ServiceLoopEvent::ReachChair, effective_at_ms)
+            .map_err(ProductServiceError::ServiceTimingAuthority)?;
+        if effect.is_some() {
+            return Err(ProductServiceError::Store(ProductStateStoreError::Corrupt));
+        }
+        let deciding = ActiveServiceRecord {
+            active_path: None,
+            ..deciding
+        };
+
+        self.record_service_mutation(
+            mutation_id,
+            ServiceMutationOperation::CompleteCustomerChairPath {
+                service_id,
+                effective_at_ms,
+            },
+            Some(deciding),
+        )?;
+        self.active_service = Some(deciding);
+        Ok(ActiveServiceMutationOutcome::Applied(Some(deciding)))
+    }
+
     pub fn complete_active_service(
         &mut self,
         session: VerifiedProductSession,
@@ -3200,6 +3368,7 @@ pub enum ProductServiceError {
     ActiveServiceAuthority(ActiveServiceError),
     ServiceLoopAuthority(ServiceLoopError),
     ServiceTimingAuthority(ServiceTimingError),
+    ServicePathAuthority(ServicePathError),
     ItemUnavailable {
         item_id: u32,
         owned: u32,
