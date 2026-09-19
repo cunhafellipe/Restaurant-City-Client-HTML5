@@ -328,11 +328,12 @@ export class HttpRestaurantAuthority implements RestaurantAuthority {
     for (let attempt = 0; attempt < 2; attempt += 1) {
       const layout = await this.loadRestaurant();
       const topology = await this.loadServiceTopology();
+      if (!serviceTopologyMatchesLayout(topology, layout)) {
+        continue;
+      }
+
       const activeService = await this.loadActiveService();
-      if (
-        serviceTopologyMatchesLayout(topology, layout) &&
-        activeServiceMatchesTopology(activeService, topology)
-      ) {
+      if (activeServiceMatchesTopology(activeService, topology)) {
         return { layout, topology, activeService };
       }
     }
