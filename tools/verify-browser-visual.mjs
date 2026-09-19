@@ -523,6 +523,35 @@ async function waitForFile(file, timeoutMs, processState) {
   );
 }
 
+async function readTextFileWhenReady(file, timeoutMs, processState) {
+  const deadline = Date.now() + timeoutMs;
+  let lastTransientError = null;
+
+  while (Date.now() < deadline) {
+    try {
+      const text = fs.readFileSync(file, 'utf8');
+      if (text.trim().length > 0) return text;
+    } catch (error) {
+      const code = error && typeof error === 'object' ? error.code : null;
+      if (!['EBUSY', 'EACCES', 'EPERM', 'ENOENT'].includes(code)) {
+        throw error;
+      }
+      lastTransientError = error;
+    }
+
+    if (processState.exited) {
+      throw new Error(
+        `Headless browser exited before DevToolsActivePort became readable. lastError=${lastTransientError?.code ?? 'empty'} stderr: ${processState.stderr.slice(-4000)}`,
+      );
+    }
+    await delay(50);
+  }
+
+  throw new Error(
+    `Timed out waiting for readable Chromium DevToolsActivePort. lastError=${lastTransientError?.code ?? 'empty'} stderr: ${processState.stderr.slice(-4000)}`,
+  );
+}
+
 async function waitForPageTarget(port, url, timeoutMs) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
@@ -996,7 +1025,12 @@ try {
   });
 
   await waitForFile(devToolsFile, 10_000, processState);
-  const [portText] = fs.readFileSync(devToolsFile, 'utf8').trim().split(/\r?\n/);
+  const devToolsText = await readTextFileWhenReady(
+    devToolsFile,
+    5_000,
+    processState,
+  );
+  const [portText] = devToolsText.trim().split(/\r?\n/);
   const port = Number.parseInt(portText, 10);
   if (!Number.isInteger(port) || port <= 0) {
     throw new Error(`Invalid Chromium DevTools port: ${portText}`);
