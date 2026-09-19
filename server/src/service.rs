@@ -1353,6 +1353,27 @@ impl From<PersistedFloorTile> for PaintedFloorTile {
     }
 }
 
+impl From<AppliedWallpaper> for PersistedWallpaper {
+    fn from(value: AppliedWallpaper) -> Self {
+        Self {
+            item_id: value.item_id,
+            rotation: value.orientation.rotation(),
+        }
+    }
+}
+
+impl TryFrom<PersistedWallpaper> for AppliedWallpaper {
+    type Error = ();
+
+    fn try_from(value: PersistedWallpaper) -> Result<Self, Self::Error> {
+        let orientation = WallpaperOrientation::from_rotation(value.rotation).ok_or(())?;
+        Ok(Self {
+            item_id: value.item_id,
+            orientation,
+        })
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct LoadedProductState {
     pub store_revision: u64,
