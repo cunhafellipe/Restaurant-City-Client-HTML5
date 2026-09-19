@@ -48,10 +48,7 @@ pub fn default_wall_at(tile: TilePoint, room: RoomDimensions) -> Option<DefaultW
     None
 }
 
-pub fn default_wall_attachment_rotation(
-    tile: TilePoint,
-    room: RoomDimensions,
-) -> Option<u8> {
+pub fn default_wall_attachment_rotation(tile: TilePoint, room: RoomDimensions) -> Option<u8> {
     let wall = default_wall_at(tile, room)?;
     (wall.kind == DefaultWallKind::Segment).then_some(wall.rotation)
 }
@@ -281,14 +278,38 @@ mod tests {
                 rotation: 0,
             })
         );
-        assert_eq!(default_wall_attachment_rotation(TilePoint { x: 1, y: 0 }, room), Some(1));
-        assert_eq!(default_wall_attachment_rotation(TilePoint { x: 9, y: 0 }, room), Some(1));
-        assert_eq!(default_wall_attachment_rotation(TilePoint { x: 0, y: 1 }, room), Some(0));
-        assert_eq!(default_wall_attachment_rotation(TilePoint { x: 0, y: 9 }, room), Some(0));
-        assert_eq!(default_wall_attachment_rotation(TilePoint { x: 0, y: 0 }, room), None);
-        assert_eq!(default_wall_attachment_rotation(TilePoint { x: 2, y: 2 }, room), None);
-        assert_eq!(default_wall_attachment_rotation(TilePoint { x: 10, y: 0 }, room), None);
-        assert_eq!(default_wall_attachment_rotation(TilePoint { x: 0, y: 10 }, room), None);
+        assert_eq!(
+            default_wall_attachment_rotation(TilePoint { x: 1, y: 0 }, room),
+            Some(1)
+        );
+        assert_eq!(
+            default_wall_attachment_rotation(TilePoint { x: 9, y: 0 }, room),
+            Some(1)
+        );
+        assert_eq!(
+            default_wall_attachment_rotation(TilePoint { x: 0, y: 1 }, room),
+            Some(0)
+        );
+        assert_eq!(
+            default_wall_attachment_rotation(TilePoint { x: 0, y: 9 }, room),
+            Some(0)
+        );
+        assert_eq!(
+            default_wall_attachment_rotation(TilePoint { x: 0, y: 0 }, room),
+            None
+        );
+        assert_eq!(
+            default_wall_attachment_rotation(TilePoint { x: 2, y: 2 }, room),
+            None
+        );
+        assert_eq!(
+            default_wall_attachment_rotation(TilePoint { x: 10, y: 0 }, room),
+            None
+        );
+        assert_eq!(
+            default_wall_attachment_rotation(TilePoint { x: 0, y: 10 }, room),
+            None
+        );
     }
 
     #[test]
