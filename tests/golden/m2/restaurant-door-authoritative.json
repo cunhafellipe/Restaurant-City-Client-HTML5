@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "fixture": "simple-door-3010000-authoritative-at-2-0",
+  "baseline": "0.9.143a",
+  "canvas": {
+    "width": 760,
+    "height": 600
+  },
+  "blockSize": 8,
+  "expectedQuantizedBlockSha256": "26dba42b321d5dc523363f7130c824c2597632040e02f66682903d6d874182fd",
+  "referencePixelSha256": "0f079e72c91e67a57b573805f00cdfb30dbc93c80a2c97a792c1c5680e0a4353",
+  "referencePngSha256": "a271aaad48cf6c691c477f4b393132306073ba35d2c50de70f7656f70ceca3c9",
+  "provenance": {
+    "productSha": "ec2620ce3f5ae2fefb243592092266ddc2493896",
+    "verificationRunId": 35421601701,
+    "rotation": 1,
+    "tile": {
+      "x": 2,
+      "y": 0
+    },
+    "doorFrame": "indoor_asset/door/002",
+    "drawPriority": 5376
+  }
+}
