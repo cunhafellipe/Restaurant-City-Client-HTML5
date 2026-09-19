@@ -102,8 +102,8 @@ describe('recovered avatar presentation contract', () => {
     ['completed', 'walk', true],
     ['waiter-collecting', 'waitor-working', false],
     ['serving', 'waitor-walk', true],
-    ['empty-plate', 'idle', false],
-    ['settled', 'idle', false],
+    ['empty-plate', 'hidden', true],
+    ['settled', 'hidden', true],
   ] as const)(
     'maps waiter order state %s to %s',
     (orderState, animation, requiresAuthoritativePath) => {
