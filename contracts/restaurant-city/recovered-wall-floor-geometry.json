@@ -122,8 +122,8 @@
         "translateXTwips": 397,
         "translateYTwips": -596
       },
-      "serverCatalogEnabled": false,
-      "status": "Geometry proven by R26; wallMap attachment authority still required."
+      "serverCatalogEnabled": true,
+      "status": "Geometry proven by R26; enabled for default-wall server-derived attachment. Client renders authoritative snapshots; editor interaction remains gated."
     },
     "Door": {
       "itemIds": [
@@ -175,5 +175,5 @@
       "status": "Geometry and erase-mask instance proven by R26; wallMap attachment authority still required."
     }
   },
-  "releasePolicy": "FloorTile #3050000 is the only R25/R26 primitive currently enabled in the trusted server catalog. WindowInside/Door geometry is now proven but remains fail-closed until wallMap creation, server-derived attachment and mask semantics are recovered. Wall items and wallpapers remain disabled."
+  "releasePolicy": "FloorTile #3050000 and WindowInside #3000001 are enabled in the trusted server catalog. Window uses server-derived default wall attachment and rotation. Door geometry/mask is proven but remains fail-closed until erase-mask rendering is implemented. Wall items, wallpapers and custom walls remain disabled."
 }
