@@ -1984,6 +1984,36 @@ mod tests {
         .unwrap()
     }
 
+    fn wallpaper_catalog() -> PlacementCatalog {
+        PlacementCatalog::new([
+            ItemPlacementDefinition {
+                item_id: 3_060_000,
+                footprint: Footprint {
+                    size_x: 1,
+                    size_y: 1,
+                },
+                rotation_count: 2,
+                flags: PlacementFlags {
+                    wallpaper_item: true,
+                    ..PlacementFlags::default()
+                },
+            },
+            ItemPlacementDefinition {
+                item_id: 3_060_001,
+                footprint: Footprint {
+                    size_x: 1,
+                    size_y: 1,
+                },
+                rotation_count: 2,
+                flags: PlacementFlags {
+                    wallpaper_item: true,
+                    ..PlacementFlags::default()
+                },
+            },
+        ])
+        .unwrap()
+    }
+
     fn floor_catalog() -> PlacementCatalog {
         PlacementCatalog::new([
             ItemPlacementDefinition {
@@ -2288,6 +2318,154 @@ mod tests {
     }
 
     #[test]
+    fn wallpaper_apply_replace_remove_idempotency_and_reopen() {
+        let session = VerifiedProductSession {
+            subject: subject(7),
+            session_id: ProductSessionId::from_verified_platform_bytes([9; 16]).unwrap(),
+        };
+        let catalog = wallpaper_catalog();
+        let mut aggregate = ProductAggregate::new(subject(7), room());
+
+        for (item_id, mutation_id) in [
+            (3_060_000, "grant-wallpaper-a"),
+            (3_060_001, "grant-wallpaper-b"),
+        ] {
+            aggregate
+                .apply_player_command(
+                    session,
+                    mutation(mutation_id),
+                    Command::GrantInventory {
+                        item_id,
+                        quantity: 1,
+                    },
+                )
+                .unwrap();
+        }
+
+        let first = aggregate
+            .apply_owned_wallpaper(
+                session,
+                &catalog,
+                mutation("apply-wallpaper-left-a"),
+                WallpaperIntent {
+                    item_id: 3_060_000,
+                    wall_tile: TilePoint { x: 0, y: 2 },
+                },
+            )
+            .unwrap();
+        let left_a = match first {
+            WallpaperMutationOutcome::Applied(wallpaper) => wallpaper,
+            WallpaperMutationOutcome::Duplicate(_) => unreachable!(),
+        };
+        assert_eq!(
+            left_a,
+            AppliedWallpaper {
+                item_id: 3_060_000,
+                orientation: WallpaperOrientation::Left,
+            }
+        );
+        assert_eq!(
+            aggregate
+                .apply_owned_wallpaper(
+                    session,
+                    &catalog,
+                    mutation("apply-wallpaper-left-a"),
+                    WallpaperIntent {
+                        item_id: 3_060_000,
+                        wall_tile: TilePoint { x: 0, y: 6 },
+                    },
+                )
+                .unwrap(),
+            WallpaperMutationOutcome::Duplicate(left_a)
+        );
+
+        let left_b = match aggregate
+            .apply_owned_wallpaper(
+                session,
+                &catalog,
+                mutation("replace-wallpaper-left-b"),
+                WallpaperIntent {
+                    item_id: 3_060_001,
+                    wall_tile: TilePoint { x: 0, y: 4 },
+                },
+            )
+            .unwrap()
+        {
+            WallpaperMutationOutcome::Applied(wallpaper) => wallpaper,
+            WallpaperMutationOutcome::Duplicate(_) => unreachable!(),
+        };
+        let top_a = match aggregate
+            .apply_owned_wallpaper(
+                session,
+                &catalog,
+                mutation("apply-wallpaper-top-a"),
+                WallpaperIntent {
+                    item_id: 3_060_000,
+                    wall_tile: TilePoint { x: 3, y: 0 },
+                },
+            )
+            .unwrap()
+        {
+            WallpaperMutationOutcome::Applied(wallpaper) => wallpaper,
+            WallpaperMutationOutcome::Duplicate(_) => unreachable!(),
+        };
+
+        assert_eq!(left_b.orientation, WallpaperOrientation::Left);
+        assert_eq!(top_a.orientation, WallpaperOrientation::Top);
+
+        let snapshot = aggregate.restaurant_product_snapshot(session).unwrap();
+        assert_eq!(snapshot.wallpapers, vec![left_b, top_a]);
+        let a = snapshot
+            .inventory
+            .iter()
+            .find(|entry| entry.item_id == 3_060_000)
+            .unwrap();
+        let b = snapshot
+            .inventory
+            .iter()
+            .find(|entry| entry.item_id == 3_060_001)
+            .unwrap();
+        assert_eq!((a.placed, a.available), (1, 0));
+        assert_eq!((b.placed, b.available), (1, 0));
+
+        let encoded = aggregate.encode_persisted().unwrap();
+        let mut restored = ProductAggregate::decode_persisted(&catalog, &encoded).unwrap();
+        assert_eq!(restored, aggregate);
+
+        let removed = restored
+            .remove_owned_wallpaper(
+                session,
+                mutation("remove-wallpaper-left"),
+                WallpaperOrientation::Left,
+            )
+            .unwrap();
+        assert_eq!(removed, WallpaperMutationOutcome::Applied(left_b));
+        assert_eq!(
+            restored
+                .remove_owned_wallpaper(
+                    session,
+                    mutation("remove-wallpaper-left"),
+                    WallpaperOrientation::Left,
+                )
+                .unwrap(),
+            WallpaperMutationOutcome::Duplicate(left_b)
+        );
+
+        let after_remove = restored.restaurant_product_snapshot(session).unwrap();
+        assert_eq!(after_remove.wallpapers, vec![top_a]);
+        let b = after_remove
+            .inventory
+            .iter()
+            .find(|entry| entry.item_id == 3_060_001)
+            .unwrap();
+        assert_eq!((b.placed, b.available), (0, 1));
+
+        let encoded_removed = restored.encode_persisted().unwrap();
+        let reopened = ProductAggregate::decode_persisted(&catalog, &encoded_removed).unwrap();
+        assert_eq!(reopened, restored);
+    }
+
+    #[test]
     fn v3_floor_tile_round_trip_replays_floor_journal() {
         let session = VerifiedProductSession {
             subject: subject(7),
@@ -2376,6 +2554,15 @@ mod tests {
             .unwrap()
             .remove("next_floor_mutation_sequence");
         value.as_object_mut().unwrap().remove("floor_mutations");
+        value["restaurant"]
+            .as_object_mut()
+            .unwrap()
+            .remove("wallpapers");
+        value
+            .as_object_mut()
+            .unwrap()
+            .remove("next_wallpaper_mutation_sequence");
+        value.as_object_mut().unwrap().remove("wallpaper_mutations");
         let legacy_v2 = serde_json::to_vec(&value).unwrap();
 
         let restored = ProductAggregate::decode_persisted(&catalog, &legacy_v2).unwrap();
@@ -2386,6 +2573,57 @@ mod tests {
         assert!(restored.floor_tiles.is_empty());
         assert!(restored.floor_mutations.is_empty());
         assert_eq!(restored.next_floor_mutation_sequence, 1);
+    }
+
+    #[test]
+    fn v3_state_migrates_to_empty_v4_wallpaper_domain() {
+        let session = VerifiedProductSession {
+            subject: subject(7),
+            session_id: ProductSessionId::from_verified_platform_bytes([9; 16]).unwrap(),
+        };
+        let catalog = floor_catalog();
+        let mut aggregate = ProductAggregate::new(subject(7), room());
+        aggregate
+            .apply_player_command(
+                session,
+                mutation("grant-v3-floor"),
+                Command::GrantInventory {
+                    item_id: 30,
+                    quantity: 1,
+                },
+            )
+            .unwrap();
+        aggregate
+            .paint_owned_floor_tile(
+                session,
+                &catalog,
+                mutation("paint-v3-floor"),
+                FloorTileIntent {
+                    item_id: 30,
+                    tile: TilePoint { x: 2, y: 2 },
+                },
+            )
+            .unwrap();
+
+        let encoded = aggregate.encode_persisted().unwrap();
+        let mut value: serde_json::Value = serde_json::from_slice(&encoded).unwrap();
+        value["schema_version"] = serde_json::json!(3);
+        value["restaurant"]
+            .as_object_mut()
+            .unwrap()
+            .remove("wallpapers");
+        value
+            .as_object_mut()
+            .unwrap()
+            .remove("next_wallpaper_mutation_sequence");
+        value.as_object_mut().unwrap().remove("wallpaper_mutations");
+
+        let legacy_v3 = serde_json::to_vec(&value).unwrap();
+        let restored = ProductAggregate::decode_persisted(&catalog, &legacy_v3).unwrap();
+        assert_eq!(restored.floor_tiles, aggregate.floor_tiles);
+        assert!(restored.wallpapers.is_empty());
+        assert!(restored.wallpaper_mutations.is_empty());
+        assert_eq!(restored.next_wallpaper_mutation_sequence, 1);
     }
 
     #[test]
