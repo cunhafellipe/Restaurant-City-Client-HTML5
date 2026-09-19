@@ -24,7 +24,13 @@ export function requireRestaurantAuthority(
     !('loadRestaurant' in candidate) ||
     typeof candidate.loadRestaurant !== 'function' ||
     !('placeItem' in candidate) ||
-    typeof candidate.placeItem !== 'function'
+    typeof candidate.placeItem !== 'function' ||
+    !('paintFloorTile' in candidate) ||
+    typeof candidate.paintFloorTile !== 'function' ||
+    !('transformItem' in candidate) ||
+    typeof candidate.transformItem !== 'function' ||
+    !('removeItem' in candidate) ||
+    typeof candidate.removeItem !== 'function'
   ) {
     throw new Error(
       'Restaurant City authoritative service is not installed in the Phaser registry',
