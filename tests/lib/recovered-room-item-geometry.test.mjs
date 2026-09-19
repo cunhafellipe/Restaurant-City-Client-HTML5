@@ -59,7 +59,7 @@ describe('recovered RoomItem geometry contract', () => {
 
   it('promotes only source-grounded recovered footprints while keeping all others fail-closed', () => {
     expect(contract.releasePolicy).toMatch(
-      /all other implicit-footprint surfaces remain fail-closed/i,
+      /all other implicit-footprint items remain fail-closed/i,
     );
     expect(
       Object.values(contract.classes)
@@ -74,6 +74,51 @@ describe('recovered RoomItem geometry contract', () => {
       3020055,
       3030000,
       3030002,
+      3070000,
+      3070001,
+      3070002,
+      3070003,
+      3070004,
+      3070005,
+      3070006,
+      3070007,
+      3070008,
+      3070009,
+      3070010,
     ]);
+  });
+
+  it('pins all eleven kitchen composites to exact four-rotation occupied-cell contracts', () => {
+    const kitchenEntries = Object.values(contract.classes).filter(
+      (entry) =>
+        entry.composite === true &&
+        entry.effectiveTypes?.includes('kitchen'),
+    );
+    expect(kitchenEntries).toHaveLength(11);
+
+    const expectedCells = [
+      [{ x: 0, y: 0 }, { x: 1, y: 0 }],
+      [{ x: 0, y: 0 }, { x: 0, y: 1 }],
+      [{ x: 0, y: 0 }, { x: -1, y: 0 }],
+      [{ x: 0, y: 0 }, { x: 0, y: -1 }],
+    ];
+
+    for (const entry of kitchenEntries) {
+      expect(entry.footprint).toEqual({ sizeX: 2, sizeY: 1 });
+      expect(entry.rotationCount).toBe(4);
+      expect(entry.frames).toHaveLength(4);
+      expect(entry.occupiedCellsByRotation).toHaveLength(4);
+      expect(
+        entry.occupiedCellsByRotation.map((rotation) => rotation.cells),
+      ).toEqual(expectedCells);
+    }
+
+    const stove10 = contract.classes.Stove10;
+    expect(stove10.visualFrameCount).toBe(1);
+    expect(new Set(stove10.frames.map((frame) => frame.frame)).size).toBe(1);
+
+    const stove11 = contract.classes.Stove11;
+    expect(stove11.runtimeClassName).toBe('Stove11Rotations_485');
+    expect(stove11.visualFrameCount).toBe(4);
   });
 });
