@@ -13,6 +13,11 @@ import {
 } from '../../core/restaurantGrid';
 import { computeHistoricalCurHeights } from '../../core/restaurantStacking';
 import {
+  recoveredRoomItemFrame,
+  recoveredRoomItemFrameOffset,
+  recoveredRoomItemGeometry,
+} from '../../content/recoveredRoomItemGeometry';
+import {
   buildRestaurantItemCatalog,
   type RestaurantItemDefinition,
 } from '../../content/items';
@@ -74,6 +79,13 @@ const SIMPLE_WINDOW_ITEM_ID = 3000001;
 const SIMPLE_DOOR_ITEM_ID = 3010000;
 const DEFAULT_WALL_ITEM_ID = 3090000;
 const DEFAULT_WALL_CORNER_ITEM_ID = 3090001;
+const CANONICAL_DIVIDER_ITEM_IDS = [
+  3020049,
+  3020050,
+  3020051,
+  3020052,
+  3020055,
+] as const;
 
 type EditorPlacementValidation =
   | ReturnType<typeof validateStructuralPlacement>
@@ -108,6 +120,7 @@ export class RestaurantEditorScene extends Phaser.Scene {
   >();
   private doorProbeWall: Phaser.GameObjects.RenderTexture | null = null;
   private doorProbeDoor: Phaser.GameObjects.Sprite | null = null;
+  private dividerProbeSprites: Phaser.GameObjects.Sprite[] = [];
   private previewSprite: Phaser.GameObjects.Sprite | null = null;
   private wallpaperPreviewSprites: Phaser.GameObjects.Sprite[] = [];
   private visualIndex: RestaurantItemVisualIndex | null = null;
@@ -1313,6 +1326,7 @@ export class RestaurantEditorScene extends Phaser.Scene {
     );
 
     this.drawAuthoritativeWallpapers();
+    this.drawDividerGeometryProbe();
     this.drawDoorEraseProbe();
     this.publishVisualProbeDiagnostics();
   }
@@ -1694,6 +1708,121 @@ export class RestaurantEditorScene extends Phaser.Scene {
       maskFrame: mask.frame,
       maskLocal: { x: maskX, y: maskY },
     };
+  }
+
+  private drawDividerGeometryProbe(): void {
+    for (const sprite of this.dividerProbeSprites) sprite.destroy();
+    this.dividerProbeSprites = [];
+
+    if (typeof window === 'undefined') return;
+    const probeParams = new URLSearchParams(window.location.search);
+    if (!probeParams.has('dividerProbe')) return;
+
+    const placements: TilePoint[] = [
+      { x: 2, y: 1 },
+      { x: 4, y: 1 },
+      { x: 6, y: 1 },
+      { x: 2, y: 3 },
+      { x: 4, y: 3 },
+      { x: 6, y: 3 },
+      { x: 2, y: 5 },
+      { x: 4, y: 5 },
+      { x: 6, y: 5 },
+      { x: 1, y: 6 },
+      { x: 3, y: 6 },
+      { x: 5, y: 6 },
+    ];
+    let placementIndex = 0;
+    const diagnostics: Array<{
+      readonly itemId: number;
+      readonly className: string;
+      readonly rotation: number;
+      readonly frame: string;
+      readonly tile: TilePoint;
+      readonly world: {
+        readonly x: number;
+        readonly y: number;
+        readonly depth: number;
+      };
+      readonly canvasOriginPx: {
+        readonly x: number;
+        readonly y: number;
+      };
+    }> = [];
+
+    for (const itemId of CANONICAL_DIVIDER_ITEM_IDS) {
+      const definition = this.catalogById.get(itemId);
+      if (!definition) {
+        throw new Error(`Divider probe item #${itemId} is missing from the catalog`);
+      }
+      const geometry = recoveredRoomItemGeometry(
+        definition.id,
+        definition.className,
+      );
+      const visual = this.itemVisual(definition);
+      if (!geometry || !visual || geometry.frames.length !== visual.frames.length) {
+        throw new Error(
+          `Divider probe visual contract is incomplete for #${definition.id}`,
+        );
+      }
+      if (
+        geometry.footprint.sizeX !== 1 ||
+        geometry.footprint.sizeY !== 1 ||
+        geometry.placementFootprintEnabled
+      ) {
+        throw new Error(
+          `Divider probe expected fail-closed 1x1 geometry for #${definition.id}`,
+        );
+      }
+
+      for (let rotation = 0; rotation < visual.frames.length; rotation += 1) {
+        const tile = placements[placementIndex++];
+        if (!tile) throw new Error('Divider probe placement table is too small');
+        const recovered = recoveredRoomItemFrame(
+          definition.id,
+          definition.className,
+          rotation,
+        );
+        if (!recovered || recovered.frame !== visual.frames[rotation]) {
+          throw new Error(
+            `Divider probe frame mismatch for #${definition.id} rotation ${rotation}`,
+          );
+        }
+        const projected = projectTile(tile);
+        const sprite = this.add
+          .sprite(
+            ORIGIN.x + projected.x + recovered.canvasOriginPx.x,
+            ORIGIN.y + projected.y + recovered.canvasOriginPx.y,
+            visual.atlasId,
+            recovered.frame,
+          )
+          .setOrigin(0, 0)
+          .setDepth(this.itemDrawPriority(tile));
+        this.dividerProbeSprites.push(sprite);
+        diagnostics.push({
+          itemId: definition.id,
+          className: geometry.className,
+          rotation,
+          frame: recovered.frame,
+          tile,
+          world: {
+            x: sprite.x,
+            y: sprite.y,
+            depth: sprite.depth,
+          },
+          canvasOriginPx: recovered.canvasOriginPx,
+        });
+      }
+    }
+
+    if (placementIndex !== 12) {
+      throw new Error(`Divider probe expected 12 frames, got ${placementIndex}`);
+    }
+
+    const target = globalThis as typeof globalThis & {
+      __ANEWON_RC_DIVIDER_PROBE__?: unknown;
+    };
+    target.__ANEWON_RC_DIVIDER_PROBE__ = diagnostics;
   }
 
   private drawDoorEraseProbe(): void {
@@ -2150,6 +2279,11 @@ export class RestaurantEditorScene extends Phaser.Scene {
     const footprint = rotateFootprint(definition.placementFootprint, rotation);
     const offset =
       recoveredWallFloorFrameOffset(
+        definition.id,
+        definition.className,
+        rotation,
+      ) ??
+      recoveredRoomItemFrameOffset(
         definition.id,
         definition.className,
         rotation,
