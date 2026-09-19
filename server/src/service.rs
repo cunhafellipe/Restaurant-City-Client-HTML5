@@ -330,17 +330,24 @@ impl ProductAggregate {
         let restaurant = RestaurantState::from_snapshot(catalog, snapshot)
             .map_err(|_| ProductStateStoreError::Corrupt)?;
 
-        Self::validate_inventory_against_restaurant(&player, &restaurant)?;
+        Self::validate_inventory_against_restaurant(&player, &restaurant, &BTreeMap::new())?;
         Ok((player, restaurant))
     }
 
     fn validate_inventory_against_restaurant(
         player: &PlayerState,
         restaurant: &RestaurantState,
+        floor_tiles: &BTreeMap<FloorTileKey, PaintedFloorTile>,
     ) -> Result<(), ProductStateStoreError> {
         let mut placed_counts = BTreeMap::<u32, u32>::new();
         for item in restaurant.items() {
             let count = placed_counts.entry(item.item_id).or_default();
+            *count = count
+                .checked_add(1)
+                .ok_or(ProductStateStoreError::Corrupt)?;
+        }
+        for tile in floor_tiles.values() {
+            let count = placed_counts.entry(tile.item_id).or_default();
             *count = count
                 .checked_add(1)
                 .ok_or(ProductStateStoreError::Corrupt)?;
@@ -673,13 +680,7 @@ impl ProductAggregate {
 
         if let Command::ConsumeInventory { item_id, quantity } = &command {
             let owned = self.player.inventory().quantity(*item_id);
-            let placed = self
-                .restaurant
-                .items()
-                .filter(|item| item.item_id == *item_id)
-                .count();
-            let placed = u32::try_from(placed)
-                .map_err(|_| ProductServiceError::Store(ProductStateStoreError::Corrupt))?;
+            let placed = self.placed_count_for_item(*item_id)?;
             let available = owned
                 .checked_sub(placed)
                 .ok_or(ProductServiceError::Store(ProductStateStoreError::Corrupt))?;
@@ -706,6 +707,9 @@ impl ProductAggregate {
     ) -> Result<PlacementMutationOutcome, ProductServiceError> {
         self.require_subject(session)?;
 
+        if self.floor_mutations.contains_key(&mutation_id) {
+            return Err(ProductServiceError::MutationIdConflict);
+        }
         if let Some(existing) = self.restaurant_mutations.get(&mutation_id) {
             if existing.operation != RestaurantMutationOperation::Place
                 || existing.item.item_id != intent.item_id
@@ -718,17 +722,13 @@ impl ProductAggregate {
         }
 
         let owned = self.player.inventory().quantity(intent.item_id);
-        let already_placed = self
-            .restaurant
-            .items()
-            .filter(|placed| placed.item_id == intent.item_id)
-            .count();
+        let already_placed = self.placed_count_for_item(intent.item_id)?;
 
-        if already_placed >= usize::try_from(owned).unwrap_or(usize::MAX) {
+        if already_placed >= owned {
             return Err(ProductServiceError::ItemUnavailable {
                 item_id: intent.item_id,
                 owned,
-                placed: u32::try_from(already_placed).unwrap_or(u32::MAX),
+                placed: already_placed,
             });
         }
 
@@ -739,6 +739,47 @@ impl ProductAggregate {
 
         self.record_restaurant_mutation(mutation_id, RestaurantMutationOperation::Place, placed)?;
         Ok(PlacementMutationOutcome::Applied(placed))
+    }
+
+    pub fn paint_owned_floor_tile(
+        &mut self,
+        session: VerifiedProductSession,
+        catalog: &PlacementCatalog,
+        mutation_id: MutationId,
+        intent: FloorTileIntent,
+    ) -> Result<FloorTileMutationOutcome, ProductServiceError> {
+        self.require_subject(session)?;
+
+        if self.restaurant_mutations.contains_key(&mutation_id) {
+            return Err(ProductServiceError::MutationIdConflict);
+        }
+        if let Some(existing) = self.floor_mutations.get(&mutation_id) {
+            if existing.tile.item_id != intent.item_id || existing.tile.tile != intent.tile {
+                return Err(ProductServiceError::MutationIdConflict);
+            }
+            return Ok(FloorTileMutationOutcome::Duplicate(existing.tile));
+        }
+
+        let painted = validate_floor_tile_intent(catalog, self.restaurant.room(), intent)
+            .map_err(ProductServiceError::RestaurantAuthority)?;
+        let key = FloorTileKey::from(painted);
+        let current = self.floor_tiles.get(&key).copied();
+
+        if current.is_none_or(|existing| existing.item_id != painted.item_id) {
+            let owned = self.player.inventory().quantity(painted.item_id);
+            let placed = self.placed_count_for_item(painted.item_id)?;
+            if placed >= owned {
+                return Err(ProductServiceError::ItemUnavailable {
+                    item_id: painted.item_id,
+                    owned,
+                    placed,
+                });
+            }
+        }
+
+        self.floor_tiles.insert(key, painted);
+        self.record_floor_mutation(mutation_id, painted)?;
+        Ok(FloorTileMutationOutcome::Applied(painted))
     }
 
     pub fn transform_owned_item(
@@ -752,6 +793,9 @@ impl ProductAggregate {
     ) -> Result<PlacementMutationOutcome, ProductServiceError> {
         self.require_subject(session)?;
 
+        if self.floor_mutations.contains_key(&mutation_id) {
+            return Err(ProductServiceError::MutationIdConflict);
+        }
         if let Some(existing) = self.restaurant_mutations.get(&mutation_id) {
             if existing.operation != RestaurantMutationOperation::Transform
                 || existing.item.instance_id != instance_id
@@ -784,6 +828,9 @@ impl ProductAggregate {
     ) -> Result<PlacementMutationOutcome, ProductServiceError> {
         self.require_subject(session)?;
 
+        if self.floor_mutations.contains_key(&mutation_id) {
+            return Err(ProductServiceError::MutationIdConflict);
+        }
         if let Some(existing) = self.restaurant_mutations.get(&mutation_id) {
             if existing.operation != RestaurantMutationOperation::Remove
                 || existing.item.instance_id != instance_id
@@ -832,6 +879,45 @@ impl ProductAggregate {
         Ok(())
     }
 
+    fn record_floor_mutation(
+        &mut self,
+        mutation_id: MutationId,
+        tile: PaintedFloorTile,
+    ) -> Result<(), ProductServiceError> {
+        let sequence = self.next_floor_mutation_sequence;
+        let next_sequence = sequence
+            .checked_add(1)
+            .ok_or(ProductServiceError::FloorMutationSequenceExhausted)?;
+
+        if self
+            .floor_mutations
+            .insert(mutation_id, FloorTileMutationRecord { sequence, tile })
+            .is_some()
+        {
+            return Err(ProductServiceError::Store(ProductStateStoreError::Corrupt));
+        }
+        self.next_floor_mutation_sequence = next_sequence;
+        Ok(())
+    }
+
+    fn placed_count_for_item(&self, item_id: u32) -> Result<u32, ProductServiceError> {
+        let object_count = self
+            .restaurant
+            .items()
+            .filter(|item| item.item_id == item_id)
+            .count();
+        let floor_count = self
+            .floor_tiles
+            .values()
+            .filter(|tile| tile.item_id == item_id)
+            .count();
+        let total = object_count
+            .checked_add(floor_count)
+            .ok_or(ProductServiceError::Store(ProductStateStoreError::Corrupt))?;
+        u32::try_from(total)
+            .map_err(|_| ProductServiceError::Store(ProductStateStoreError::Corrupt))
+    }
+
     pub fn restaurant_product_snapshot(
         &self,
         session: VerifiedProductSession,
@@ -839,9 +925,16 @@ impl ProductAggregate {
         self.require_subject(session)?;
 
         let restaurant = self.restaurant.snapshot();
+        let floor_tiles: Vec<_> = self.floor_tiles.values().copied().collect();
         let mut placed_counts = BTreeMap::<u32, u32>::new();
         for item in &restaurant.items {
             let count = placed_counts.entry(item.item_id).or_default();
+            *count = count
+                .checked_add(1)
+                .ok_or(ProductServiceError::Store(ProductStateStoreError::Corrupt))?;
+        }
+        for tile in &floor_tiles {
+            let count = placed_counts.entry(tile.item_id).or_default();
             *count = count
                 .checked_add(1)
                 .ok_or(ProductServiceError::Store(ProductStateStoreError::Corrupt))?;
@@ -870,6 +963,7 @@ impl ProductAggregate {
 
         Ok(RestaurantProductSnapshot {
             restaurant,
+            floor_tiles,
             inventory,
         })
     }
@@ -1242,6 +1336,7 @@ pub enum ProductServiceError {
     },
     MutationIdConflict,
     RestaurantMutationSequenceExhausted,
+    FloorMutationSequenceExhausted,
 }
 
 #[cfg(test)]
