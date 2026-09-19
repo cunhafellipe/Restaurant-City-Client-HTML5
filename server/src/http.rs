@@ -1159,13 +1159,19 @@ mod tests {
         assert_eq!(json["active"]["waiter_tile_y"], 4);
         assert_eq!(json["active"]["customer_state"], "admitted");
         assert_eq!(json["active"]["order_state"], "created");
+        assert!(json["server_now_ms"].as_u64().is_some());
         assert!(json["active"]["customer_timer_ms"].is_null());
         assert!(json["active"]["order_timer_ms"].is_null());
+        assert!(json["active"]["customer_deadline_at_ms"].is_null());
+        assert!(json["active"]["order_deadline_at_ms"].is_null());
+        assert!(json["active"]["customer_remaining_ms"].is_null());
+        assert!(json["active"]["order_remaining_ms"].is_null());
 
         let empty = topology_service();
         let empty_body =
             handle_load_active_service(&empty, context(Some("session"), None)).unwrap();
         let empty_json: serde_json::Value = serde_json::from_slice(&empty_body).unwrap();
+        assert!(empty_json["server_now_ms"].as_u64().is_some());
         assert!(empty_json["active"].is_null());
     }
 
