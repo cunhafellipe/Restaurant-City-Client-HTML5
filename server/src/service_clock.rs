@@ -5,8 +5,8 @@
 //! events separate from path/action completion events.
 
 use crate::gameplay::{
-    CustomerServiceState, OrderServiceState, ServiceLoopEffect, ServiceLoopError,
-    ServiceLoopEvent, ServiceLoopState, transition_service_loop,
+    CustomerServiceState, OrderServiceState, ServiceLoopEffect, ServiceLoopError, ServiceLoopEvent,
+    ServiceLoopState, transition_service_loop,
 };
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -110,8 +110,7 @@ pub fn transition_timed_service(
     effective_at_ms: u64,
 ) -> Result<TimedServiceTransition, ServiceTimingError> {
     validate_service_deadlines(state, deadlines)?;
-    let transition =
-        transition_service_loop(state, event).map_err(ServiceTimingError::Reducer)?;
+    let transition = transition_service_loop(state, event).map_err(ServiceTimingError::Reducer)?;
     let next = transition.state;
     let mut next_deadlines = deadlines;
 
@@ -212,12 +211,14 @@ pub fn due_service_event(
                 event: ServiceLoopEvent::EatingElapsed,
                 effective_at_ms,
             }),
-        (CustomerServiceState::Paying, _) => deadlines
-            .customer_deadline_at_ms
-            .map(|effective_at_ms| DueServiceEvent {
-                event: ServiceLoopEvent::PayingElapsed,
-                effective_at_ms,
-            }),
+        (CustomerServiceState::Paying, _) => {
+            deadlines
+                .customer_deadline_at_ms
+                .map(|effective_at_ms| DueServiceEvent {
+                    event: ServiceLoopEvent::PayingElapsed,
+                    effective_at_ms,
+                })
+        }
         _ => None,
     };
 
