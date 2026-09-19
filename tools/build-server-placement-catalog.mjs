@@ -313,6 +313,12 @@ for (const group of database.groups ?? []) {
     }
 
     ids.set(id, `${group.name}/${item.attributes?.name ?? '<unnamed>'}`);
+    const occupiedCellsByRotation =
+      Array.isArray(geometry?.occupiedCellsByRotation) &&
+      geometry.occupiedCellsByRotation.length > 0
+        ? geometry.occupiedCellsByRotation
+        : null;
+
     definitions.push({
       itemId: id,
       group: group.name,
@@ -343,6 +349,7 @@ for (const group of database.groups ?? []) {
       kitchen,
       drink,
       toilet,
+      occupiedCellsByRotation,
     });
   }
 }
@@ -417,12 +424,39 @@ if (recoveredWallpaperGeometry.serverCatalogEnabled === true) {
 fs.mkdirSync(OUT_DIR, { recursive: true });
 
 const bool = (value) => (value ? '1' : '0');
+function encodeOccupiedCells(entry) {
+  if (!Array.isArray(entry.occupiedCellsByRotation)) return '-';
+  if (entry.occupiedCellsByRotation.length !== entry.rotationCount) {
+    throw new Error(
+      `Occupied-cell rotation coverage mismatch for item ${entry.itemId}: cells=${entry.occupiedCellsByRotation.length} rotations=${entry.rotationCount}`,
+    );
+  }
+  return entry.occupiedCellsByRotation
+    .map((rotation, index) => {
+      if (rotation.rotation !== index || !Array.isArray(rotation.cells) || rotation.cells.length === 0) {
+        throw new Error(`Malformed occupied-cell rotation for item ${entry.itemId} at ${index}`);
+      }
+      const seen = new Set();
+      return rotation.cells
+        .map((cell) => {
+          if (!Number.isInteger(cell?.x) || !Number.isInteger(cell?.y)) {
+            throw new Error(`Malformed occupied cell for item ${entry.itemId}`);
+          }
+          const key = `${cell.x},${cell.y}`;
+          if (seen.has(key)) throw new Error(`Duplicate occupied cell for item ${entry.itemId}: ${key}`);
+          seen.add(key);
+          return key;
+        })
+        .join('+');
+    })
+    .join('/');
+}
 const lines = [
   'ANEWON_RC_PLACEMENT_CATALOG_V4',
   `# baseline=${manifest.baseline ?? 'unknown'}`,
   `# source_decoded_sha256=${source.decodedSha256 ?? ''}`,
   `# source_file=${source.source ?? ''}`,
-  'item_id\tsize_x\tsize_y\trotation_count\twall_item\twall_decoration_item\twallpaper_item\toutdoor\tfloor_tile_item\tsurface\tstackable\tdoor_item\tchair_item\ttable_item\tkitchen\tdrink\ttoilet',
+  'item_id\tsize_x\tsize_y\trotation_count\twall_item\twall_decoration_item\twallpaper_item\toutdoor\tfloor_tile_item\tsurface\tstackable\tdoor_item\tchair_item\ttable_item\tkitchen\tdrink\ttoilet\toccupied_cells',
   ...definitions.map((entry) =>
     [
       entry.itemId,
@@ -442,6 +476,7 @@ const lines = [
       bool(entry.kitchen),
       bool(entry.drink),
       bool(entry.toilet),
+      encodeOccupiedCells(entry),
     ].join('\t'),
   ),
 ];
@@ -484,9 +519,13 @@ const meta = {
     kitchen: entry.kitchen,
     drink: entry.drink,
     toilet: entry.toilet,
+    occupiedCellsByRotation: entry.occupiedCellsByRotation,
   })),
   recoveredFootprintDefinitions: definitions.filter(
     (entry) => entry.footprintSource === 'recovered',
+  ).length,
+  explicitOccupiedCellDefinitions: definitions.filter(
+    (entry) => Array.isArray(entry.occupiedCellsByRotation),
   ).length,
   serviceRoleCounts: {
     doorItem: definitions.filter((entry) => entry.doorItem).length,
