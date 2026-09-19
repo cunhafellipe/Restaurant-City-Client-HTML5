@@ -387,24 +387,99 @@ function tileCenterInCanvas(tileX, tileY, footprint) {
   };
 }
 
+let visualPlacementCatalogCache = null;
+
+function visualPlacementCatalog() {
+  if (visualPlacementCatalogCache) return visualPlacementCatalogCache;
+  const file = path.join(
+    REPO,
+    'server',
+    'runtime',
+    'generated',
+    'restaurant-placement-catalog.tsv',
+  );
+  const lines = fs.readFileSync(file, 'utf8').split(/\r?\n/);
+  const definitions = new Map();
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (!line || line.startsWith('#') || line.startsWith('ANEWON_') || line.startsWith('item_id\t')) {
+      continue;
+    }
+    const fields = line.split('\t');
+    if (fields.length !== 18) {
+      throw new Error(`Visual probe placement catalog row has ${fields.length} fields`);
+    }
+    const itemId = Number.parseInt(fields[0], 10);
+    const sizeX = Number.parseInt(fields[1], 10);
+    const sizeY = Number.parseInt(fields[2], 10);
+    const rotationCount = Number.parseInt(fields[3], 10);
+    const occupiedField = fields[17];
+    const exact = occupiedField === '-'
+      ? null
+      : occupiedField.split('/').map((rotation) =>
+          rotation.split('+').map((cell) => {
+            const [x, y] = cell.split(',').map((value) => Number.parseInt(value, 10));
+            return { x, y };
+          }),
+        );
+    definitions.set(itemId, {
+      sizeX,
+      sizeY,
+      rotationCount,
+      doorItem: fields[11] === '1',
+      chairItem: fields[12] === '1',
+      tableItem: fields[13] === '1',
+      kitchen: fields[14] === '1',
+      drink: fields[15] === '1',
+      toilet: fields[16] === '1',
+      exact,
+    });
+  }
+  visualPlacementCatalogCache = definitions;
+  return definitions;
+}
+
+function visualOccupiedCells(item) {
+  const definition = visualPlacementCatalog().get(item.item_id);
+  if (!definition) {
+    throw new Error(`Visual fixture item #${item.item_id} is absent from trusted placement catalog`);
+  }
+  if (item.rotation < 0 || item.rotation >= definition.rotationCount) {
+    throw new Error(`Visual fixture item #${item.item_id} has invalid rotation ${item.rotation}`);
+  }
+  if (definition.exact) return definition.exact[item.rotation];
+  const footprint = rotatedFootprint(
+    { sizeX: definition.sizeX, sizeY: definition.sizeY },
+    item.rotation,
+  );
+  const cells = [];
+  for (let y = 0; y < footprint.sizeY; y += 1) {
+    for (let x = 0; x < footprint.sizeX; x += 1) cells.push({ x, y });
+  }
+  return cells;
+}
+
 function buildVisualProbeTopology(state) {
+  const occupancy = new Map();
+  for (const item of state.items) {
+    for (const offset of visualOccupiedCells(item)) {
+      const x = item.tile_x + offset.x;
+      const y = item.tile_y + offset.y;
+      const key = `${x}:${y}`;
+      const stack = occupancy.get(key) ?? [];
+      stack.push(item);
+      occupancy.set(key, stack);
+    }
+  }
+
   const cells = [];
   for (let y = 0; y < state.room.inside_y; y += 1) {
     for (let x = 0; x < state.room.inside_x; x += 1) {
-      const occupants = state.items.filter((item) => {
-        const footprint = rotatedFootprint(
-          loadFixtureFootprint(item.item_id),
-          item.rotation,
-        );
-        return (
-          x >= item.tile_x &&
-          x < item.tile_x + footprint.sizeX &&
-          y >= item.tile_y &&
-          y < item.tile_y + footprint.sizeY
-        );
-      });
+      const occupants = occupancy.get(`${x}:${y}`) ?? [];
       const wall = x === 0 || y === 0;
-      const hasDoor = occupants.some((item) => item.item_id === 3010000);
+      const hasDoor = occupants.some(
+        (item) => visualPlacementCatalog().get(item.item_id)?.doorItem === true,
+      );
       cells.push({
         tile_x: x,
         tile_y: y,
@@ -416,25 +491,64 @@ function buildVisualProbeTopology(state) {
     }
   }
 
-  const tables = state.items
-    .filter((item) => item.item_id === 3030000)
-    .map((item) => ({
-      instance_id: item.instance_id,
-      tile_x: item.tile_x,
-      tile_y: item.tile_y,
-      item_count_on_tile: state.items.filter(
-        (candidate) =>
-          candidate.tile_x === item.tile_x &&
-          candidate.tile_y === item.tile_y,
-      ).length,
-      has_table_top_order: false,
-      free:
-        state.items.filter(
-          (candidate) =>
-            candidate.tile_x === item.tile_x &&
-            candidate.tile_y === item.tile_y,
-        ).length === 1,
-    }));
+  const chairs = [];
+  const tables = [];
+  const kitchens = [];
+  const drinks = [];
+  for (const item of state.items) {
+    const definition = visualPlacementCatalog().get(item.item_id);
+    if (!definition) continue;
+    if (definition.chairItem) {
+      const facing = [
+        { x: 1, y: 0 },
+        { x: 0, y: 1 },
+        { x: -1, y: 0 },
+        { x: 0, y: -1 },
+      ][item.rotation] ?? { x: 0, y: 0 };
+      const table = state.items.find((candidate) => {
+        const candidateDefinition = visualPlacementCatalog().get(candidate.item_id);
+        return candidateDefinition?.tableItem === true &&
+          candidate.tile_x === item.tile_x + facing.x &&
+          candidate.tile_y === item.tile_y + facing.y;
+      });
+      chairs.push({
+        instance_id: item.instance_id,
+        tile_x: item.tile_x,
+        tile_y: item.tile_y,
+        rotation: item.rotation,
+        toilet: definition.toilet,
+        meal_seat: !definition.toilet,
+        facing_tile_x: item.tile_x + facing.x,
+        facing_tile_y: item.tile_y + facing.y,
+        table_instance_id: table?.instance_id ?? null,
+      });
+    }
+    if (definition.tableItem) {
+      const count = occupancy.get(`${item.tile_x}:${item.tile_y}`)?.length ?? 0;
+      tables.push({
+        instance_id: item.instance_id,
+        tile_x: item.tile_x,
+        tile_y: item.tile_y,
+        item_count_on_tile: count,
+        has_table_top_order: false,
+        free: count === 1,
+      });
+    }
+    if (definition.kitchen) {
+      kitchens.push({
+        instance_id: item.instance_id,
+        tile_x: item.tile_x,
+        tile_y: item.tile_y,
+      });
+    }
+    if (definition.drink) {
+      drinks.push({
+        instance_id: item.instance_id,
+        tile_x: item.tile_x,
+        tile_y: item.tile_y,
+      });
+    }
+  }
 
   return {
     source: {
@@ -442,10 +556,10 @@ function buildVisualProbeTopology(state) {
       items: structuredClone(state.items),
     },
     cells,
-    chairs: [],
+    chairs,
     tables,
-    kitchens: [],
-    drinks: [],
+    kitchens,
+    drinks,
   };
 }
 
