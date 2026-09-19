@@ -440,9 +440,11 @@ fn map_service_error(error: ProductServiceError) -> PublicProductError {
             crate::restaurant::RestaurantAuthorityError::CorruptStackOrder { .. },
         ) => PublicProductError::Internal,
         ProductServiceError::RestaurantAuthority(_) => PublicProductError::Unprocessable,
-        ProductServiceError::MutationIdConflict => PublicProductError::Conflict,
+        ProductServiceError::MutationIdConflict
+        | ProductServiceError::WallpaperNotApplied { .. } => PublicProductError::Conflict,
         ProductServiceError::RestaurantMutationSequenceExhausted
-        | ProductServiceError::FloorMutationSequenceExhausted => PublicProductError::Internal,
+        | ProductServiceError::FloorMutationSequenceExhausted
+        | ProductServiceError::WallpaperMutationSequenceExhausted => PublicProductError::Internal,
     }
 }
 
