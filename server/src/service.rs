@@ -1520,13 +1520,16 @@ impl ProductAggregate {
                 }
                 ServiceMutationOperation::StartCustomerChairPath {
                     service_id,
-                    start_tile,
                     effective_at_ms,
                 } => {
                     let current = replay_active_service.ok_or(ProductStateStoreError::Corrupt)?;
                     if current.identity.service_id != service_id || current.active_path.is_some() {
                         return Err(ProductStateStoreError::Corrupt);
                     }
+                    let start_tile = current
+                        .identity
+                        .customer_entrance_tile
+                        .ok_or(ProductStateStoreError::Corrupt)?;
                     let source_restaurant = restaurant_snapshots_by_sequence
                         .get(&current.identity.restaurant_mutation_sequence)
                         .ok_or(ProductStateStoreError::Corrupt)?;
@@ -2294,7 +2297,6 @@ impl ProductAggregate {
         catalog: &PlacementCatalog,
         mutation_id: MutationId,
         service_id: u64,
-        start_tile: TilePoint,
         effective_at_ms: u64,
     ) -> Result<ActiveServiceMutationOutcome, ProductServiceError> {
         self.require_subject(session)?;
@@ -2309,12 +2311,8 @@ impl ProductAggregate {
             return match existing.operation {
                 ServiceMutationOperation::StartCustomerChairPath {
                     service_id: existing_service_id,
-                    start_tile: existing_start,
                     effective_at_ms: existing_at,
-                } if existing_service_id == service_id
-                    && existing_start == start_tile
-                    && existing_at == effective_at_ms =>
-                {
+                } if existing_service_id == service_id && existing_at == effective_at_ms => {
                     Ok(ActiveServiceMutationOutcome::Duplicate(existing.result))
                 }
                 _ => Err(ProductServiceError::MutationIdConflict),
@@ -2333,6 +2331,12 @@ impl ProductAggregate {
             ));
         }
 
+        let start_tile = current
+            .identity
+            .customer_entrance_tile
+            .ok_or(ProductServiceError::ServicePathAuthority(
+                ServicePathError::PathUnavailable,
+            ))?;
         let layout = derive_service_layout(&self.restaurant.snapshot(), catalog).map_err(|_| {
             ProductServiceError::ServicePathAuthority(ServicePathError::PathUnavailable)
         })?;
@@ -2358,7 +2362,6 @@ impl ProductAggregate {
             mutation_id,
             ServiceMutationOperation::StartCustomerChairPath {
                 service_id,
-                start_tile,
                 effective_at_ms,
             },
             Some(walking),
