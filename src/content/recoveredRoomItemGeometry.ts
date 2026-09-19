@@ -129,3 +129,16 @@ export function recoveredRoomItemLogicalRotationCount(
 ): number | null {
   return recoveredRoomItemGeometry(itemId, className)?.rotationCount ?? null;
 }
+
+export function recoveredRoomItemOccupiedCells(
+  itemId: number,
+  className: string | null,
+  rotation: number,
+): readonly { readonly x: number; readonly y: number }[] | null {
+  const geometry = recoveredRoomItemGeometry(itemId, className);
+  if (!geometry || !Number.isInteger(rotation) || rotation < 0) return null;
+  const recovered = geometry.occupiedCellsByRotation.find(
+    (entry) => entry.rotation === rotation,
+  );
+  return recovered?.cells ?? null;
+}
