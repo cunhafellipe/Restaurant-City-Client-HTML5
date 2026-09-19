@@ -28,23 +28,24 @@ pub use placement::{
 };
 
 pub use restaurant::{
-    ItemPlacementDefinition, PLACEMENT_CATALOG_MAGIC, PlacedItem, PlacementCatalog,
-    PlacementCatalogLoadError, PlacementIntent, RestaurantAuthorityError, RestaurantSnapshot,
-    RestaurantState,
+    AppliedWallpaper, ItemPlacementDefinition, PLACEMENT_CATALOG_MAGIC, PlacedItem,
+    PlacementCatalog, PlacementCatalogLoadError, PlacementIntent, RestaurantAuthorityError,
+    RestaurantSnapshot, RestaurantState, WallpaperIntent, WallpaperOrientation,
 };
 
 pub use service::{
     InMemoryProductStateStore, InventoryAvailability, LoadedProductState, PlacementMutationOutcome,
     ProductAggregate, ProductServiceError, ProductStateStore, ProductStateStoreError,
-    RestaurantProductService, RestaurantProductSnapshot,
+    RestaurantProductService, RestaurantProductSnapshot, WallpaperMutationOutcome,
 };
 
 pub use persistence::RedbProductStateStore;
 
 pub use http::{
     InventoryAvailabilityResponse, PlacedItemResponse, PlacementResponse, ProductHttpContext,
-    PublicProductError, RestaurantLayoutResponse, RoomResponse, handle_load_restaurant,
-    handle_place_item, handle_remove_item, handle_transform_item,
+    PublicProductError, RestaurantLayoutResponse, RoomResponse, WallpaperMutationResponse,
+    WallpaperResponse, handle_apply_wallpaper, handle_load_restaurant, handle_place_item,
+    handle_remove_item, handle_remove_wallpaper, handle_transform_item,
 };
 
 pub use axum_adapter::restaurant_router;
