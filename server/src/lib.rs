@@ -60,8 +60,11 @@ pub use persistence::RedbProductStateStore;
 
 pub use http::{
     InventoryAvailabilityResponse, PlacedItemResponse, PlacementResponse, ProductHttpContext,
-    PublicProductError, RestaurantLayoutResponse, RoomResponse, WallpaperMutationResponse,
-    WallpaperResponse, handle_apply_wallpaper, handle_load_restaurant, handle_place_item,
+    PublicProductError, RestaurantLayoutResponse, RoomResponse, ServiceChairResponse,
+    ServiceDrinkResponse, ServiceKitchenResponse, ServiceTableResponse, ServiceTopologyCellResponse,
+    ServiceTopologyResponse, ServiceTopologySourceResponse, WallpaperMutationResponse,
+    WallpaperResponse, handle_apply_wallpaper, handle_load_restaurant,
+    handle_load_service_topology, handle_place_item,
     handle_remove_item, handle_remove_wallpaper, handle_transform_item,
 };
 
