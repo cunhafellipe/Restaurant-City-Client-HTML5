@@ -1,4 +1,7 @@
-use crate::placement::{RoomDimensions, TilePoint};
+use crate::placement::{
+    RoomDimensions, TilePoint, default_wall_at, rotate_footprint,
+};
+use crate::restaurant::{PlacementCatalog, RestaurantSnapshot};
 
 pub const MAX_NUM_TILES_X: i32 = 20;
 pub const MAX_NUM_TILES_Y: i32 = 40;
@@ -313,6 +316,141 @@ pub struct ServiceTable {
 pub struct ServiceKitchen {
     pub instance_id: u64,
     pub tile: TilePoint,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ServiceDrink {
+    pub instance_id: u64,
+    pub tile: TilePoint,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ServiceLayoutSnapshot {
+    pub grid: ServiceTopologyGrid,
+    pub chairs: Vec<ServiceChair>,
+    pub tables: Vec<ServiceTable>,
+    pub kitchens: Vec<ServiceKitchen>,
+    pub drinks: Vec<ServiceDrink>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum TopologyBuildError {
+    UnknownCatalogItem { item_id: u32 },
+    CellItemOverflow { tile: TilePoint },
+    GridCoordinateOutOfRange { tile: TilePoint },
+}
+
+pub fn derive_service_layout(
+    snapshot: &RestaurantSnapshot,
+    catalog: &PlacementCatalog,
+) -> Result<ServiceLayoutSnapshot, TopologyBuildError> {
+    let mut grid = ServiceTopologyGrid::new(snapshot.room);
+
+    // addDefaultWalls creates the canonical zero-border wallMap before player
+    // items are inserted. Keep it derived instead of persisting duplicate wall
+    // state.
+    for y in 0..MAX_NUM_TILES_Y {
+        for x in 0..MAX_NUM_TILES_X {
+            let tile = TilePoint { x, y };
+            if default_wall_at(tile, snapshot.room).is_some() {
+                grid.set_cell(
+                    tile,
+                    TopologyCell {
+                        wall: true,
+                        ..TopologyCell::default()
+                    },
+                )
+                .map_err(|_| TopologyBuildError::GridCoordinateOutOfRange { tile })?;
+            }
+        }
+    }
+
+    let mut chairs = Vec::new();
+    let mut table_anchors = Vec::new();
+    let mut kitchens = Vec::new();
+    let mut drinks = Vec::new();
+
+    for item in &snapshot.items {
+        let definition = catalog
+            .get(item.item_id)
+            .ok_or(TopologyBuildError::UnknownCatalogItem {
+                item_id: item.item_id,
+            })?;
+        let roles = catalog.service_flags(item.item_id);
+        let footprint = rotate_footprint(definition.footprint, i32::from(item.rotation));
+
+        for offset_y in 0..footprint.size_y {
+            for offset_x in 0..footprint.size_x {
+                let tile = TilePoint {
+                    x: item.tile.x + offset_x as i32,
+                    y: item.tile.y + offset_y as i32,
+                };
+                let mut cell = grid
+                    .cell(tile)
+                    .ok_or(TopologyBuildError::GridCoordinateOutOfRange { tile })?;
+                cell.item_count = cell
+                    .item_count
+                    .checked_add(1)
+                    .ok_or(TopologyBuildError::CellItemOverflow { tile })?;
+                if definition.flags.wall_item {
+                    cell.wall = true;
+                }
+                if roles.door_item {
+                    cell.has_door = true;
+                }
+                grid.set_cell(tile, cell)
+                    .map_err(|_| TopologyBuildError::GridCoordinateOutOfRange { tile })?;
+            }
+        }
+
+        if roles.chair_item {
+            chairs.push(ServiceChair {
+                instance_id: item.instance_id,
+                tile: item.tile,
+                rotation: item.rotation,
+                toilet: roles.toilet,
+            });
+        }
+        if roles.table_item {
+            table_anchors.push((item.instance_id, item.tile));
+        }
+        if roles.kitchen {
+            kitchens.push(ServiceKitchen {
+                instance_id: item.instance_id,
+                tile: item.tile,
+            });
+        }
+        if roles.drink {
+            drinks.push(ServiceDrink {
+                instance_id: item.instance_id,
+                tile: item.tile,
+            });
+        }
+    }
+
+    let mut tables = Vec::with_capacity(table_anchors.len());
+    for (instance_id, tile) in table_anchors {
+        let item_count_on_tile = grid
+            .cell(tile)
+            .ok_or(TopologyBuildError::GridCoordinateOutOfRange { tile })?
+            .item_count;
+        tables.push(ServiceTable {
+            instance_id,
+            tile,
+            item_count_on_tile,
+            // Active DishOrder state is intentionally not part of static
+            // placement persistence. The live service aggregate overlays this.
+            has_table_top_order: false,
+        });
+    }
+
+    Ok(ServiceLayoutSnapshot {
+        grid,
+        chairs,
+        tables,
+        kitchens,
+        drinks,
+    })
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -697,6 +835,94 @@ mod tests {
         assert_eq!(blocked.waiter_chairs, vec![(40, vec![10])]);
         assert_eq!(blocked.waiter_kitchens, vec![(40, vec![])]);
         assert_eq!(blocked.chef_chairs, vec![(30, vec![])]);
+    }
+
+    #[test]
+    fn authoritative_snapshot_derives_service_roles_occupancy_and_door_walkability() {
+        let catalog = PlacementCatalog::from_trusted_tsv(
+            concat!(
+                "ANEWON_RC_PLACEMENT_CATALOG_V4\n",
+                "item_id\tsize_x\tsize_y\trotation_count\twall_item\twall_decoration_item\twallpaper_item\toutdoor\tfloor_tile_item\tsurface\tstackable\tdoor_item\tchair_item\ttable_item\tkitchen\tdrink\ttoilet\n",
+                "1\t1\t1\t4\t0\t0\t0\t0\t0\t0\t0\t0\t1\t0\t0\t0\t0\n",
+                "2\t1\t1\t1\t0\t0\t0\t0\t0\t1\t0\t0\t0\t1\t0\t0\t0\n",
+                "3\t2\t1\t4\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t1\t0\t0\n",
+                "4\t1\t1\t1\t0\t1\t0\t0\t0\t0\t0\t1\t0\t0\t0\t0\t0\n",
+                "5\t1\t1\t4\t0\t0\t0\t0\t0\t0\t0\t0\t1\t0\t0\t0\t1\n",
+            ),
+        )
+        .unwrap();
+
+        let snapshot = RestaurantSnapshot {
+            room: room(),
+            next_instance_id: 7,
+            items: vec![
+                crate::restaurant::PlacedItem {
+                    instance_id: 1,
+                    item_id: 1,
+                    tile: TilePoint { x: 4, y: 4 },
+                    rotation: 0,
+                    room_index: 0,
+                },
+                crate::restaurant::PlacedItem {
+                    instance_id: 2,
+                    item_id: 2,
+                    tile: TilePoint { x: 5, y: 4 },
+                    rotation: 0,
+                    room_index: 0,
+                },
+                crate::restaurant::PlacedItem {
+                    instance_id: 3,
+                    item_id: 3,
+                    tile: TilePoint { x: 7, y: 4 },
+                    rotation: 1,
+                    room_index: 0,
+                },
+                // Default wall segment at x=0 becomes walkable only because a
+                // canonical door item occupies the same wall tile.
+                crate::restaurant::PlacedItem {
+                    instance_id: 4,
+                    item_id: 4,
+                    tile: TilePoint { x: 0, y: 3 },
+                    rotation: 0,
+                    room_index: 0,
+                },
+                crate::restaurant::PlacedItem {
+                    instance_id: 5,
+                    item_id: 5,
+                    tile: TilePoint { x: 3, y: 4 },
+                    rotation: 0,
+                    room_index: 0,
+                },
+            ],
+        };
+
+        let layout = derive_service_layout(&snapshot, &catalog).unwrap();
+        assert_eq!(layout.chairs.len(), 2);
+        assert_eq!(
+            layout
+                .chairs
+                .iter()
+                .find(|chair| chair.instance_id == 5)
+                .unwrap()
+                .toilet,
+            true
+        );
+        assert_eq!(layout.tables.len(), 1);
+        assert_eq!(layout.kitchens.len(), 1);
+        assert!(layout.drinks.is_empty());
+
+        // Kitchen footprint is 2x1 but rotation 1 swaps it to 1x2.
+        assert_eq!(
+            layout.grid.cell(TilePoint { x: 7, y: 5 }).unwrap().item_count,
+            1
+        );
+        assert!(layout.grid.is_walkable(TilePoint { x: 0, y: 3 }));
+        assert!(!layout.grid.is_walkable(TilePoint { x: 0, y: 2 }));
+        assert_eq!(
+            table_for_chair(layout.chairs[0], &layout.tables)
+                .map(|table| table.instance_id),
+            Some(2)
+        );
     }
 
     #[test]
