@@ -20,12 +20,17 @@ use crate::service_clock::{
     ServiceDeadlines, ServiceTimeSource, ServiceTimingError, SystemServiceTimeSource,
     due_service_event, validate_service_deadlines,
 };
+use crate::service_path::{
+    ServicePathError, ServicePathKind, ServicePathPlan, plan_customer_path_to_chair,
+    validate_customer_path_to_chair_plan,
+};
 use crate::topology::{ServiceLayoutSnapshot, derive_service_layout};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 
-const PRODUCT_PERSISTENCE_SCHEMA_VERSION: u8 = 6;
+const PRODUCT_PERSISTENCE_SCHEMA_VERSION: u8 = 7;
+const TIMED_SERVICE_PERSISTENCE_SCHEMA_VERSION: u8 = 6;
 const ACTIVE_SERVICE_PERSISTENCE_SCHEMA_VERSION: u8 = 5;
 const WALLPAPER_PERSISTENCE_SCHEMA_VERSION: u8 = 4;
 const FLOOR_TILE_PERSISTENCE_SCHEMA_VERSION: u8 = 3;
@@ -284,6 +289,8 @@ struct PersistedActiveService {
     customer_deadline_at_ms: Option<u64>,
     #[serde(default)]
     order_deadline_at_ms: Option<u64>,
+    #[serde(default)]
+    active_path: Option<ServicePathPlan>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -501,6 +508,7 @@ impl From<ActiveServiceRecord> for PersistedActiveService {
             timing_anchored: value.timing_anchored,
             customer_deadline_at_ms: value.deadlines.customer_deadline_at_ms,
             order_deadline_at_ms: value.deadlines.order_deadline_at_ms,
+            active_path: value.active_path,
         }
     }
 }
@@ -530,6 +538,12 @@ impl TryFrom<PersistedActiveService> for ActiveServiceRecord {
         } else if deadlines != ServiceDeadlines::default() {
             return Err(ProductStateStoreError::Corrupt);
         }
+        if value
+            .active_path
+            .is_some_and(|path| path.completes_at_ms < path.started_at_ms)
+        {
+            return Err(ProductStateStoreError::Corrupt);
+        }
 
         Ok(Self {
             identity: ActiveServiceIdentity {
@@ -550,6 +564,7 @@ impl TryFrom<PersistedActiveService> for ActiveServiceRecord {
             state: value.state,
             timing_anchored: value.timing_anchored,
             deadlines,
+            active_path: value.active_path,
         })
     }
 }
@@ -766,6 +781,11 @@ impl ProductAggregate {
                 let persisted: PersistedAggregate =
                     serde_json::from_slice(bytes).map_err(|_| ProductStateStoreError::Corrupt)?;
                 Self::decode_v5_persisted(catalog, persisted)
+            }
+            TIMED_SERVICE_PERSISTENCE_SCHEMA_VERSION => {
+                let persisted: PersistedAggregate =
+                    serde_json::from_slice(bytes).map_err(|_| ProductStateStoreError::Corrupt)?;
+                Self::decode_v6_persisted(catalog, persisted)
             }
             PRODUCT_PERSISTENCE_SCHEMA_VERSION => {
                 let persisted: PersistedAggregate =
@@ -1000,6 +1020,31 @@ impl ProductAggregate {
         Self::decode_current_persisted(catalog, persisted)
     }
 
+    fn decode_v6_persisted(
+        catalog: &PlacementCatalog,
+        mut persisted: PersistedAggregate,
+    ) -> Result<Self, ProductStateStoreError> {
+        if persisted.schema_version != TIMED_SERVICE_PERSISTENCE_SCHEMA_VERSION {
+            return Err(ProductStateStoreError::Corrupt);
+        }
+
+        // V6 has authoritative wall-clock timing but predates persisted
+        // path authority. The serde-defaulted active_path remains absent; no
+        // legacy service is allowed to acquire a synthetic path during decode.
+        if persisted
+            .active_service
+            .is_some_and(|service| service.active_path.is_some())
+            || persisted
+                .service_mutations
+                .iter()
+                .any(|entry| entry.result.is_some_and(|service| service.active_path.is_some()))
+        {
+            return Err(ProductStateStoreError::Corrupt);
+        }
+        persisted.schema_version = PRODUCT_PERSISTENCE_SCHEMA_VERSION;
+        Self::decode_current_persisted(catalog, persisted)
+    }
+
     fn decode_current_persisted(
         catalog: &PlacementCatalog,
         persisted: PersistedAggregate,
@@ -1014,8 +1059,9 @@ impl ProductAggregate {
             return Err(ProductStateStoreError::Corrupt);
         }
 
-        // V6 extends the V5 live-service journal with authoritative timing.
-        // Replay every domain and every deadline from journal operations rather
+        // V7 extends the V6 live-service journal with server-owned path
+        // authority. Replay every domain, every deadline and every path plan
+        // from journal operations rather
         // than trusting serialized result snapshots. A migrated V5 prefix is
         // permitted to remain unanchored until an explicit AnchorTiming entry.
         let player = PlayerState::from_persistence_snapshot(persisted.player)
