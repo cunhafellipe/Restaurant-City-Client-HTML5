@@ -23,6 +23,12 @@ export function requireRestaurantAuthority(
     candidate === null ||
     !('loadRestaurant' in candidate) ||
     typeof candidate.loadRestaurant !== 'function' ||
+    !('loadServiceTopology' in candidate) ||
+    typeof candidate.loadServiceTopology !== 'function' ||
+    !('loadActiveService' in candidate) ||
+    typeof candidate.loadActiveService !== 'function' ||
+    !('loadRestaurantSnapshot' in candidate) ||
+    typeof candidate.loadRestaurantSnapshot !== 'function' ||
     !('placeItem' in candidate) ||
     typeof candidate.placeItem !== 'function' ||
     !('paintFloorTile' in candidate) ||
