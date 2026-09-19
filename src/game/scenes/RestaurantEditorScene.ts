@@ -1768,10 +1768,10 @@ export class RestaurantEditorScene extends Phaser.Scene {
       if (
         geometry.footprint.sizeX !== 1 ||
         geometry.footprint.sizeY !== 1 ||
-        geometry.placementFootprintEnabled
+        !geometry.placementFootprintEnabled
       ) {
         throw new Error(
-          `Divider probe expected fail-closed 1x1 geometry for #${definition.id}`,
+          `Divider probe expected promoted 1x1 geometry for #${definition.id}`,
         );
       }
 
