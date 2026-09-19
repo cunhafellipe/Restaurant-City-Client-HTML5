@@ -277,6 +277,31 @@ struct LegacyPersistedAggregate {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
+struct PersistedTilePoint {
+    x: i32,
+    y: i32,
+}
+
+impl From<TilePoint> for PersistedTilePoint {
+    fn from(value: TilePoint) -> Self {
+        Self {
+            x: value.x,
+            y: value.y,
+        }
+    }
+}
+
+impl From<PersistedTilePoint> for TilePoint {
+    fn from(value: PersistedTilePoint) -> Self {
+        Self {
+            x: value.x,
+            y: value.y,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct PersistedActiveServiceAssignment {
     chair_instance_id: u64,
     table_instance_id: u64,
@@ -286,9 +311,7 @@ struct PersistedActiveServiceAssignment {
     waiter_tile_x: i32,
     waiter_tile_y: i32,
     #[serde(default)]
-    customer_entrance_tile_x: Option<i32>,
-    #[serde(default)]
-    customer_entrance_tile_y: Option<i32>,
+    customer_entrance_tile: Option<PersistedTilePoint>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -306,9 +329,7 @@ struct PersistedActiveService {
     waiter_tile_x: i32,
     waiter_tile_y: i32,
     #[serde(default)]
-    customer_entrance_tile_x: Option<i32>,
-    #[serde(default)]
-    customer_entrance_tile_y: Option<i32>,
+    customer_entrance_tile: Option<PersistedTilePoint>,
     state: ServiceLoopState,
     #[serde(default)]
     timing_anchored: bool,
@@ -505,8 +526,7 @@ impl From<ActiveServiceAssignment> for PersistedActiveServiceAssignment {
             waiter_employee_id: value.waiter_employee_id,
             waiter_tile_x: value.waiter_tile.x,
             waiter_tile_y: value.waiter_tile.y,
-            customer_entrance_tile_x: value.customer_entrance_tile.map(|tile| tile.x),
-            customer_entrance_tile_y: value.customer_entrance_tile.map(|tile| tile.y),
+            customer_entrance_tile: value.customer_entrance_tile.map(PersistedTilePoint::from),
         }
     }
 }
@@ -523,14 +543,7 @@ impl From<PersistedActiveServiceAssignment> for ActiveServiceAssignment {
                 x: value.waiter_tile_x,
                 y: value.waiter_tile_y,
             },
-            customer_entrance_tile: match (
-                value.customer_entrance_tile_x,
-                value.customer_entrance_tile_y,
-            ) {
-                (Some(x), Some(y)) => Some(TilePoint { x, y }),
-                (None, None) => None,
-                _ => None,
-            },
+            customer_entrance_tile: value.customer_entrance_tile.map(TilePoint::from),
         }
     }
 }
@@ -549,8 +562,10 @@ impl From<ActiveServiceRecord> for PersistedActiveService {
             waiter_employee_id: value.identity.waiter_employee_id,
             waiter_tile_x: value.identity.waiter_tile.x,
             waiter_tile_y: value.identity.waiter_tile.y,
-            customer_entrance_tile_x: value.identity.customer_entrance_tile.map(|tile| tile.x),
-            customer_entrance_tile_y: value.identity.customer_entrance_tile.map(|tile| tile.y),
+            customer_entrance_tile: value
+                .identity
+                .customer_entrance_tile
+                .map(PersistedTilePoint::from),
             state: value.state,
             timing_anchored: value.timing_anchored,
             customer_deadline_at_ms: value.deadlines.customer_deadline_at_ms,
@@ -592,14 +607,7 @@ impl TryFrom<PersistedActiveService> for ActiveServiceRecord {
             return Err(ProductStateStoreError::Corrupt);
         }
 
-        let customer_entrance_tile = match (
-            value.customer_entrance_tile_x,
-            value.customer_entrance_tile_y,
-        ) {
-            (Some(x), Some(y)) => Some(TilePoint { x, y }),
-            (None, None) => None,
-            _ => return Err(ProductStateStoreError::Corrupt),
-        };
+        let customer_entrance_tile = value.customer_entrance_tile.map(TilePoint::from);
 
         Ok(Self {
             identity: ActiveServiceIdentity {
