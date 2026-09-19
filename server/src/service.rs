@@ -941,6 +941,8 @@ impl ProductAggregate {
         }
 
         let mut replay = RestaurantState::new(expected_restaurant.room);
+        let mut restaurant_snapshots_by_sequence = BTreeMap::<u64, RestaurantSnapshot>::new();
+        restaurant_snapshots_by_sequence.insert(0, replay.snapshot());
         for (_, record) in &ordered {
             let replayed = match record.operation {
                 RestaurantMutationOperation::Place => replay
@@ -969,6 +971,7 @@ impl ProductAggregate {
             if replayed != record.item {
                 return Err(ProductStateStoreError::Corrupt);
             }
+            restaurant_snapshots_by_sequence.insert(record.sequence, replay.snapshot());
         }
 
         let replay_snapshot = replay.snapshot();
