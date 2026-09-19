@@ -1115,6 +1115,124 @@ impl ProductAggregate {
             return Err(ProductStateStoreError::Corrupt);
         }
 
+        let expected_active_service = persisted
+            .active_service
+            .map(ActiveServiceRecord::try_from)
+            .transpose()?;
+        let mut service_mutations = BTreeMap::new();
+        let mut ordered_service = Vec::new();
+        let mut seen_service_sequences = BTreeMap::<u64, ()>::new();
+
+        for entry in persisted.service_mutations {
+            let mutation_id =
+                MutationId::new(entry.mutation_id).map_err(|_| ProductStateStoreError::Corrupt)?;
+            if restaurant_mutations.contains_key(&mutation_id)
+                || floor_mutations.contains_key(&mutation_id)
+                || wallpaper_mutations.contains_key(&mutation_id)
+                || entry.sequence == 0
+                || seen_service_sequences
+                    .insert(entry.sequence, ())
+                    .is_some()
+            {
+                return Err(ProductStateStoreError::Corrupt);
+            }
+
+            let record = ServiceMutationRecord {
+                sequence: entry.sequence,
+                operation: entry.operation.into(),
+                result: entry
+                    .result
+                    .map(ActiveServiceRecord::try_from)
+                    .transpose()?,
+            };
+            if service_mutations
+                .insert(mutation_id.clone(), record)
+                .is_some()
+            {
+                return Err(ProductStateStoreError::Corrupt);
+            }
+            ordered_service.push((mutation_id, record));
+        }
+
+        ordered_service.sort_by_key(|(_, record)| record.sequence);
+        for (index, (_, record)) in ordered_service.iter().enumerate() {
+            let expected = u64::try_from(index)
+                .map_err(|_| ProductStateStoreError::Corrupt)?
+                .checked_add(1)
+                .ok_or(ProductStateStoreError::Corrupt)?;
+            if record.sequence != expected {
+                return Err(ProductStateStoreError::Corrupt);
+            }
+        }
+        let expected_service_next = u64::try_from(ordered_service.len())
+            .map_err(|_| ProductStateStoreError::Corrupt)?
+            .checked_add(1)
+            .ok_or(ProductStateStoreError::Corrupt)?;
+        if persisted.next_service_mutation_sequence != expected_service_next {
+            return Err(ProductStateStoreError::Corrupt);
+        }
+
+        let mut replay_active_service: Option<ActiveServiceRecord> = None;
+        let mut replay_next_service_id = 1_u64;
+        for (_, record) in &ordered_service {
+            match record.operation {
+                ServiceMutationOperation::Start {
+                    restaurant_mutation_sequence,
+                    assignment,
+                } => {
+                    if replay_active_service.is_some() {
+                        return Err(ProductStateStoreError::Corrupt);
+                    }
+                    let source_restaurant = restaurant_snapshots_by_sequence
+                        .get(&restaurant_mutation_sequence)
+                        .ok_or(ProductStateStoreError::Corrupt)?;
+                    let started = ActiveServiceRecord::start(
+                        replay_next_service_id,
+                        restaurant_mutation_sequence,
+                        assignment,
+                        source_restaurant,
+                        catalog,
+                    )
+                    .map_err(|_| ProductStateStoreError::Corrupt)?;
+                    replay_next_service_id = replay_next_service_id
+                        .checked_add(1)
+                        .ok_or(ProductStateStoreError::Corrupt)?;
+                    replay_active_service = Some(started);
+                }
+                ServiceMutationOperation::Transition { service_id, event } => {
+                    let current = replay_active_service.ok_or(ProductStateStoreError::Corrupt)?;
+                    if current.identity.service_id != service_id {
+                        return Err(ProductStateStoreError::Corrupt);
+                    }
+                    replay_active_service = Some(
+                        current
+                            .transition(event)
+                            .map_err(|_| ProductStateStoreError::Corrupt)?,
+                    );
+                }
+                ServiceMutationOperation::Complete { service_id } => {
+                    let current = replay_active_service.ok_or(ProductStateStoreError::Corrupt)?;
+                    if current.identity.service_id != service_id
+                        || current.state.customer != CustomerServiceState::Left
+                        || current.state.order != OrderServiceState::Settled
+                    {
+                        return Err(ProductStateStoreError::Corrupt);
+                    }
+                    replay_active_service = None;
+                }
+            }
+
+            if replay_active_service != record.result {
+                return Err(ProductStateStoreError::Corrupt);
+            }
+        }
+
+        if replay_active_service != expected_active_service
+            || replay_next_service_id != persisted.next_service_id
+        {
+            return Err(ProductStateStoreError::Corrupt);
+        }
+
         Self::validate_inventory_against_restaurant(
             &player,
             &replay,
@@ -1133,6 +1251,10 @@ impl ProductAggregate {
             wallpapers: replay_wallpapers,
             wallpaper_mutations,
             next_wallpaper_mutation_sequence: persisted.next_wallpaper_mutation_sequence,
+            active_service: replay_active_service,
+            service_mutations,
+            next_service_mutation_sequence: persisted.next_service_mutation_sequence,
+            next_service_id: persisted.next_service_id,
         })
     }
 
