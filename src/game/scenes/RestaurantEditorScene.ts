@@ -16,6 +16,7 @@ import {
   recoveredRoomItemFrame,
   recoveredRoomItemFrameOffset,
   recoveredRoomItemGeometry,
+  recoveredRoomItemOccupiedCells,
 } from '../../content/recoveredRoomItemGeometry';
 import {
   buildRestaurantItemCatalog,
@@ -765,7 +766,11 @@ export class RestaurantEditorScene extends Phaser.Scene {
       return { ok: true, roomIndex: 0 };
     }
 
-    const structural = validateStructuralPlacement(shape, tile, this.room);
+    const structural = this.validateOccupiedStructure(
+      item,
+      tile,
+      this.rotation,
+    );
     if (!structural.ok) return structural;
 
     if (
@@ -780,7 +785,7 @@ export class RestaurantEditorScene extends Phaser.Scene {
       this.overlapsCommittedItem(
         item,
         tile,
-        shape,
+        this.rotation,
         structural.roomIndex,
         this.selectedPlacedInstanceId,
       )
@@ -791,55 +796,111 @@ export class RestaurantEditorScene extends Phaser.Scene {
     return structural;
   }
 
+  private placementCellOffsets(
+    item: RestaurantItemDefinition,
+    rotation: number,
+  ): readonly TilePoint[] {
+    const exact = recoveredRoomItemOccupiedCells(
+      item.id,
+      item.className,
+      rotation,
+    );
+    if (exact && exact.length > 0) return exact;
+    if (!item.placementFootprint) return [];
+
+    const footprint = rotateFootprint(item.placementFootprint, rotation);
+    const cells: TilePoint[] = [];
+    for (let x = 0; x < footprint.sizeX; x += 1) {
+      for (let y = 0; y < footprint.sizeY; y += 1) {
+        cells.push({ x, y });
+      }
+    }
+    return cells;
+  }
+
+  private validateOccupiedStructure(
+    item: RestaurantItemDefinition,
+    tile: TilePoint,
+    rotation: number,
+  ): ReturnType<typeof validateStructuralPlacement> {
+    const offsets = this.placementCellOffsets(item, rotation);
+    if (offsets.length === 0) {
+      return { ok: false, reason: 'out-of-bounds' };
+    }
+
+    const unitShape: PlacementShape = {
+      sizeX: 1,
+      sizeY: 1,
+      ...item.placement,
+    };
+    let roomIndex: number | null = null;
+    for (const offset of offsets) {
+      const candidateTile = {
+        x: tile.x + offset.x,
+        y: tile.y + offset.y,
+      };
+      const structural = validateStructuralPlacement(
+        unitShape,
+        candidateTile,
+        this.room,
+      );
+      if (!structural.ok) return structural;
+      if (roomIndex === null) roomIndex = structural.roomIndex;
+      else if (roomIndex !== structural.roomIndex) {
+        return { ok: false, reason: 'wrong-area' };
+      }
+    }
+
+    return { ok: true, roomIndex: roomIndex ?? 0 };
+  }
+
   private overlapsCommittedItem(
     candidate: RestaurantItemDefinition,
     tile: TilePoint,
-    shape: PlacementShape,
+    rotation: number,
     roomIndex: number,
     selfInstanceId: number | null = null,
   ): boolean {
-    // WorldRestaurant.itemMap is bottom -> top. The authority returns its
-    // snapshot in that same order, so preserve it while filtering each tile.
-    for (let dx = 0; dx < shape.sizeX; dx += 1) {
-      for (let dy = 0; dy < shape.sizeY; dy += 1) {
-        const tileX = tile.x + dx;
-        const tileY = tile.y + dy;
-        const stack = this.authoritativeItems.flatMap((placed) => {
-          if (placed.roomIndex !== roomIndex) return [];
+    // WorldRestaurant.itemMap is bottom -> top. Match the authority by
+    // evaluating exact occupied cells (including negative composite offsets)
+    // instead of reducing RoomItem subitems to a rectangular bounding box.
+    for (const candidateOffset of this.placementCellOffsets(candidate, rotation)) {
+      const tileX = tile.x + candidateOffset.x;
+      const tileY = tile.y + candidateOffset.y;
+      const stack = this.authoritativeItems.flatMap((placed) => {
+        if (placed.roomIndex !== roomIndex) return [];
 
-          const definition = this.catalogById.get(placed.itemId);
-          if (!definition?.placementFootprint) {
-            // Fail closed if authority somehow references geometry the client
-            // cannot reproduce.
-            return [{ instanceId: placed.instanceId, surface: false }];
-          }
+        const definition = this.catalogById.get(placed.itemId);
+        if (!definition?.placementFootprint) {
+          // Fail closed if authority somehow references geometry the client
+          // cannot reproduce.
+          return [{ instanceId: placed.instanceId, surface: false }];
+        }
 
-          const footprint = rotateFootprint(
-            definition.placementFootprint,
-            placed.rotation,
-          );
-          const contains =
-            tileX >= placed.tileX &&
-            tileX < placed.tileX + footprint.sizeX &&
-            tileY >= placed.tileY &&
-            tileY < placed.tileY + footprint.sizeY;
-          return contains
-            ? [
-                {
-                  instanceId: placed.instanceId,
-                  surface: definition.placement.surface === true,
-                },
-              ]
-            : [];
-        });
-
-        const result = validateHistoricalTileStack(
-          { stackable: candidate.placement.stackable },
-          stack,
-          selfInstanceId ?? undefined,
+        const contains = this.placementCellOffsets(
+          definition,
+          placed.rotation,
+        ).some(
+          (existingOffset) =>
+            placed.tileX + existingOffset.x === tileX &&
+            placed.tileY + existingOffset.y === tileY,
         );
-        if (!result.ok) return true;
-      }
+        return contains
+          ? [
+              {
+                instanceId: placed.instanceId,
+                surface: definition.placement.surface === true,
+              },
+            ]
+          : [];
+      });
+
+      const result = validateHistoricalTileStack(
+        { stackable: candidate.placement.stackable },
+        stack,
+        selfInstanceId ?? undefined,
+      );
+      if (!result.ok) return true;
     }
 
     return false;
@@ -1988,10 +2049,11 @@ export class RestaurantEditorScene extends Phaser.Scene {
 
       this.committedGraphics.lineStyle(2, 0x5aa5d8, 0.95);
       this.committedGraphics.fillStyle(0x5aa5d8, 0.14);
-      this.drawTileFootprint(
+      this.drawItemFootprint(
         this.committedGraphics,
+        definition,
+        placed.rotation,
         { x: placed.tileX, y: placed.tileY },
-        rotateFootprint(definition.placementFootprint, placed.rotation),
         true,
       );
       const selected =
@@ -1999,10 +2061,11 @@ export class RestaurantEditorScene extends Phaser.Scene {
       if (selected) {
         this.committedGraphics.lineStyle(3, 0xffd166, 1);
         this.committedGraphics.fillStyle(0xffd166, 0.18);
-        this.drawTileFootprint(
+        this.drawItemFootprint(
           this.committedGraphics,
+          definition,
+          placed.rotation,
           { x: placed.tileX, y: placed.tileY },
-          rotateFootprint(definition.placementFootprint, placed.rotation),
           true,
         );
       }
@@ -2065,7 +2128,8 @@ export class RestaurantEditorScene extends Phaser.Scene {
 
     const shape = this.currentShape();
     const tile = this.hoverTile;
-    if (!shape || !tile) return;
+    const item = this.currentDefinition();
+    if (!shape || !tile || !item) return;
 
     const validation = this.currentValidation();
     if (!validation) return;
@@ -2075,15 +2139,15 @@ export class RestaurantEditorScene extends Phaser.Scene {
 
     this.previewGraphics.lineStyle(2, line, 1);
     this.previewGraphics.fillStyle(fill, 0.2);
-    this.drawTileFootprint(
+    this.drawItemFootprint(
       this.previewGraphics,
+      item,
+      this.rotation,
       tile,
-      { sizeX: shape.sizeX, sizeY: shape.sizeY },
       true,
     );
 
-    const item = this.currentDefinition();
-    const visual = item ? this.itemVisual(item) : null;
+    const visual = this.itemVisual(item);
     if (item?.placementFootprint && visual && this.isAuthoritativeWallpaper(item)) {
       const targetRotation = defaultWallAttachmentRotation(tile, this.room);
       if (
@@ -2147,6 +2211,23 @@ export class RestaurantEditorScene extends Phaser.Scene {
           ? 'Placement preview matches current authoritative constraints.'
           : `Placement preview rejected: ${validation.reason}.`,
         validation,
+      );
+    }
+  }
+
+  private drawItemFootprint(
+    graphics: Phaser.GameObjects.Graphics,
+    item: RestaurantItemDefinition,
+    rotation: number,
+    tile: TilePoint,
+    fill: boolean,
+  ): void {
+    for (const offset of this.placementCellOffsets(item, rotation)) {
+      this.drawTileFootprint(
+        graphics,
+        { x: tile.x + offset.x, y: tile.y + offset.y },
+        { sizeX: 1, sizeY: 1 },
+        fill,
       );
     }
   }
