@@ -139,6 +139,55 @@ describe('Restaurant City item visuals', () => {
     ).toEqual({ x: -40, y: -40 });
   });
 
+  it('uses proven runtime aliases and separates logical from visual kitchen rotations', () => {
+    const index = buildRestaurantItemVisualIndex([
+      {
+        atlasId: 'indoor_asset',
+        frameNames: [
+          'indoor_asset/stoverotations10/001',
+          'indoor_asset/stove11rotations_485/001',
+          'indoor_asset/stove11rotations_485/002',
+          'indoor_asset/stove11rotations_485/003',
+          'indoor_asset/stove11rotations_485/004',
+        ],
+      },
+    ]);
+
+    const stove10 = resolveRestaurantItemVisual(
+      {
+        ...baseItem,
+        id: 3070005,
+        name: 'Stove 10',
+        group: 'Kitchen',
+        className: 'Stove10',
+      },
+      index,
+    );
+    expect(stove10?.symbol).toBe('stoverotations10');
+    expect(stove10?.frames).toEqual([
+      'indoor_asset/stoverotations10/001',
+      'indoor_asset/stoverotations10/001',
+      'indoor_asset/stoverotations10/001',
+      'indoor_asset/stoverotations10/001',
+    ]);
+    expect(frameForRestaurantItemRotation(stove10!, 3)).toBe(
+      'indoor_asset/stoverotations10/001',
+    );
+
+    const stove11 = resolveRestaurantItemVisual(
+      {
+        ...baseItem,
+        id: 3070008,
+        name: 'Stove 11',
+        group: 'Kitchen',
+        className: 'Stove11',
+      },
+      index,
+    );
+    expect(stove11?.symbol).toBe('stove11rotations_485');
+    expect(stove11?.frames).toHaveLength(4);
+  });
+
   it('fails closed on malformed atlas frame keys', () => {
     expect(() =>
       buildRestaurantItemVisualIndex([
