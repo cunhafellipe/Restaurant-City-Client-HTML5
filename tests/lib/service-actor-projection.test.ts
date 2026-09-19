@@ -89,7 +89,7 @@ describe('authoritative service actor projection', () => {
       {
         role: 'customer',
         animation: 'sit',
-        tile: { x: 3, y: 4 },
+        tile: { x: 3, y: 3 },
         direction: 7,
       },
       {
@@ -105,6 +105,19 @@ describe('authoritative service actor projection', () => {
         direction: 0,
       },
     ]);
+  });
+
+  it('does not confuse the chair-facing table tile with the seated customer tile', () => {
+    const customer = projectActiveServiceActors(activeBase, topology).find(
+      (actor) => actor.role === 'customer',
+    );
+    expect(customer?.tile).toEqual({ x: 3, y: 3 });
+    expect(topology.chairs[0]?.facingTileX).toBe(3);
+    expect(topology.chairs[0]?.facingTileY).toBe(4);
+    expect(customer?.tile).not.toEqual({
+      x: topology.chairs[0]?.facingTileX,
+      y: topology.chairs[0]?.facingTileY,
+    });
   });
 
   it('keeps path-dependent customer and waiter actors hidden', () => {
