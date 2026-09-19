@@ -50,7 +50,14 @@ function renderState(
         `rot ${state.selectedPlacedItem.rotation}`,
         'hover a destination and click the floor to save',
       ].join(' · ')
-    : state.selectedItem
+    : state.selectedWallpaper
+      ? [
+          'Editing wallpaper',
+          state.selectedWallpaper.name,
+          `${state.selectedWallpaper.orientation} wall`,
+          'applies to every matching wall segment',
+        ].join(' · ')
+      : state.selectedItem
       ? [
           `#${state.selectedItem.id}`,
           state.selectedItem.name,
@@ -63,10 +70,14 @@ function renderState(
       : 'No item selected';
 
   const editingPlaced = state.selectedPlacedItem !== undefined;
-  previousButton.disabled = editingPlaced;
-  nextButton.disabled = editingPlaced;
-  removeButton.disabled = !editingPlaced || state.phase === 'saving';
-  cancelButton.disabled = !editingPlaced || state.phase === 'saving';
+  const editingWallpaper = state.selectedWallpaper !== undefined;
+  const editingAuthorityState = editingPlaced || editingWallpaper;
+  previousButton.disabled = editingAuthorityState;
+  nextButton.disabled = editingAuthorityState;
+  removeButton.disabled = !editingAuthorityState || state.phase === 'saving';
+  cancelButton.disabled = !editingAuthorityState || state.phase === 'saving';
+  removeButton.textContent = editingWallpaper ? 'Remove wallpaper' : 'Remove placed';
+  rotateButton.disabled = editingWallpaper || state.phase === 'saving';
   rotateButton.textContent = editingPlaced ? 'Rotate preview' : 'Rotate';
 
   placement.textContent = state.placement
