@@ -44,6 +44,7 @@ const fixtureSeed = {
       room_index: 0,
     },
   ],
+  floor_tiles: [],
   inventory: [
     {
       item_id: 3020163,
@@ -74,6 +75,7 @@ const stackFixtureSeed = {
       room_index: 0,
     },
   ],
+  floor_tiles: [],
   inventory: [
     { item_id: 3030000, owned: 1, placed: 1, available: 0 },
     { item_id: 3020179, owned: 1, placed: 1, available: 0 },
