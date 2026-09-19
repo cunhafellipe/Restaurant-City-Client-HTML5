@@ -9,6 +9,9 @@ use crate::gameplay::{
     transition_service_loop,
 };
 use crate::placement::TilePoint;
+use crate::service_clock::{
+    ServiceDeadlines, ServiceTimingError, anchor_service_deadlines, transition_timed_service,
+};
 use crate::restaurant::{PlacementCatalog, RestaurantSnapshot};
 use crate::topology::{
     ServiceChef, ServiceWaiter, calculate_food_service_topology, derive_service_layout,
@@ -46,6 +49,11 @@ pub struct ActiveServiceIdentity {
 pub struct ActiveServiceRecord {
     pub identity: ActiveServiceIdentity,
     pub state: ServiceLoopState,
+    /// False only for legacy persisted services that predate authoritative
+    /// wall-clock deadlines. New services are anchored by ProductAggregate at
+    /// the server-selected start timestamp.
+    pub timing_anchored: bool,
+    pub deadlines: ServiceDeadlines,
 }
 
 impl ActiveServiceRecord {
@@ -129,9 +137,13 @@ impl ActiveServiceRecord {
                 waiter_tile: assignment.waiter_tile,
             },
             state: ServiceLoopState::default(),
+            timing_anchored: false,
+            deadlines: ServiceDeadlines::default(),
         })
     }
 
+    /// Legacy reducer transition used only while replaying pre-clock journals.
+    /// It deliberately does not invent deadlines.
     pub fn transition(
         self,
         event: ServiceLoopEvent,
@@ -140,6 +152,37 @@ impl ActiveServiceRecord {
         Ok((
             Self {
                 state: transition.state,
+                ..self
+            },
+            transition.effect,
+        ))
+    }
+
+    pub fn anchor_timing(self, effective_at_ms: u64) -> Result<Self, ServiceTimingError> {
+        if self.timing_anchored {
+            return Ok(self);
+        }
+        Ok(Self {
+            timing_anchored: true,
+            deadlines: anchor_service_deadlines(self.state, effective_at_ms)?,
+            ..self
+        })
+    }
+
+    pub fn transition_at(
+        self,
+        event: ServiceLoopEvent,
+        effective_at_ms: u64,
+    ) -> Result<(Self, Option<ServiceLoopEffect>), ServiceTimingError> {
+        if !self.timing_anchored {
+            return Err(ServiceTimingError::TimingUnanchored);
+        }
+        let transition =
+            transition_timed_service(self.state, self.deadlines, event, effective_at_ms)?;
+        Ok((
+            Self {
+                state: transition.state,
+                deadlines: transition.deadlines,
                 ..self
             },
             transition.effect,
@@ -241,9 +284,43 @@ mod tests {
         assert_eq!(record.identity.customer_id, 1);
         assert_eq!(record.identity.order_id, 1);
         assert_eq!(record.state, ServiceLoopState::default());
+        assert!(!record.timing_anchored);
+        assert_eq!(record.deadlines, ServiceDeadlines::default());
         assert!(record.locks_instance(1));
         assert!(record.locks_instance(2));
         assert!(record.locks_instance(3));
+    }
+
+    #[test]
+    fn server_time_anchor_enables_timed_transitions_without_browser_clock() {
+        let (restaurant, catalog) = fixture();
+        let record = ActiveServiceRecord::start(
+            1,
+            3,
+            ActiveServiceAssignment {
+                chair_instance_id: 1,
+                table_instance_id: 2,
+                chef_employee_id: 101,
+                kitchen_instance_id: 3,
+                waiter_employee_id: 201,
+                waiter_tile: TilePoint { x: 4, y: 4 },
+            },
+            &restaurant,
+            &catalog,
+        )
+        .unwrap()
+        .anchor_timing(10_000)
+        .unwrap();
+
+        let (walking, effect) = record
+            .transition_at(ServiceLoopEvent::StartChairWalk, 10_100)
+            .unwrap();
+        assert_eq!(effect, None);
+        let (deciding, effect) = walking
+            .transition_at(ServiceLoopEvent::ReachChair, 12_000)
+            .unwrap();
+        assert_eq!(effect, None);
+        assert_eq!(deciding.deadlines.customer_deadline_at_ms, Some(13_000));
     }
 
     #[test]
