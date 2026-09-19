@@ -1050,6 +1050,30 @@ impl From<PersistedPlacedItem> for PlacedItem {
     }
 }
 
+impl From<PaintedFloorTile> for PersistedFloorTile {
+    fn from(value: PaintedFloorTile) -> Self {
+        Self {
+            item_id: value.item_id,
+            tile_x: value.tile.x,
+            tile_y: value.tile.y,
+            room_index: value.room_index,
+        }
+    }
+}
+
+impl From<PersistedFloorTile> for PaintedFloorTile {
+    fn from(value: PersistedFloorTile) -> Self {
+        Self {
+            item_id: value.item_id,
+            tile: TilePoint {
+                x: value.tile_x,
+                y: value.tile_y,
+            },
+            room_index: value.room_index,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct LoadedProductState {
     pub store_revision: u64,
